@@ -1,11 +1,17 @@
 #pragma once
-#include "../market/csv_feed.h"
-#include "../orderbook/orderbook.h"
-#include "../strategy/market_maker.h"
-#include "../exchange/matching_engine.h"
-#include <atomic>
-#include <fstream>
 #include <string>
+#include <unordered_map>
+#include <iostream>
+#include "exchange/execution_report.h"  // 使用你最新的 ExecutionReport
+#include "market/market_types.h"        // 使用 Tick
+
+// 持仓信息
+struct Position {
+    int64_t qty = 0;       // 多头为正，空头为负
+    double avg_price = 0;  // 持仓均价
+};
+
+enum class Side { Buy, Sell };
 
 class BacktestDriver {
 public:
@@ -16,14 +22,14 @@ public:
     void run();
 
 private:
-    OrderBook ob;
-    MarketMaker strat;
-    MatchingEngine engine;
+    std::string tick_file_;
+    std::string orders_file_;
+    std::string trades_file_;
 
-    std::atomic<uint64_t> next_order_id{1};
-    std::ofstream orders_out;
-    std::ofstream trades_out;
+    std::unordered_map<std::string, Position> positions; // 每个合约持仓
+    std::unordered_map<std::string, double> last_price;  // 最新价格，用于 unrealized PnL
+    double realized_pnl = 0.0;
 
-    void on_tick(const Tick& t);
-    void on_report(const ExecutionReport& report);
+    void on_trade(const ExecutionReport& trade);
+    void print_report();
 };
