@@ -29,13 +29,29 @@ BacktestDriver::BacktestDriver(const std::string& tick_file,
                                const std::string& orders_file,
                                const std::string& trades_file,
                                double slippage,
-                               double fee_rate)
+                               double fee_rate,
+                               RunMode mode,
+                               const std::string& log_file)
     : tick_file_(tick_file),
       orders_file_(orders_file),
       trades_file_(trades_file),
       slippage_(slippage),
-      fee_rate_(fee_rate)
-{}
+      fee_rate_(fee_rate),
+      mode_(mode),
+      log_out_(&std::cout)
+{
+    if(!log_file.empty()) {
+        log_file_.open(log_file);
+        if(log_file_.is_open()) {
+            log_out_ = &log_file_;
+        }
+    }
+}
+
+// ==================== 日志函数 ====================
+void BacktestDriver::log(const std::string& msg) {
+    (*log_out_) << msg << std::endl;
+}
 
 // ==================== 回测主流程 ====================
 void BacktestDriver::run() {
@@ -119,13 +135,12 @@ void BacktestDriver::run() {
             }
         }
 
-        std::cout << "Trade: " << trade.symbol
-                  << " " << (s==Side::Buy?"B":"S")
-                  << " " << exec_price
-                  << " qty=" << trade.quantity
-                  << " Fee=" << fee
-                  << " RealizedPnL=" << realized_pnl
-                  << std::endl;
+        log("Trade: " + trade.symbol +
+            " " + (s==Side::Buy?"B":"S") +
+            " " + std::to_string(exec_price) +
+            " qty=" + std::to_string(trade.quantity) +
+            " Fee=" + std::to_string(fee) +
+            " RealizedPnL=" + std::to_string(realized_pnl));
     }
 
     print_report();
@@ -133,15 +148,14 @@ void BacktestDriver::run() {
 
 // ==================== 输出策略报告 ====================
 void BacktestDriver::print_report() {
-    std::cout << "\n=== Strategy Report ===\n";
-    std::cout << "Realized PnL: " << realized_pnl << "\n";
+    log("\n=== Strategy Report ===");
+    log("Realized PnL: " + std::to_string(realized_pnl));
 
     for(const auto& [symbol, pos] : positions) {
         double unrealized_pnl = pos.qty * (last_price[symbol] - pos.avg_price);
-        std::cout << "Symbol: " << symbol
-                  << " Qty: " << pos.qty
-                  << " AvgPrice: " << pos.avg_price
-                  << " UnrealizedPnL: " << unrealized_pnl
-                  << std::endl;
+        log("Symbol: " + symbol +
+            " Qty: " + std::to_string(pos.qty) +
+            " AvgPrice: " + std::to_string(pos.avg_price) +
+            " UnrealizedPnL: " + std::to_string(unrealized_pnl));
     }
 }

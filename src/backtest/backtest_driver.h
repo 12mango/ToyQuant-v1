@@ -2,38 +2,65 @@
 #include <string>
 #include <unordered_map>
 #include <iostream>
-#include "exchange/execution_report.h"
-#include "market/market_types.h"
+#include <fstream>
+#include <cstdint>
 
-// 持仓信息
-struct Position {
-    int64_t qty = 0;       // 多头为正，空头为负
-    double avg_price = 0;  // 持仓均价
+// ==================== 辅助类型 ====================
+enum class Side { Buy, Sell };
+enum class ExecType { Trade };
+enum class RunMode { Backtest, Realtime };
+
+struct Tick {
+    uint64_t ts;
+    std::string symbol;
+    double price;
+    uint64_t size;
+    char side;
 };
 
-enum class Side { Buy, Sell };
+struct ExecutionReport {
+    uint64_t ts;
+    std::string symbol;
+    std::string side;
+    double price;
+    uint64_t quantity;
+    uint64_t order_id;
+    ExecType exec_type;
+};
 
+struct Position {
+    int64_t qty = 0;
+    double avg_price = 0.0;
+};
+
+// ==================== BacktestDriver ====================
 class BacktestDriver {
 public:
     BacktestDriver(const std::string& tick_file,
                    const std::string& orders_file,
                    const std::string& trades_file,
                    double slippage = 0.0,
-                   double fee_rate = 0.0);
+                   double fee_rate = 0.0,
+                   RunMode mode = RunMode::Backtest,
+                   const std::string& log_file = "");
 
     void run();
 
 private:
+    void print_report();
+    void log(const std::string& msg);
+
     std::string tick_file_;
     std::string orders_file_;
     std::string trades_file_;
+    double slippage_;
+    double fee_rate_;
+    RunMode mode_;
 
-    double slippage_;   // 滑点参数
-    double fee_rate_;   // 手续费率
-
-    std::unordered_map<std::string, Position> positions; // 每个合约持仓
-    std::unordered_map<std::string, double> last_price;  // 最新价格，用于 unrealized PnL
+    std::unordered_map<std::string, Position> positions;
+    std::unordered_map<std::string, double> last_price;
     double realized_pnl = 0.0;
 
-    void print_report();
+    std::ofstream log_file_;
+    std::ostream* log_out_;
 };
