@@ -39,7 +39,8 @@ void MatchingEngine::cancel_order(uint64_t order_id) {
         .exec_type = ExecType::Cancelled,
         .symbol = ord->symbol,
         .price = ord->price,
-        .quantity = ord->remaining
+        .quantity = ord->remaining,
+        .ts = ord->ts
     });
 
     std::cout << "Cancel order id=" << order_id << " done.\n";
@@ -50,6 +51,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
     uint64_t& qty = new_order.remaining;
     qty = new_order.qty;
 
+    // ==================== 买单匹配逻辑 ====================
     if (incoming.side == Side::Buy) {
         while (qty > 0 && !book.asks.empty()) {
             auto best_ask_it = book.asks.begin(); // 卖盘最优价（最低）
@@ -67,7 +69,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                     .exec_type = ExecType::Trade,
                     .symbol = new_order.symbol,
                     .price = best_price,
-                    .quantity = traded
+                    .quantity = traded,
+                    .ts = new_order.ts
                 });
 
                 qty -= traded;
@@ -81,6 +84,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
             if (ask_queue.empty()) book.asks.erase(best_ask_it);
         }
 
+        // 如果买单剩余没成交，挂入订单簿
         if (qty > 0) {
             book.bids[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.bids[new_order.price].orders.back();
@@ -90,7 +94,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                 .exec_type = ExecType::Resting,
                 .symbol = new_order.symbol,
                 .price = new_order.price,
-                .quantity = qty
+                .quantity = qty,
+                .ts = new_order.ts
             });
 
             std::cout << "Resting Buy order id=" << new_order.id
@@ -98,6 +103,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                       << " @ " << new_order.price << "\n";
         }
 
+    // ==================== 卖单匹配逻辑 ====================
     } else {
         while (qty > 0 && !book.bids.empty()) {
             auto best_bid_it = book.bids.begin(); // 买盘最优价（最高）
@@ -115,7 +121,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                     .exec_type = ExecType::Trade,
                     .symbol = new_order.symbol,
                     .price = best_price,
-                    .quantity = traded
+                    .quantity = traded,
+                    .ts = new_order.ts
                 });
 
                 qty -= traded;
@@ -129,6 +136,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
             if (bid_queue.empty()) book.bids.erase(best_bid_it);
         }
 
+        // 如果卖单剩余没成交，挂入订单簿
         if (qty > 0) {
             book.asks[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.asks[new_order.price].orders.back();
@@ -138,7 +146,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                 .exec_type = ExecType::Resting,
                 .symbol = new_order.symbol,
                 .price = new_order.price,
-                .quantity = qty
+                .quantity = qty,
+                .ts = new_order.ts
             });
 
             std::cout << "Resting Sell order id=" << new_order.id

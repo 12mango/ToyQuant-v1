@@ -72,8 +72,7 @@ void BacktestDriver::run() {
         std::string tmp, side_str;
 
         // CSV 列顺: ts,symbol,side,price,quantity,order_id
-        //std::getline(ss, tmp, ','); trade.ts = safe_stoull(tmp);       // ts
-        std::getline(ss, tmp, ','); // ts，直接丢掉，不存到 ExecutionReport
+        std::getline(ss, tmp, ','); trade.ts = safe_stoull(tmp);       // ts
         std::getline(ss, trade.symbol, ',');                           // symbol
         std::getline(ss, side_str, ',');                                // side
         std::getline(ss, tmp, ','); trade.price    = safe_stod(tmp);    // price

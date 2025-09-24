@@ -14,4 +14,5 @@ struct ExecutionReport {
     std::string symbol;
     double price{};
     uint64_t quantity{};
+    uint64_t ts{};
 };

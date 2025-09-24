@@ -58,7 +58,7 @@ auto cb = [&ob, &strat, &engine, &next_order_id](const Tick& t){
         ex_order.price = o.price;
         ex_order.qty = o.quantity;
         ex_order.remaining = o.quantity;
-        ex_order.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        ex_order.ts = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::system_clock::now().time_since_epoch()
                              ).count();
         ex_order.owner = "MarketMaker";

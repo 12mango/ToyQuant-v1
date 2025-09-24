@@ -16,7 +16,7 @@ struct Order {
     double price;
     uint64_t qty;
     uint64_t remaining;
-    uint64_t timestamp;
+    uint64_t ts;
     std::string owner;
 };
 
@@ -24,7 +24,7 @@ struct Fill {
     uint64_t order_id;
     double price;
     uint64_t qty;
-    uint64_t timestamp;
+    uint64_t ts;
 };
 
 }
