@@ -27,8 +27,14 @@ inline uint64_t safe_stoull(const std::string& s) {
 // ==================== 构造函数 ====================
 BacktestDriver::BacktestDriver(const std::string& tick_file,
                                const std::string& orders_file,
-                               const std::string& trades_file)
-    : tick_file_(tick_file), orders_file_(orders_file), trades_file_(trades_file)
+                               const std::string& trades_file,
+                               double slippage,
+                               double fee_rate)
+    : tick_file_(tick_file),
+      orders_file_(orders_file),
+      trades_file_(trades_file),
+      slippage_(slippage),
+      fee_rate_(fee_rate)
 {}
 
 // ==================== 回测主流程 ====================
@@ -74,56 +80,54 @@ void BacktestDriver::run() {
         // CSV 列顺: ts,symbol,side,price,quantity,order_id
         std::getline(ss, tmp, ','); trade.ts = safe_stoull(tmp);       // ts
         std::getline(ss, trade.symbol, ',');                           // symbol
-        std::getline(ss, side_str, ',');                                // side
-        std::getline(ss, tmp, ','); trade.price    = safe_stod(tmp);    // price
-        std::getline(ss, tmp, ','); trade.quantity = safe_stoull(tmp);  // quantity
-        std::getline(ss, tmp, ','); trade.order_id = safe_stoull(tmp);  // order_id
+        std::getline(ss, side_str, ',');                               // side
+        std::getline(ss, tmp, ','); trade.price    = safe_stod(tmp);   // price
+        std::getline(ss, tmp, ','); trade.quantity = safe_stoull(tmp); // quantity
+        std::getline(ss, tmp, ','); trade.order_id = safe_stoull(tmp); // order_id
 
         trade.exec_type = ExecType::Trade;
 
-        // ========== PnL 计算 ==========
+        // 应用滑点和手续费
+        double exec_price = trade.price + (side_str == "B" ? slippage_ : -slippage_);
+        double fee = trade.quantity * exec_price * fee_rate_;
+
         auto& pos = positions[trade.symbol];
         int64_t qty = trade.quantity;
         Side s = (side_str == "B" ? Side::Buy : Side::Sell);
 
         if(s == Side::Buy) {
-            // 平空仓
             if(pos.qty < 0) {
                 int64_t close_qty = std::min(-pos.qty, qty);
-                realized_pnl += close_qty * (pos.avg_price - trade.price);
+                realized_pnl += close_qty * (pos.avg_price - exec_price) - fee;
                 pos.qty += close_qty;
                 qty -= close_qty;
             }
-            // 开多仓
             if(qty > 0) {
-                pos.avg_price = (pos.avg_price * pos.qty + trade.price * qty) / (pos.qty + qty);
+                pos.avg_price = (pos.avg_price * pos.qty + exec_price * qty) / (pos.qty + qty);
                 pos.qty += qty;
             }
         } else { // Sell
-            // 平多仓
             if(pos.qty > 0) {
                 int64_t close_qty = std::min(pos.qty, qty);
-                realized_pnl += close_qty * (trade.price - pos.avg_price);
+                realized_pnl += close_qty * (exec_price - pos.avg_price) - fee;
                 pos.qty -= close_qty;
                 qty -= close_qty;
             }
-            // 开空仓
             if(qty > 0) {
-                pos.avg_price = (pos.avg_price * (-pos.qty) + trade.price * qty) / (-pos.qty + qty);
+                pos.avg_price = (pos.avg_price * (-pos.qty) + exec_price * qty) / (-pos.qty + qty);
                 pos.qty -= qty;
             }
         }
 
-        // 输出每笔成交实时 PnL
         std::cout << "Trade: " << trade.symbol
                   << " " << (s==Side::Buy?"B":"S")
-                  << " " << trade.price
+                  << " " << exec_price
                   << " qty=" << trade.quantity
+                  << " Fee=" << fee
                   << " RealizedPnL=" << realized_pnl
                   << std::endl;
     }
 
-    // ==================== 输出策略报告 ====================
     print_report();
 }
 
@@ -133,7 +137,7 @@ void BacktestDriver::print_report() {
     std::cout << "Realized PnL: " << realized_pnl << "\n";
 
     for(const auto& [symbol, pos] : positions) {
-        double unrealized_pnl = pos.qty * last_price[symbol];
+        double unrealized_pnl = pos.qty * (last_price[symbol] - pos.avg_price);
         std::cout << "Symbol: " << symbol
                   << " Qty: " << pos.qty
                   << " AvgPrice: " << pos.avg_price

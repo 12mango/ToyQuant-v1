@@ -2,8 +2,8 @@
 #include <string>
 #include <unordered_map>
 #include <iostream>
-#include "exchange/execution_report.h"  // 使用你最新的 ExecutionReport
-#include "market/market_types.h"        // 使用 Tick
+#include "exchange/execution_report.h"
+#include "market/market_types.h"
 
 // 持仓信息
 struct Position {
@@ -17,7 +17,9 @@ class BacktestDriver {
 public:
     BacktestDriver(const std::string& tick_file,
                    const std::string& orders_file,
-                   const std::string& trades_file);
+                   const std::string& trades_file,
+                   double slippage = 0.0,
+                   double fee_rate = 0.0);
 
     void run();
 
@@ -26,10 +28,12 @@ private:
     std::string orders_file_;
     std::string trades_file_;
 
+    double slippage_;   // 滑点参数
+    double fee_rate_;   // 手续费率
+
     std::unordered_map<std::string, Position> positions; // 每个合约持仓
     std::unordered_map<std::string, double> last_price;  // 最新价格，用于 unrealized PnL
     double realized_pnl = 0.0;
 
-    void on_trade(const ExecutionReport& trade);
     void print_report();
 };
