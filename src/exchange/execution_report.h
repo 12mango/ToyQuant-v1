@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <cstdint>
+#include "order.h"
 
 enum class ExecType {
     Trade,
@@ -10,6 +11,7 @@ enum class ExecType {
 
 struct ExecutionReport {
     uint64_t order_id{};
+    exchange::Side side{};
     ExecType exec_type{};
     std::string symbol;
     double price{};

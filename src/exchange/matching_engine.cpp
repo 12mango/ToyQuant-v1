@@ -34,8 +34,10 @@ void MatchingEngine::cancel_order(uint64_t order_id) {
     }
     order_index_.erase(it);
 
+    // ==== 加入 side 字段 ====
     report(ExecutionReport{
         .order_id = order_id,
+        .side = ord->side,
         .exec_type = ExecType::Cancelled,
         .symbol = ord->symbol,
         .price = ord->price,
@@ -64,8 +66,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                 Order& resting = ask_queue.front();
                 uint64_t traded = std::min(qty, resting.remaining);
 
+                // ==== 加入 side ====
                 report(ExecutionReport{
                     .order_id = new_order.id,
+                    .side = new_order.side,
                     .exec_type = ExecType::Trade,
                     .symbol = new_order.symbol,
                     .price = best_price,
@@ -89,8 +93,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
             book.bids[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.bids[new_order.price].orders.back();
 
+            // ==== 加入 side ====
             report(ExecutionReport{
                 .order_id = new_order.id,
+                .side = new_order.side,
                 .exec_type = ExecType::Resting,
                 .symbol = new_order.symbol,
                 .price = new_order.price,
@@ -116,8 +122,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                 Order& resting = bid_queue.front();
                 uint64_t traded = std::min(qty, resting.remaining);
 
+                // ==== 加入 side ====
                 report(ExecutionReport{
                     .order_id = new_order.id,
+                    .side = new_order.side,
                     .exec_type = ExecType::Trade,
                     .symbol = new_order.symbol,
                     .price = best_price,
@@ -141,8 +149,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
             book.asks[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.asks[new_order.price].orders.back();
 
+            // ==== 加入 side ====
             report(ExecutionReport{
                 .order_id = new_order.id,
+                .side = new_order.side,
                 .exec_type = ExecType::Resting,
                 .symbol = new_order.symbol,
                 .price = new_order.price,

@@ -4,7 +4,8 @@
 #include <cstdlib>
 
 int main(int argc, char** argv) {
-    std::string tick_file   = "data/sample_ticks.csv";
+    //std::string tick_file   = "data/sample_ticks.csv";
+    std::string tick_file   = "data/synthetic_ticks.csv";
     std::string orders_file = "data/orders.csv";
     std::string trades_file = "data/trades.csv";
     double slippage = 0.0;
