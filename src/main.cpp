@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     trades_out << "ts,symbol,side,price,quantity,order_id\n";
 
     OrderBook ob;
-    MarketMaker strat(10, 0.0003);
+    MarketMaker strat(100, 0.00001);
     MatchingEngine engine;
 
     // 全局自增 order_id
