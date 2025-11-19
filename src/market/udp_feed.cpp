@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <sstream>
+#include <iostream>
 
 UdpFeed::UdpFeed(int port, TickCallback cb)
     : port_(port), cb_(cb), running_(false) {}
@@ -62,6 +63,7 @@ void UdpFeed::loop() {
         if (!std::getline(ss, tok, ',')) continue;
         t.side = tok.empty() ? 'N' : tok[0];
 
-        cb_(t);
+        tick_count_++;  // 累计 tick
+        cb_(t);         // 原回调
     }
 }

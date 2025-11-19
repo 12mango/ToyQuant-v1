@@ -11,6 +11,8 @@ public:
     bool start();
     void stop();
 
+    int get_tick_count() const { return tick_count_.load(); }  // 接收 tick 数量接口
+
 private:
     void loop();
 
@@ -19,4 +21,5 @@ private:
     TickCallback cb_;
     std::atomic<bool> running_;
     std::thread thread_;
+    std::atomic<int> tick_count_{0};  // tick 计数
 };
