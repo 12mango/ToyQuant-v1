@@ -14,12 +14,27 @@ public:
     uint64_t base_order_size;
     double base_spread;
     int64_t inventory_limit;
+    double tick_size;
+    int smooth_N;
     std::unordered_map<uint64_t, Order> open_orders;
     std::deque<double> mid_prices;
     double last_mid;
+    double max_level_multiplier;
 
-    MarketMaker(uint64_t size, double spd, int64_t inv_limit = 1000)
-        : base_order_size(size), base_spread(spd), inventory_limit(inv_limit), last_mid(0) {}
+    MarketMaker(uint64_t size = 50,
+                double spd = 0.00003,
+                int64_t inv_limit = 1000,
+                double ts = 0.00001,
+                int smooth_window = 10,
+                double level_multiplier = 3.0)
+        : base_order_size(size),
+          base_spread(spd),
+          inventory_limit(inv_limit),
+          tick_size(ts),
+          smooth_N(smooth_window),
+          last_mid(0.0),
+          max_level_multiplier(level_multiplier)
+    {}
 
     std::vector<Order> on_top_of_book(const std::string& symbol, const TopOfBook& tob) override {
         std::vector<Order> orders;
@@ -27,47 +42,61 @@ public:
 
         if (tob.bid_price <= 0 || tob.ask_price <= 0) return orders;
 
-        // 计算当前 mid price 并平滑
         double mid = (tob.bid_price + tob.ask_price) / 2.0;
         mid_prices.push_back(mid);
-        if (mid_prices.size() > 10) mid_prices.pop_front();
+        if ((int)mid_prices.size() > smooth_N) mid_prices.pop_front();
         double smooth_mid = std::accumulate(mid_prices.begin(), mid_prices.end(), 0.0) / mid_prices.size();
 
-        // 价格趋势
         double trend = smooth_mid - last_mid;
         last_mid = smooth_mid;
 
-        // 动态 spread
         double tick_vol = std::abs(tob.ask_price - tob.bid_price);
         double spread_adj = base_spread;
-        if (tick_vol > 0.0002) spread_adj *= 2;
+        if (tick_vol > base_spread * 5) spread_adj = base_spread * 2;
+        if (tick_vol > base_spread * 20) spread_adj = base_spread * 3;
 
-        // 当前仓位计算
         int64_t inventory = 0;
-        for (auto& [id, o] : open_orders) {
-            inventory += (o.side == Order::BUY ? o.quantity : -int64_t(o.quantity));
+        for (auto &p : open_orders) {
+            const Order &o = p.second;
+            inventory += (o.side == Order::BUY ? int64_t(o.quantity) : -int64_t(o.quantity));
         }
 
-        // 动态挂单量
-        double buy_ratio = std::max(0.0, 1.0 - double(inventory)/inventory_limit);
-        double sell_ratio = std::max(0.0, 1.0 + double(inventory)/inventory_limit);
-        uint64_t buy_qty = uint64_t(base_order_size * buy_ratio);
-        uint64_t sell_qty = uint64_t(base_order_size * sell_ratio);
+        double inv_frac = 0.0;
+        if (inventory_limit > 0) inv_frac = std::min(1.0, std::abs(double(inventory)) / double(inventory_limit));
+        double inv_spread_bias = inv_frac * base_spread;
 
-        // 买单挂单价格
-        if (buy_qty > 0) {
-            double buy_price = smooth_mid - spread_adj/2.0 - std::max(0.0, trend);
-            Order buy_order(Order::BUY, symbol, buy_price, buy_qty, next_order_id++);
-            orders.push_back(buy_order);
-            open_orders[buy_order.order_id] = buy_order;
-        }
+        uint64_t level_count = 3;
+        for (uint64_t level = 1; level <= level_count; ++level) {
+            double level_mul = std::min(max_level_multiplier, double(level));
+            double level_spread = spread_adj * level_mul;
 
-        // 卖单挂单价格
-        if (sell_qty > 0) {
-            double sell_price = smooth_mid + spread_adj/2.0 + std::max(0.0, trend);
-            Order sell_order(Order::SELL, symbol, sell_price, sell_qty, next_order_id++);
-            orders.push_back(sell_order);
-            open_orders[sell_order.order_id] = sell_order;
+            double raw_buy = smooth_mid - level_spread/2.0 - std::max(0.0, trend) - inv_spread_bias * (inventory > 0 ? 1.0 : 0.0);
+            double raw_sell = smooth_mid + level_spread/2.0 + std::max(0.0, trend) + inv_spread_bias * (inventory < 0 ? 1.0 : 0.0);
+
+            double buy_price = std::round(raw_buy / tick_size) * tick_size;
+            double sell_price = std::round(raw_sell / tick_size) * tick_size;
+
+            double qty_scale = 1.0;
+            if (inventory > 0) qty_scale = std::max(0.0, 1.0 - double(inventory) / double(inventory_limit));
+            if (inventory < 0) qty_scale = std::max(0.0, 1.0 - double(-inventory) / double(inventory_limit));
+
+            uint64_t buy_qty = uint64_t(std::max(0.0, std::floor(base_order_size * qty_scale / double(level))));
+            uint64_t sell_qty = uint64_t(std::max(0.0, std::floor(base_order_size * qty_scale / double(level))));
+
+            if (inventory > inventory_limit) buy_qty = 0;
+            if (inventory < -inventory_limit) sell_qty = 0;
+
+            if (buy_qty > 0) {
+                Order buy_order(Order::BUY, symbol, buy_price, buy_qty, next_order_id++);
+                orders.push_back(buy_order);
+                open_orders[buy_order.order_id] = buy_order;
+            }
+
+            if (sell_qty > 0) {
+                Order sell_order(Order::SELL, symbol, sell_price, sell_qty, next_order_id++);
+                orders.push_back(sell_order);
+                open_orders[sell_order.order_id] = sell_order;
+            }
         }
 
         return orders;
@@ -76,10 +105,13 @@ public:
     void on_order_update(const ExecutionReport& report) override {
         if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Resting) {
             open_orders.erase(report.order_id);
-        } else if (report.exec_type == ExecType::Trade) {
-            if (auto it = open_orders.find(report.order_id); it != open_orders.end()) {
-                it->second.quantity -= report.quantity;
-                if(it->second.quantity == 0) open_orders.erase(it);
+            return;
+        }
+        if (report.exec_type == ExecType::Trade) {
+            auto it = open_orders.find(report.order_id);
+            if (it != open_orders.end()) {
+                it->second.quantity = (it->second.quantity > report.quantity ? it->second.quantity - report.quantity : 0);
+                if (it->second.quantity == 0) open_orders.erase(it);
             }
         }
     }
