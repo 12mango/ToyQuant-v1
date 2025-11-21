@@ -9,6 +9,7 @@
 #include <atomic>
 #include <fstream>
 #include <chrono>
+#include <immintrin.h>
 
 static const std::string DEFAULT_TICK_FILE   = "data/synthetic_ticks.csv";
 static const std::string DEFAULT_ORDERS_FILE = "data/orders.csv";
@@ -107,26 +108,59 @@ int main(int argc, char** argv) {
         CsvFeed feed(path_or_port, cb, delay);
         feed.run();
     } 
-if(mode == "udp") {
+else if (mode == "udp") {
     int port = std::stoi(path_or_port);
-    UdpFeed feed(port, cb);
-    if(!feed.start()){
-        std::cerr << "udp start failed\n";
-        return 1;
-    }
-    std::cout << "udp listening on " << port << std::endl;
+    UdpFeed feed(port);
+    feed.start();
 
-    const int total_ticks = 10000; // synthetic_ticks.csv 总行数
-    auto start_time = std::chrono::steady_clock::now();
-    while(feed.get_tick_count() < total_ticks){
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        auto now = std::chrono::steady_clock::now();
-        if(std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time).count() > UDP_MAX_WAIT_MS){
-            std::cout << "UDP feed timeout, exiting.\n";
-            break;
+std::atomic<uint64_t> processed_count{0};
+const uint64_t total_ticks = 200;
+
+Tick t;
+while (true) {
+        uint64_t processed = processed_count.load(std::memory_order_acquire);
+        size_t unread = feed.unread_count();
+        if (processed >= total_ticks && unread == 0) break;
+        else{
+            //std::cout << "processed = " << processed_count.load(std::memory_order_acquire)
+            //          << ", unread = " << feed.unread_count() << std::endl;
+        }
+
+        bool did_process = false;
+        while (feed.pop_tick(t)) {
+            did_process = true;
+            ob.on_tick(t);
+            auto top = ob.top(t.symbol);
+
+            auto orders = strat.on_top_of_book(t.symbol, top);
+            for (auto& o : orders) {
+                o.order_id = next_order_id++;
+                exchange::Order ex_order;
+                ex_order.id = o.order_id;
+                ex_order.symbol = o.symbol;
+                ex_order.side = (o.side == Order::BUY ? exchange::Side::Buy : exchange::Side::Sell);
+                ex_order.type = exchange::OrderType::Limit;
+                ex_order.price = o.price;
+                ex_order.qty = o.quantity;
+                ex_order.remaining = o.quantity;
+                ex_order.ts = t.ts;
+                ex_order.owner = "MarketMaker";
+                engine.send_order(ex_order);
+            }
+
+            processed_count.fetch_add(1, std::memory_order_release);
+            //std::cout << "processed = " << processed_count.load(std::memory_order_acquire)
+            //          << ", unread = " << feed.unread_count() << std::endl;
+        }
+
+        if (!did_process) {
+            _mm_pause();                // 保留 busy-wait hint
+            std::this_thread::yield();  // 给 feed 线程机会更新 head
         }
     }
+feed.stop();
 }
+
     else {
         std::cout << "usage: ./hft_demo csv <path> [ms_delay]   or   ./hft_demo udp <port>\n";
     }

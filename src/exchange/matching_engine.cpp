@@ -103,7 +103,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming) {
                 .quantity = qty,
                 .ts = new_order.ts
             });
-
+            
             std::cout << "Resting Buy order id=" << new_order.id
                       << " qty=" << qty
                       << " @ " << new_order.price << "\n";
