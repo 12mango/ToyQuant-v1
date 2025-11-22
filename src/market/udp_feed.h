@@ -3,7 +3,6 @@
 #include <atomic>
 #include <thread>
 #include <vector>
-#include <cstddef>
 
 class UdpFeed {
 public:
@@ -19,9 +18,14 @@ public:
 
 private:
     void loop();
-    bool parse_tick(const std::string& s, Tick& t);
 
+    // C++ 风格解析（string_view + find）
+    bool parse_tick_cpp(std::string_view s, Tick& t);
+
+    // static const
     static constexpr size_t RING_SIZE = 8192;
+    static constexpr size_t MAX_PKT = 2048;
+    static constexpr unsigned BATCH = 8;
 
     int port_{0};
     int sock_{-1};
@@ -34,4 +38,6 @@ private:
     std::atomic<size_t> tail_{0};
 
     std::atomic<uint64_t> tick_count_{0};
+
+    std::vector<std::array<char, MAX_PKT>> recv_bufs_;
 };
