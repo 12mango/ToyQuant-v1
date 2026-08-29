@@ -43,7 +43,7 @@ public:
                    double fee_rate = 0.0,
                    RunMode mode = RunMode::Backtest,
                    const std::string& log_file = "");
-
+    ~BacktestDriver();
     void run();
 
 private:

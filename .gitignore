@@ -35,3 +35,16 @@ compile_commands.json
 *.tmp
 *.swp
 *.DS_Store
+
+# 忽略日志输出文件夹（但保留目录结构可以用下面的技巧）
+/logs/*
+!/logs/.gitkeep
+
+# 忽略 CMake 编译产物
+/build/
+/out/
+/bin/
+
+# 忽略 IDE 个人配置
+/.vs/
+/.vscode/
