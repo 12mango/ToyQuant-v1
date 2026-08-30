@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "Build hft_demo",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${command:cmake.buildDirectory}",
+        "--target",
+        "hft_demo"
+      ],
+      "group": "build"
+    },
+    {
+      "type": "shell",
+      "label": "Build backtest_main",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${command:cmake.buildDirectory}",
+        "--target",
+        "backtest_main"
+      ],
+      "group": "build"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -13,41 +14,42 @@
 #include "orderbook/orderbook.h"
 #include "strategy/market_maker.h"
 
-static const std::string DEFAULT_TICK_FILE = "data/synthetic_ticks.csv";
-static const std::string DEFAULT_ORDERS_FILE = "data/orders.csv";
-static const std::string DEFAULT_TRADES_FILE = "data/trades.csv";
-static const int DEFAULT_DELAY = 0;
-static const int DEFAULT_UDP_PORT = 9000;
+#ifndef PROJECT_ROOT_DIR
+#define PROJECT_ROOT_DIR "."
+#endif
+
+// 路径辅助函数：相对路径强行锚定在项目根目录下，避免路径偏置
+std::string to_abs_path(const std::string& input_path)
+{
+    namespace fs = std::filesystem;
+    fs::path p(input_path);
+    if (p.is_absolute()) return p.string();
+    return (fs::path(PROJECT_ROOT_DIR) / p).string();
+}
 
 void print_tick(const Tick& t, const TopOfBook& top)
 {
-    std::cout << "tick " << t.symbol << " " << t.ts << " " << t.price << " " << t.size << " "
-              << t.side << " | top bid " << top.bid_price << "@" << top.bid_size << " | ask "
-              << top.ask_price << "@" << top.ask_size << "\n";
+    std::cout << "[TICK] " << t.symbol << " ts:" << t.ts << " price:" << t.price 
+              << " size:" << t.size << " side:" << t.side 
+              << " | Top Bid: " << top.bid_price << "@" << top.bid_size 
+              << " | Top Ask: " << top.ask_price << "@" << top.ask_size << "\n";
 }
 
 int main(int argc, char** argv)
 {
-    std::string tick_file = DEFAULT_TICK_FILE;
-    std::string orders_file = DEFAULT_ORDERS_FILE;
-    std::string trades_file = DEFAULT_TRADES_FILE;
-
     std::string mode = "csv";
-    std::string path_or_port = tick_file;
-    int delay = DEFAULT_DELAY;
+    std::string path_or_port = "data/synthetic_ticks.csv";
+    int delay = 0;
 
-    if (argc >= 2)
-    {
-        mode = argv[1];
-        if (argc >= 3) path_or_port = argv[2];
-        if (argc >= 4) delay = std::stoi(argv[3]);
-    }
-    else
-    {
-        std::cout << "No arguments provided, defaulting to CSV file: " << path_or_port << "\n";
-    }
+    if (argc >= 2) mode = argv[1];
+    if (argc >= 3) path_or_port = argv[2];
+    if (argc >= 4) delay = std::stoi(argv[3]);
 
-    if (mode == "udp" && path_or_port.empty()) path_or_port = std::to_string(DEFAULT_UDP_PORT);
+    std::string orders_file = to_abs_path("data/orders.csv");
+    std::string trades_file = to_abs_path("data/trades.csv");
+
+    // 确保数据文件父级目录存在
+    std::filesystem::create_directories(std::filesystem::path(orders_file).parent_path());
 
     std::ofstream orders_out(orders_file);
     std::ofstream trades_out(trades_file);
@@ -59,6 +61,7 @@ int main(int argc, char** argv)
     MatchingEngine engine;
     std::atomic<uint64_t> next_order_id{1};
 
+    // 设置撮合引擎成交/状态回报回调
     engine.set_report_callback(
         [&strat, &trades_out](const ExecutionReport& report)
         {
@@ -72,7 +75,8 @@ int main(int argc, char** argv)
             }
         });
 
-    auto process_tick_and_trade = [&](const Tick& t, bool enable_print = false)
+    // 统一处理 Tick 逻辑（行情更新 -> 策略触发 -> 发单给撮合引擎）
+    auto process_tick_and_trade = [&](const Tick& t, bool enable_print = true)
     {
         ob.on_tick(t);
         auto top = ob.top(t.symbol);
@@ -101,45 +105,44 @@ int main(int argc, char** argv)
         }
     };
 
+    // ==================== 1. CSV 模式 ====================
     if (mode == "csv")
     {
-        CsvFeed feed(path_or_port, [&](const Tick& t) { process_tick_and_trade(t, true); }, delay);
+        std::string csv_file = to_abs_path(path_or_port);
+        std::cout << "[Mode: CSV] Opening: " << csv_file << " (delay: " << delay << "ms)\n";
+        CsvFeed feed(csv_file, [&](const Tick& t) { process_tick_and_trade(t, true); }, delay);
         feed.run();
     }
+    // ==================== 2. UDP 模式 (对接 Python 脚本) ====================
     else if (mode == "udp")
     {
         int port = std::stoi(path_or_port);
+        std::cout << "[Mode: UDP] Listening on UDP port: " << port << "...\n";
+
         UdpFeed feed(port);
         feed.start();
 
-        std::atomic<uint64_t> processed_count{0};
-        const uint64_t total_ticks = 200;
         Tick t;
-
+        // 无限循环监听 UDP 接收队列，使用 _mm_pause 实现高频低延迟消费
         while (true)
         {
-            uint64_t processed = processed_count.load(std::memory_order_acquire);
-            size_t unread = feed.unread_count();
-            if (processed >= total_ticks && unread == 0) break;
-
-            bool did_process = false;
-            while (feed.pop_tick(t))
+            if (feed.pop_tick(t))
             {
-                did_process = true;
-                process_tick_and_trade(t, false);
-                processed_count.fetch_add(1, std::memory_order_release);
+                process_tick_and_trade(t, true);
             }
-
-            if (!did_process)
+            else
             {
-                _mm_pause();  // 低延迟自旋 hint
+                _mm_pause(); // x86/x64 高频自旋指令，降低 CPU 功耗并提高响应
             }
         }
         feed.stop();
     }
     else
     {
-        std::cout << "usage: ./hft_demo csv <path> [ms_delay]   or   ./hft_demo udp <port>\n";
+        std::cerr << "Unknown mode: " << mode << "\n";
+        std::cerr << "Usage: ./hft_demo csv <path_to_csv> [ms_delay]\n";
+        std::cerr << "   or: ./hft_demo udp <port>\n";
+        return 1;
     }
 
     std::cout << "Orders saved to: " << orders_file << "\n";

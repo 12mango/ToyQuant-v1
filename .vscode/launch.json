@@ -2,24 +2,52 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "C++ Launch Backtest",
+      "name": "1. HFT Demo (CSV 模式)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${command:cmake.launchTargetPath}",
+      "program": "${command:cmake.buildDirectory}/hft_demo",
       "args": [
-        "data/synthetic_ticks.csv",  // argv[1]: tick_file
-        "data/orders.csv",           // argv[2]: orders_file
-        "data/trades.csv",           // argv[3]: trades_file
-        "0",                    // argv[4]: slippage (滑点)
-        "0",                    // argv[5]: fee_rate (手续费)
-        "backtest",                  // argv[6]: mode (模式)
-        "logs/backtest.log"          // argv[7]: log_file
+        "csv",
+        "data/synthetic_ticks.csv",
+        "0"
       ],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
-      "environment": [],
-      "externalConsole": false,
-      "MIMode": "gdb"
+      "MIMode": "gdb",
+      "preLaunchTask": "Build hft_demo"
+    },
+    {
+      "name": "2. HFT Demo (UDP 接收模式)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.buildDirectory}/hft_demo",
+      "args": [
+        "udp",
+        "9000"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "preLaunchTask": "Build hft_demo"
+    },
+    {
+      "name": "3. Backtest Main (经典回测驱动)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.buildDirectory}/backtest_main",
+      "args": [
+        "data/synthetic_ticks.csv",
+        "data/orders.csv",
+        "data/trades.csv",
+        "0.0005",
+        "0.0002",
+        "backtest",
+        "logs/backtest.log"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "preLaunchTask": "Build backtest_main"
     }
   ]
 }
