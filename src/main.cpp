@@ -19,7 +19,6 @@ static const std::string DEFAULT_TRADES_FILE = "data/trades.csv";
 static const int DEFAULT_DELAY = 0;
 static const int DEFAULT_UDP_PORT = 9000;
 
-// 优化 1：去掉 std::endl，改用 \n 避免频繁 Flush
 void print_tick(const Tick& t, const TopOfBook& top)
 {
     std::cout << "tick " << t.symbol << " " << t.ts << " " << t.price << " " << t.size << " "
@@ -73,7 +72,6 @@ int main(int argc, char** argv)
             }
         });
 
-    // 优化 2：抽离通用的订单处理 Lambda，减少重复代码
     auto process_tick_and_trade = [&](const Tick& t, bool enable_print = false)
     {
         ob.on_tick(t);

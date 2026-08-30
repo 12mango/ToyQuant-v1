@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C++ Launch Backtest",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "data/synthetic_ticks.csv",  // argv[1]: tick_file
+        "data/orders.csv",           // argv[2]: orders_file
+        "data/trades.csv",           // argv[3]: trades_file
+        "0",                    // argv[4]: slippage (滑点)
+        "0",                    // argv[5]: fee_rate (手续费)
+        "backtest",                  // argv[6]: mode (模式)
+        "logs/backtest.log"          // argv[7]: log_file
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb"
+    }
+  ]
+}
