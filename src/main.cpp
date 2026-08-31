@@ -29,9 +29,9 @@ std::string to_abs_path(const std::string& input_path)
 
 void print_tick(const Tick& t, const TopOfBook& top)
 {
-    std::cout << "[TICK] " << t.symbol << " ts:" << t.ts << " price:" << t.price 
-              << " size:" << t.size << " side:" << t.side 
-              << " | Top Bid: " << top.bid_price << "@" << top.bid_size 
+    std::cout << "[TICK] " << t.symbol << " ts:" << t.ts << " price:" << t.price
+              << " size:" << t.size << " side:" << to_char(t.side)
+              << " | Top Bid: " << top.bid_price << "@" << top.bid_size
               << " | Top Ask: " << top.ask_price << "@" << top.ask_size << "\n";
 }
 
@@ -132,7 +132,7 @@ int main(int argc, char** argv)
             }
             else
             {
-                _mm_pause(); // x86/x64 高频自旋指令，降低 CPU 功耗并提高响应
+                _mm_pause();  // x86/x64 高频自旋指令，降低 CPU 功耗并提高响应
             }
         }
         feed.stop();

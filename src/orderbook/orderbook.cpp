@@ -3,12 +3,12 @@
 void OrderBook::on_tick(const Tick& t) {
     std::lock_guard<std::mutex> lk(mtx_);
     auto &b = books_[t.symbol];
-    if(t.side == 'B') {
+    if (t.side == Side::Buy) {
         b.bids[t.price] = b.bids[t.price] + t.size;
-    } else if(t.side == 'S') {
+    } else if (t.side == Side::Sell) {
         b.asks[t.price] = b.asks[t.price] + t.size;
     } else {
-        if(t.price>0) b.bids[t.price] = b.bids[t.price] + t.size;
+        if (t.price > 0) b.bids[t.price] = b.bids[t.price] + t.size;
     }
 }
 

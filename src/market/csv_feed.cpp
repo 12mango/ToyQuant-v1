@@ -42,14 +42,9 @@ void CsvFeed::run() {
             // side
             if (!std::getline(ss, token, ',')) continue;
             if (token.empty()) {
-                t.side = 'N'; // unknown
+                t.side = Side::Unknown;
             } else {
-                char c = toupper(token[0]);
-                if (c == 'B' || c == 'S') {
-                    t.side = c;
-                } else {
-                    t.side = 'N'; // unknown
-                }
+                t.side = to_side(token[0]);
             }
 
             // 回调

@@ -1,11 +1,13 @@
 #pragma once
-#include "market/market_types.h"
 #include <atomic>
 #include <thread>
 #include <vector>
 
-class UdpFeed {
-public:
+#include "common/types.h"
+
+class UdpFeed
+{
+   public:
     explicit UdpFeed(int port);
 
     bool start();
@@ -13,10 +15,13 @@ public:
 
     bool pop_tick(Tick& t);
 
-    uint64_t get_tick_count() const { return tick_count_.load(std::memory_order_relaxed); }
+    uint64_t get_tick_count() const
+    {
+        return tick_count_.load(std::memory_order_relaxed);
+    }
     size_t unread_count() const;
 
-private:
+   private:
     void loop();
 
     // C++ 风格解析（string_view + find）

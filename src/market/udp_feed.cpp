@@ -101,7 +101,7 @@ bool UdpFeed::parse_tick_cpp(std::string_view s, Tick& t) {
 
     // side
     if (pos >= s.size()) return false;
-    t.side = s[pos];
+    t.side = to_side(s[pos]);
 
     return true;
 }
