@@ -90,7 +90,7 @@ int main(int argc, char** argv)
             exchange::Order ex_order;
             ex_order.id = o.order_id;
             ex_order.symbol = o.symbol;
-            ex_order.side = (o.side == Order::BUY ? exchange::Side::Buy : exchange::Side::Sell);
+            ex_order.side = (o.side == Side::Buy ? exchange::Side::Buy : exchange::Side::Sell);
             ex_order.type = exchange::OrderType::Limit;
             ex_order.price = o.price;
             ex_order.qty = o.quantity;
@@ -98,8 +98,8 @@ int main(int argc, char** argv)
             ex_order.ts = t.ts;
             ex_order.owner = "MarketMaker";
 
-            orders_out << t.ts << "," << o.symbol << "," << (o.side == Order::BUY ? "B" : "S")
-                       << "," << o.price << "," << o.quantity << "," << o.order_id << "\n";
+            orders_out << t.ts << "," << o.symbol << "," << (o.side == Side::Buy ? "B" : "S") << ","
+                       << o.price << "," << o.quantity << "," << o.order_id << "\n";
 
             engine.send_order(ex_order);
         }
