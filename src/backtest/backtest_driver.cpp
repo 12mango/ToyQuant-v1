@@ -2,12 +2,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <cerrno> 
-#include <cstring> 
 
 // ==================== 安全转换函数 ====================
 inline double safe_stod(const std::string& s)
@@ -138,7 +138,7 @@ void BacktestDriver::run()
         std::getline(ss, tmp, ',');
         t.size = safe_stoull(tmp);
         std::getline(ss, tmp, ',');
-        t.side = tmp.empty() ? ' ' : tmp[0];
+        t.side = tmp.empty() ? Side::Unknown : to_side(tmp[0]);
 
         last_price[t.symbol] = t.price;  // 更新最新价格
     }
@@ -149,7 +149,7 @@ void BacktestDriver::run()
     {
         if (line.empty()) continue;
         std::stringstream ss(line);
-        ExecutionReport trade;
+        BacktestExecutionReport trade;
         std::string tmp, side_str;
 
         // CSV 列顺: ts,symbol,side,price,quantity,order_id
@@ -164,15 +164,16 @@ void BacktestDriver::run()
         std::getline(ss, tmp, ',');
         trade.order_id = safe_stoull(tmp);  // order_id
 
-        trade.exec_type = ExecType::Trade;
+        trade.side = (side_str == "B" ? Side::Buy : Side::Sell);
+        trade.exec_type = BacktestExecType::Trade;
 
         // 应用滑点和手续费
-        double exec_price = trade.price + (side_str == "B" ? slippage_ : -slippage_);
+        double exec_price = trade.price + (trade.side == Side::Buy ? slippage_ : -slippage_);
         double fee = trade.quantity * exec_price * fee_rate_;
 
         auto& pos = positions[trade.symbol];
-        int64_t qty = trade.quantity;
-        Side s = (side_str == "B" ? Side::Buy : Side::Sell);
+        int64_t qty = static_cast<int64_t>(trade.quantity);
+        Side s = trade.side;
 
         if (s == Side::Buy)
         {
@@ -205,7 +206,7 @@ void BacktestDriver::run()
             }
         }
 
-        log("Trade: " + trade.symbol + " " + (s == Side::Buy ? "B" : "S") + " " +
+        log("Trade: " + trade.symbol + " " + to_char(trade.side) + " " +
             std::to_string(exec_price) + " qty=" + std::to_string(trade.quantity) +
             " Fee=" + std::to_string(fee) + " RealizedPnL=" + std::to_string(realized_pnl));
     }

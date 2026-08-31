@@ -1,52 +1,51 @@
 #pragma once
+#include <cstdint>
+#include <fstream>
+#include <iostream>
 #include <string>
 #include <unordered_map>
-#include <iostream>
-#include <fstream>
-#include <cstdint>
 
-// ==================== 辅助类型 ====================
-enum class Side { Buy, Sell };
-enum class ExecType { Trade };
-enum class RunMode { Backtest, Realtime };
+#include "common/types.h"
 
-struct Tick {
-    uint64_t ts;
-    std::string symbol;
-    double price;
-    uint64_t size;
-    char side;
+// ==================== 回测层专用类型 ====================
+enum class RunMode
+{
+    Backtest,
+    Realtime
+};
+enum class BacktestExecType
+{
+    Trade
 };
 
-struct ExecutionReport {
-    uint64_t ts;
+struct BacktestExecutionReport
+{
+    uint64_t ts = 0;
     std::string symbol;
-    std::string side;
-    double price;
-    uint64_t quantity;
-    uint64_t order_id;
-    ExecType exec_type;
+    Side side = Side::Unknown;
+    double price = 0.0;
+    uint64_t quantity = 0;
+    uint64_t order_id = 0;
+    BacktestExecType exec_type = BacktestExecType::Trade;
 };
 
-struct Position {
+struct Position
+{
     int64_t qty = 0;
     double avg_price = 0.0;
 };
 
 // ==================== BacktestDriver ====================
-class BacktestDriver {
-public:
-    BacktestDriver(const std::string& tick_file,
-                   const std::string& orders_file,
-                   const std::string& trades_file,
-                   double slippage = 0.0,
-                   double fee_rate = 0.0,
-                   RunMode mode = RunMode::Backtest,
-                   const std::string& log_file = "");
+class BacktestDriver
+{
+   public:
+    BacktestDriver(const std::string& tick_file, const std::string& orders_file,
+                   const std::string& trades_file, double slippage = 0.0, double fee_rate = 0.0,
+                   RunMode mode = RunMode::Backtest, const std::string& log_file = "");
     ~BacktestDriver();
     void run();
 
-private:
+   private:
     void print_report();
     void log(const std::string& msg);
 
