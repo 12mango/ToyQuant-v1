@@ -90,8 +90,13 @@ void print_tick(const Tick& t, const TopOfBook& top)
 class Pipeline
 {
    public:
-    Pipeline(std::ofstream& orders_out, std::ofstream& trades_out)
-        : orders_out_(orders_out), trades_out_(trades_out), strategy_(100, 0.00001)
+    Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
+             Strategy& strategy, IMatchingEngine& engine)
+        : orders_out_(orders_out),
+          trades_out_(trades_out),
+          order_book_(order_book),
+          strategy_(strategy),
+          engine_(engine)
     {
         engine_.set_report_callback(
             [this](const ExecutionReport& report)
@@ -120,27 +125,40 @@ class Pipeline
    private:
     std::ofstream& orders_out_;
     std::ofstream& trades_out_;
-    OrderBook order_book_;
-    MarketMaker strategy_;
-    MatchingEngine engine_;
+    IOrderBook& order_book_;
+    Strategy& strategy_;
+    IMatchingEngine& engine_;
     std::atomic<uint64_t> next_order_id_{1};
 };
+
+struct OutputFiles
+{
+    std::ofstream orders;
+    std::ofstream trades;
+};
+
+OutputFiles open_output_files()
+{
+    std::string orders_file = to_abs_path("data/orders.csv");
+    std::string trades_file = to_abs_path("data/trades.csv");
+    std::filesystem::create_directories(std::filesystem::path(orders_file).parent_path());
+
+    OutputFiles files{std::ofstream(orders_file), std::ofstream(trades_file)};
+    files.orders << "ts,symbol,side,price,quantity,order_id\n";
+    files.trades << "ts,symbol,side,price,quantity,order_id\n";
+    return files;
+}
 
 void run_csv_mode(const AppConfig& cfg)
 {
     std::string csv_file = to_abs_path(cfg.path_or_port);
     std::cout << "[Mode: CSV] Opening: " << csv_file << " (delay: " << cfg.delay << "ms)\n";
 
-    std::string orders_file = to_abs_path("data/orders.csv");
-    std::string trades_file = to_abs_path("data/trades.csv");
-    std::filesystem::create_directories(std::filesystem::path(orders_file).parent_path());
-
-    std::ofstream orders_out(orders_file);
-    std::ofstream trades_out(trades_file);
-    orders_out << "ts,symbol,side,price,quantity,order_id\n";
-    trades_out << "ts,symbol,side,price,quantity,order_id\n";
-
-    Pipeline pipeline(orders_out, trades_out);
+    auto output_files = open_output_files();
+    OrderBook order_book;
+    MarketMaker strategy{100, 0.00001};
+    MatchingEngine engine;
+    Pipeline pipeline(output_files.orders, output_files.trades, order_book, strategy, engine);
     CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay);
     feed.run();
 }
@@ -150,16 +168,11 @@ void run_udp_mode(const AppConfig& cfg)
     int port = std::stoi(cfg.path_or_port);
     std::cout << "[Mode: UDP] Listening on UDP port: " << port << "...\n";
 
-    std::string orders_file = to_abs_path("data/orders.csv");
-    std::string trades_file = to_abs_path("data/trades.csv");
-    std::filesystem::create_directories(std::filesystem::path(orders_file).parent_path());
-
-    std::ofstream orders_out(orders_file);
-    std::ofstream trades_out(trades_file);
-    orders_out << "ts,symbol,side,price,quantity,order_id\n";
-    trades_out << "ts,symbol,side,price,quantity,order_id\n";
-
-    Pipeline pipeline(orders_out, trades_out);
+    auto output_files = open_output_files();
+    OrderBook order_book;
+    MarketMaker strategy{100, 0.00001};
+    MatchingEngine engine;
+    Pipeline pipeline(output_files.orders, output_files.trades, order_book, strategy, engine);
     UdpFeed feed(port);
     feed.start();
 

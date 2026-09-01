@@ -18,6 +18,13 @@ enum class RunMode : uint8_t
     Realtime
 };
 
+enum class ExecType : uint8_t
+{
+    Trade = 0,
+    Cancelled,
+    Resting
+};
+
 struct Tick
 {
     uint64_t ts = 0;

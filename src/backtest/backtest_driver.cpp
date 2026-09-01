@@ -165,7 +165,7 @@ void BacktestDriver::run()
         trade.order_id = safe_stoull(tmp);  // order_id
 
         trade.side = (side_str == "B" ? Side::Buy : Side::Sell);
-        trade.exec_type = BacktestExecType::Trade;
+        trade.exec_type = ExecType::Trade;
 
         // 应用滑点和手续费
         double exec_price = trade.price + (trade.side == Side::Buy ? slippage_ : -slippage_);

@@ -1,15 +1,12 @@
 #pragma once
-#include <string>
 #include <cstdint>
+#include <string>
+
+#include "common/types.h"
 #include "order.h"
 
-enum class ExecType {
-    Trade,
-    Cancelled,
-    Resting
-};
-
-struct ExecutionReport {
+struct ExecutionReport
+{
     uint64_t order_id{};
     exchange::Side side{};
     ExecType exec_type{};

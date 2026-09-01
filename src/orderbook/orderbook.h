@@ -12,11 +12,19 @@ struct TopOfBook
     uint64_t ask_size{0};
 };
 
-class OrderBook
+class IOrderBook
 {
    public:
-    void on_tick(const Tick& t);
-    TopOfBook top(const std::string& symbol);
+    virtual ~IOrderBook() = default;
+    virtual void on_tick(const Tick& t) = 0;
+    virtual TopOfBook top(const std::string& symbol) = 0;
+};
+
+class OrderBook : public IOrderBook
+{
+   public:
+    void on_tick(const Tick& t) override;
+    TopOfBook top(const std::string& symbol) override;
 
    private:
     std::mutex mtx_;

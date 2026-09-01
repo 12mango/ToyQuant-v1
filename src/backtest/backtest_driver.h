@@ -8,11 +8,6 @@
 #include "common/types.h"
 
 // ==================== 回测层专用类型 ====================
-enum class BacktestExecType
-{
-    Trade
-};
-
 struct BacktestExecutionReport
 {
     uint64_t ts = 0;
@@ -21,7 +16,7 @@ struct BacktestExecutionReport
     double price = 0.0;
     uint64_t quantity = 0;
     uint64_t order_id = 0;
-    BacktestExecType exec_type = BacktestExecType::Trade;
+    ExecType exec_type = ExecType::Trade;
 };
 
 struct Position
