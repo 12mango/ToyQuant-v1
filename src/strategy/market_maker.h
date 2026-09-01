@@ -10,6 +10,62 @@
 #include "orderbook/orderbook.h"
 #include "strategy.h"
 
+class NaiveMarketMaker : public Strategy
+{
+   public:
+    uint64_t base_order_size;
+    double base_spread;
+    double tick_size;
+    std::unordered_map<uint64_t, StrategyOrder> open_orders;
+
+    NaiveMarketMaker(uint64_t size = 50, double spd = 0.00003, double ts = 0.00001)
+        : base_order_size(size), base_spread(spd), tick_size(ts)
+    {
+    }
+
+    std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
+                                              const TopOfBook& tob) override
+    {
+        std::vector<StrategyOrder> orders;
+        static uint64_t next_order_id = 1;
+
+        if (tob.bid_price <= 0 || tob.ask_price <= 0) return orders;
+
+        double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        double buy_price = std::round((mid - base_spread / 2.0) / tick_size) * tick_size;
+        double sell_price = std::round((mid + base_spread / 2.0) / tick_size) * tick_size;
+
+        StrategyOrder buy_order(Side::Buy, symbol, buy_price, base_order_size, next_order_id++);
+        StrategyOrder sell_order(Side::Sell, symbol, sell_price, base_order_size, next_order_id++);
+
+        orders.push_back(buy_order);
+        orders.push_back(sell_order);
+        open_orders[buy_order.order_id] = buy_order;
+        open_orders[sell_order.order_id] = sell_order;
+        return orders;
+    }
+
+    void on_order_update(const ExecutionReport& report) override
+    {
+        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Resting)
+        {
+            open_orders.erase(report.order_id);
+            return;
+        }
+        if (report.exec_type == ExecType::Trade)
+        {
+            auto it = open_orders.find(report.order_id);
+            if (it != open_orders.end())
+            {
+                it->second.quantity =
+                    (it->second.quantity > report.quantity ? it->second.quantity - report.quantity
+                                                           : 0);
+                if (it->second.quantity == 0) open_orders.erase(it);
+            }
+        }
+    }
+};
+
 class MarketMaker : public Strategy
 {
    public:

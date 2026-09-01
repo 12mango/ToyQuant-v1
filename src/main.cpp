@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -25,6 +26,7 @@ struct AppConfig
     std::string mode = "csv";
     std::string path_or_port = "data/synthetic_ticks.csv";
     int delay = 0;
+    std::string strategy_name = "optimized";
 };
 
 std::string to_abs_path(const std::string& input_path)
@@ -41,7 +43,17 @@ AppConfig parse_config(int argc, char** argv)
     if (argc >= 2) cfg.mode = argv[1];
     if (argc >= 3) cfg.path_or_port = argv[2];
     if (argc >= 4) cfg.delay = std::stoi(argv[3]);
+    if (argc >= 5) cfg.strategy_name = argv[4];
     return cfg;
+}
+
+std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
+{
+    if (strategy_name == "naive")
+    {
+        return std::make_unique<NaiveMarketMaker>(100, 0.00001);
+    }
+    return std::make_unique<MarketMaker>(100, 0.00001);
 }
 
 std::string side_to_csv(Side side)
@@ -152,13 +164,14 @@ OutputFiles open_output_files()
 void run_csv_mode(const AppConfig& cfg)
 {
     std::string csv_file = to_abs_path(cfg.path_or_port);
-    std::cout << "[Mode: CSV] Opening: " << csv_file << " (delay: " << cfg.delay << "ms)\n";
+    std::cout << "[Mode: CSV] Opening: " << csv_file << " (delay: " << cfg.delay
+              << "ms) strategy=" << cfg.strategy_name << "\n";
 
     auto output_files = open_output_files();
     OrderBook order_book;
-    MarketMaker strategy{100, 0.00001};
+    auto strategy = make_strategy(cfg.strategy_name);
     MatchingEngine engine;
-    Pipeline pipeline(output_files.orders, output_files.trades, order_book, strategy, engine);
+    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
     CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay);
     feed.run();
 }
@@ -166,13 +179,14 @@ void run_csv_mode(const AppConfig& cfg)
 void run_udp_mode(const AppConfig& cfg)
 {
     int port = std::stoi(cfg.path_or_port);
-    std::cout << "[Mode: UDP] Listening on UDP port: " << port << "...\n";
+    std::cout << "[Mode: UDP] Listening on UDP port: " << port
+              << "... strategy=" << cfg.strategy_name << "\n";
 
     auto output_files = open_output_files();
     OrderBook order_book;
-    MarketMaker strategy{100, 0.00001};
+    auto strategy = make_strategy(cfg.strategy_name);
     MatchingEngine engine;
-    Pipeline pipeline(output_files.orders, output_files.trades, order_book, strategy, engine);
+    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
     UdpFeed feed(port);
     feed.start();
 
@@ -209,7 +223,8 @@ int main(int argc, char** argv)
     }
 
     std::cerr << "Unknown mode: " << cfg.mode << "\n";
-    std::cerr << "Usage: ./hft_demo csv <path_to_csv> [ms_delay]\n";
-    std::cerr << "   or: ./hft_demo udp <port>\n";
+    std::cerr << "Usage: ./hft_demo csv <path_to_csv> [ms_delay] [strategy]\n";
+    std::cerr << "   or: ./hft_demo udp <port> [strategy]\n";
+    std::cerr << "   strategy: optimized (default) | naive\n";
     return 1;
 }
