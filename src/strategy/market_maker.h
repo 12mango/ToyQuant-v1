@@ -100,12 +100,22 @@ class MarketMaker : public Strategy
         if (tob.bid_price <= 0 || tob.ask_price <= 0) return orders;
 
         double mid = (tob.bid_price + tob.ask_price) / 2.0;
-        mid_prices.push_back(mid);
-        if ((int)mid_prices.size() > smooth_N) mid_prices.pop_front();
+        if (mid_prices.empty())
+        {
+            last_mid = mid;
+            mid_prices.push_back(mid);
+        }
+        else
+        {
+            mid_prices.push_back(mid);
+            if ((int)mid_prices.size() > smooth_N) mid_prices.pop_front();
+        }
+
         double smooth_mid =
             std::accumulate(mid_prices.begin(), mid_prices.end(), 0.0) / mid_prices.size();
 
-        double trend = smooth_mid - last_mid;
+        double trend = 0.0;
+        if (mid_prices.size() > 1) trend = smooth_mid - last_mid;
         last_mid = smooth_mid;
 
         double tick_vol = std::abs(tob.ask_price - tob.bid_price);
