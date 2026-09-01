@@ -6,8 +6,8 @@
 #include <numeric>
 #include <unordered_map>
 
-#include "../exchange/execution_report.h"
-#include "../orderbook/orderbook.h"
+#include "exchange/execution_report.h"
+#include "orderbook/orderbook.h"
 #include "strategy.h"
 
 class MarketMaker : public Strategy

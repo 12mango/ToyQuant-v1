@@ -8,11 +8,6 @@
 #include "common/types.h"
 
 // ==================== 回测层专用类型 ====================
-enum class RunMode
-{
-    Backtest,
-    Realtime
-};
 enum class BacktestExecType
 {
     Trade
