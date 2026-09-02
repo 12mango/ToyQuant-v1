@@ -61,3 +61,7 @@ add_test(NAME strategy_state_test COMMAND strategy_state_test)
 add_executable(orderbook_state_test tests/orderbook_state_test.cpp src/orderbook/orderbook.cpp)
 target_include_directories(orderbook_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME orderbook_state_test COMMAND orderbook_state_test)
+
+add_executable(matching_engine_test tests/matching_engine_test.cpp ${COMMON_SOURCES})
+target_include_directories(matching_engine_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME matching_engine_test COMMAND matching_engine_test)

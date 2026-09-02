@@ -15,12 +15,15 @@ int main()
     assert(book.top("EURUSD").bid_size == 150);
 
     assert(book.apply_partial_fill(1, 40));
+    assert(book.state_for_order(1) == OrderState::PartialFilled);
     assert(book.top("EURUSD").bid_size == 110);
 
     assert(book.cancel_order(1));
+    assert(book.state_for_order(1) == OrderState::Cancelled);
     assert(book.top("EURUSD").bid_size == 50);
 
     assert(book.apply_partial_fill(2, 50));
+    assert(book.state_for_order(2) == OrderState::Filled);
     const TopOfBook top = book.top("EURUSD");
     assert(top.bid_price == 0.0);
     assert(top.bid_size == 0);

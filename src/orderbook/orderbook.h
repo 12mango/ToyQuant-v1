@@ -46,6 +46,7 @@ class OrderBook : public IOrderBook
     bool cancel_order(uint64_t order_id);
     // filled_qty is the quantity filled by this execution.
     bool apply_partial_fill(uint64_t order_id, uint64_t filled_qty);
+    OrderState state_for_order(uint64_t order_id) const;
     void on_tick(const Tick& t) override;
     TopOfBook top(const std::string& symbol) override;
 
@@ -60,6 +61,7 @@ class OrderBook : public IOrderBook
     };
     std::map<std::string, SideBook> books_;
     std::unordered_map<uint64_t, OrderNode*> order_index_;
+    std::unordered_map<uint64_t, OrderState> state_index_;
 
     static uint64_t level_quantity(const std::list<OrderNode>& orders);
 };

@@ -21,6 +21,7 @@ void OrderBook::add_order(const exchange::Order& order)
         auto& queue = book.bids_orders[order.price];
         queue.push_back(OrderNode{order, OrderState::Active});
         order_index_[order.id] = &queue.back();
+        state_index_[order.id] = OrderState::Active;
         book.bids_qty[order.price] += order.remaining;
     }
     else
@@ -28,6 +29,7 @@ void OrderBook::add_order(const exchange::Order& order)
         auto& queue = book.asks_orders[order.price];
         queue.push_back(OrderNode{order, OrderState::Active});
         order_index_[order.id] = &queue.back();
+        state_index_[order.id] = OrderState::Active;
         book.asks_qty[order.price] += order.remaining;
     }
 }
@@ -79,6 +81,7 @@ bool OrderBook::cancel_order(uint64_t order_id)
         }
     }
 
+    state_index_[order_id] = OrderState::Cancelled;
     order_index_.erase(order_id);
     return true;
 }
@@ -117,6 +120,7 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
     if (remaining_after == 0)
     {
         node->state = OrderState::Filled;
+        state_index_[order_id] = OrderState::Filled;
         const exchange::Side side = node->order.side;
         const double price = node->order.price;
         if (side == exchange::Side::Buy)
@@ -152,7 +156,16 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
     }
 
     node->state = OrderState::PartialFilled;
+    state_index_[order_id] = OrderState::PartialFilled;
     return true;
+}
+
+OrderState OrderBook::state_for_order(uint64_t order_id) const
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = state_index_.find(order_id);
+    if (it != state_index_.end()) return it->second;
+    return OrderState::Rejected;
 }
 
 void OrderBook::on_tick(const Tick& t)
@@ -161,15 +174,15 @@ void OrderBook::on_tick(const Tick& t)
     auto& b = books_[t.symbol];
     if (t.side == Side::Buy)
     {
-        b.bids_qty[t.price] += t.size;
+        b.bids_qty[t.price] = t.size;
     }
     else if (t.side == Side::Sell)
     {
-        b.asks_qty[t.price] += t.size;
+        b.asks_qty[t.price] = t.size;
     }
     else if (t.price > 0)
     {
-        b.bids_qty[t.price] += t.size;
+        b.bids_qty[t.price] = t.size;
     }
 }
 

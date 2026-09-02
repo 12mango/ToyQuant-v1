@@ -85,7 +85,7 @@ void write_order_csv_row(std::ofstream& out, uint64_t ts, const StrategyOrder& o
 
 void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
 {
-    if (report.exec_type != ExecType::Trade) return;
+    if (report.exec_type != ExecType::Trade || report.owner != "MarketMaker") return;
     out << report.ts << "," << report.symbol << ","
         << (report.side == exchange::Side::Buy ? "B" : "S") << "," << report.price << ","
         << report.quantity << "," << report.order_id << "\n";
@@ -116,8 +116,11 @@ class Pipeline
                 strategy_.on_order_update(report);
                 if (report.exec_type == ExecType::Trade)
                 {
-                    ++trade_reports_;
-                    trade_report_quantity_ += report.quantity;
+                    if (report.owner == "MarketMaker")
+                    {
+                        ++trade_reports_;
+                        trade_report_quantity_ += report.quantity;
+                    }
                 }
                 write_trade_csv_row(trades_out_, report);
             });
@@ -126,6 +129,7 @@ class Pipeline
     void process_tick(const Tick& tick, bool enable_print = true)
     {
         order_book_.on_tick(tick);
+        engine_.process_market_tick(tick);
         auto top = order_book_.top(tick.symbol);
         if (enable_print) print_tick(tick, top);
 

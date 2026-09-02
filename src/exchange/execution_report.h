@@ -16,4 +16,5 @@ struct ExecutionReport
     // Cancelled report the order's remaining quantity.
     uint64_t quantity{};
     uint64_t ts{};
+    std::string owner;
 };
