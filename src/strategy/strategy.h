@@ -34,6 +34,12 @@ class Strategy
     // 订单获得最终 ID 并发往撮合引擎前调用。
     virtual void on_order_submitted(const StrategyOrder& order) = 0;
 
+    // 返回下一轮报价前需要撤销的工作订单。
+    virtual std::vector<uint64_t> cancel_requests() = 0;
+
+    virtual int64_t net_position() const = 0;
+    virtual size_t working_order_count() const = 0;
+
     // 收到成交、撤单、挂单等回报时调用
     virtual void on_order_update(const ExecutionReport& rpt) = 0;
 };

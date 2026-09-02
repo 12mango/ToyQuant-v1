@@ -51,3 +51,13 @@ add_executable(backtest_main src/backtest/backtest_main.cpp src/backtest/backtes
 target_include_directories(backtest_main PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(backtest_main PRIVATE Threads::Threads)
 set_target_properties(backtest_main PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# ==================== 3. 策略状态机测试 ====================
+enable_testing()
+add_executable(strategy_state_test tests/strategy_state_test.cpp)
+target_include_directories(strategy_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME strategy_state_test COMMAND strategy_state_test)
+
+add_executable(orderbook_state_test tests/orderbook_state_test.cpp src/orderbook/orderbook.cpp)
+target_include_directories(orderbook_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME orderbook_state_test COMMAND orderbook_state_test)

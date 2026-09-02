@@ -53,7 +53,7 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
     {
         return std::make_unique<NaiveMarketMaker>(100, 0.00001);
     }
-    return std::make_unique<MarketMaker>(100, 0.00001);
+    return std::make_unique<OptimizedMarketMaker>(100, 0.000003);
 }
 
 std::string side_to_csv(Side side)
@@ -114,6 +114,11 @@ class Pipeline
             [this](const ExecutionReport& report)
             {
                 strategy_.on_order_update(report);
+                if (report.exec_type == ExecType::Trade)
+                {
+                    ++trade_reports_;
+                    trade_report_quantity_ += report.quantity;
+                }
                 write_trade_csv_row(trades_out_, report);
             });
     }
@@ -125,14 +130,33 @@ class Pipeline
         if (enable_print) print_tick(tick, top);
 
         auto orders = strategy_.on_top_of_book(tick.symbol, top);
+
+        for (uint64_t order_id : strategy_.cancel_requests())
+        {
+            ++cancel_requests_;
+            engine_.cancel_order(order_id);
+        }
+
         for (auto& order : orders)
         {
             order.order_id = next_order_id_++;
             auto ex_order = to_exchange_order(order, tick.ts, "MarketMaker");
+            ++submitted_orders_;
+            submitted_quantity_ += order.quantity;
             write_order_csv_row(orders_out_, tick.ts, order);
             strategy_.on_order_submitted(order);
             engine_.send_order(ex_order);
         }
+    }
+
+    void print_summary() const
+    {
+        std::cout << "[SUMMARY] submitted_orders=" << submitted_orders_
+                  << " submitted_quantity=" << submitted_quantity_
+                  << " cancel_requests=" << cancel_requests_ << " trade_reports=" << trade_reports_
+                  << " trade_report_quantity=" << trade_report_quantity_
+                  << " net_position=" << strategy_.net_position()
+                  << " working_orders=" << strategy_.working_order_count() << "\n";
     }
 
    private:
@@ -142,6 +166,11 @@ class Pipeline
     Strategy& strategy_;
     IMatchingEngine& engine_;
     std::atomic<uint64_t> next_order_id_{1};
+    uint64_t submitted_orders_{0};
+    uint64_t submitted_quantity_{0};
+    uint64_t cancel_requests_{0};
+    uint64_t trade_reports_{0};
+    uint64_t trade_report_quantity_{0};
 };
 
 struct OutputFiles
@@ -175,6 +204,7 @@ void run_csv_mode(const AppConfig& cfg)
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
     CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay);
     feed.run();
+    pipeline.print_summary();
 }
 
 void run_udp_mode(const AppConfig& cfg)

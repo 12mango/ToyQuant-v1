@@ -12,7 +12,8 @@ struct ExecutionReport
     ExecType exec_type{};
     std::string symbol;
     double price{};
-    // Trade reports the fill quantity; all state events report remaining quantity.
+    // Trade reports this execution's fill quantity. PartialFill, Filled, Resting, and
+    // Cancelled report the order's remaining quantity.
     uint64_t quantity{};
     uint64_t ts{};
 };

@@ -17,6 +17,7 @@ class NaiveMarketMaker : public Strategy
     double base_spread;
     double tick_size;
     std::unordered_map<uint64_t, StrategyOrder> open_orders;
+    int64_t position{0};
 
     NaiveMarketMaker(uint64_t size = 50, double spd = 0.00003, double ts = 0.00001)
         : base_order_size(size), base_spread(spd), tick_size(ts)
@@ -47,6 +48,20 @@ class NaiveMarketMaker : public Strategy
         open_orders[order.order_id] = order;
     }
 
+    std::vector<uint64_t> cancel_requests() override
+    {
+        return {};
+    }
+
+    int64_t net_position() const override
+    {
+        return position;
+    }
+    size_t working_order_count() const override
+    {
+        return open_orders.size();
+    }
+
     void on_order_update(const ExecutionReport& report) override
     {
         if (report.exec_type == ExecType::Cancelled)
@@ -70,6 +85,9 @@ class NaiveMarketMaker : public Strategy
             auto it = open_orders.find(report.order_id);
             if (it != open_orders.end())
             {
+                position += report.side == exchange::Side::Buy
+                                ? static_cast<int64_t>(report.quantity)
+                                : -static_cast<int64_t>(report.quantity);
                 it->second.quantity =
                     (it->second.quantity > report.quantity ? it->second.quantity - report.quantity
                                                            : 0);
@@ -79,7 +97,7 @@ class NaiveMarketMaker : public Strategy
     }
 };
 
-class MarketMaker : public Strategy
+class OptimizedMarketMaker : public Strategy
 {
    public:
     uint64_t base_order_size;
@@ -91,16 +109,27 @@ class MarketMaker : public Strategy
     std::deque<double> mid_prices;
     double last_mid;
     double max_level_multiplier;
+    int64_t position;
+    double last_quote_mid;
+    uint64_t quote_age_ticks;
+    uint64_t max_quote_age_ticks;
+    uint64_t quote_refresh_ticks;
 
-    MarketMaker(uint64_t size = 50, double spd = 0.00003, int64_t inv_limit = 1000,
-                double ts = 0.00001, int smooth_window = 10, double level_multiplier = 3.0)
+    OptimizedMarketMaker(uint64_t size = 50, double spd = 0.00003, int64_t inv_limit = 1000,
+                         double ts = 0.00001, int smooth_window = 10, double level_multiplier = 3.0,
+                         uint64_t max_quote_age = 20, uint64_t refresh_ticks = 5)
         : base_order_size(size),
           base_spread(spd),
           inventory_limit(inv_limit),
           tick_size(ts),
           smooth_N(smooth_window),
           last_mid(0.0),
-          max_level_multiplier(level_multiplier)
+          max_level_multiplier(level_multiplier),
+          position(0),
+          last_quote_mid(0.0),
+          quote_age_ticks(0),
+          max_quote_age_ticks(max_quote_age),
+          quote_refresh_ticks(refresh_ticks)
     {
     }
 
@@ -130,17 +159,26 @@ class MarketMaker : public Strategy
         if (mid_prices.size() > 1) trend = smooth_mid - last_mid;
         last_mid = smooth_mid;
 
+        if (!open_orders.empty()) ++quote_age_ticks;
+        if (!open_orders.empty() && quote_age_ticks < max_quote_age_ticks &&
+            std::abs(smooth_mid - last_quote_mid) < quote_refresh_ticks * tick_size)
+        {
+            return orders;
+        }
+
         double tick_vol = std::abs(tob.ask_price - tob.bid_price);
         double spread_adj = base_spread;
         if (tick_vol > base_spread * 5) spread_adj = base_spread * 2;
         if (tick_vol > base_spread * 20) spread_adj = base_spread * 3;
 
-        int64_t inventory = 0;
-        for (auto& p : open_orders)
+        int64_t working_exposure = 0;
+        for (const auto& entry : open_orders)
         {
-            const StrategyOrder& o = p.second;
-            inventory += (o.side == Side::Buy ? int64_t(o.quantity) : -int64_t(o.quantity));
+            const StrategyOrder& order = entry.second;
+            working_exposure += order.side == Side::Buy ? static_cast<int64_t>(order.quantity)
+                                                        : -static_cast<int64_t>(order.quantity);
         }
+        const int64_t inventory = position + working_exposure;
 
         double inv_frac = 0.0;
         if (inventory_limit > 0)
@@ -194,6 +232,35 @@ class MarketMaker : public Strategy
     void on_order_submitted(const StrategyOrder& order) override
     {
         open_orders[order.order_id] = order;
+        last_quote_mid = last_mid;
+        quote_age_ticks = 0;
+    }
+
+    std::vector<uint64_t> cancel_requests() override
+    {
+        if (last_quote_mid == 0.0 ||
+            (quote_age_ticks < max_quote_age_ticks &&
+             std::abs(last_mid - last_quote_mid) < quote_refresh_ticks * tick_size))
+        {
+            return {};
+        }
+
+        std::vector<uint64_t> order_ids;
+        order_ids.reserve(open_orders.size());
+        for (const auto& entry : open_orders)
+        {
+            order_ids.push_back(entry.first);
+        }
+        return order_ids;
+    }
+
+    int64_t net_position() const override
+    {
+        return position;
+    }
+    size_t working_order_count() const override
+    {
+        return open_orders.size();
     }
 
     void on_order_update(const ExecutionReport& report) override
@@ -219,6 +286,9 @@ class MarketMaker : public Strategy
             auto it = open_orders.find(report.order_id);
             if (it != open_orders.end())
             {
+                position += report.side == exchange::Side::Buy
+                                ? static_cast<int64_t>(report.quantity)
+                                : -static_cast<int64_t>(report.quantity);
                 it->second.quantity =
                     (it->second.quantity > report.quantity ? it->second.quantity - report.quantity
                                                            : 0);
