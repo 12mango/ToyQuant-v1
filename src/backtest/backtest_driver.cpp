@@ -217,13 +217,20 @@ void BacktestDriver::run()
 // ==================== 输出策略报告 ====================
 void BacktestDriver::print_report()
 {
-    log("\n=== Strategy Report ===");
-    log("Realized PnL: " + std::to_string(realized_pnl));
-
+    double equity = realized_pnl;
     for (const auto& [symbol, pos] : positions)
     {
         double unrealized_pnl = pos.qty * (last_price[symbol] - pos.avg_price);
+        equity += unrealized_pnl;
         log("Symbol: " + symbol + " Qty: " + std::to_string(pos.qty) + " AvgPrice: " +
             std::to_string(pos.avg_price) + " UnrealizedPnL: " + std::to_string(unrealized_pnl));
     }
+    equity_curve_.push_back(equity);
+
+    double max_drawdown = metrics::compute_max_drawdown(equity_curve_);
+
+    log("\n=== Strategy Report ===");
+    log("Realized PnL: " + std::to_string(realized_pnl));
+    log("Current Equity: " + std::to_string(equity));
+    log("Max Drawdown: " + std::to_string(max_drawdown));
 }

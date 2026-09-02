@@ -51,7 +51,7 @@ class OrderBook : public IOrderBook
     TopOfBook top(const std::string& symbol) override;
 
    private:
-    std::mutex mtx_;
+    mutable std::mutex mtx_;
     struct SideBook
     {
         std::map<double, uint64_t, std::greater<double>> bids_qty;

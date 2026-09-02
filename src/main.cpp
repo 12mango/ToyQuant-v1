@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 
+#include "backtest/backtest_driver.h"
 #include "exchange/matching_engine.h"
 #include "market/csv_feed.h"
 #include "market/udp_feed.h"
@@ -24,7 +25,7 @@ namespace
 struct AppConfig
 {
     std::string mode = "csv";
-    std::string path_or_port = "data/synthetic_ticks.csv";
+    std::string path_or_port = "data/scenarios/synthetic_ticks.csv";
     int delay = 0;
     std::string strategy_name = "optimized";
 };
@@ -155,11 +156,21 @@ class Pipeline
 
     void print_summary() const
     {
+        double fill_rate = submitted_quantity_ == 0 ? 0.0
+                                                    : static_cast<double>(trade_report_quantity_) /
+                                                          static_cast<double>(submitted_quantity_);
+        double cancel_rate = submitted_orders_ == 0 ? 0.0
+                                                    : static_cast<double>(cancel_requests_) /
+                                                          static_cast<double>(submitted_orders_);
+        double exposure = metrics::compute_inventory_exposure(strategy_.net_position());
+
         std::cout << "[SUMMARY] submitted_orders=" << submitted_orders_
                   << " submitted_quantity=" << submitted_quantity_
                   << " cancel_requests=" << cancel_requests_ << " trade_reports=" << trade_reports_
+                  << " fill_rate=" << fill_rate << " cancel_rate=" << cancel_rate
                   << " trade_report_quantity=" << trade_report_quantity_
                   << " net_position=" << strategy_.net_position()
+                  << " inventory_exposure=" << exposure
                   << " working_orders=" << strategy_.working_order_count() << "\n";
     }
 
@@ -185,8 +196,8 @@ struct OutputFiles
 
 OutputFiles open_output_files()
 {
-    std::string orders_file = to_abs_path("data/orders.csv");
-    std::string trades_file = to_abs_path("data/trades.csv");
+    std::string orders_file = to_abs_path("data/runtime/orders.csv");
+    std::string trades_file = to_abs_path("data/runtime/trades.csv");
     std::filesystem::create_directories(std::filesystem::path(orders_file).parent_path());
 
     OutputFiles files{std::ofstream(orders_file), std::ofstream(trades_file)};

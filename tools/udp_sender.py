@@ -8,7 +8,7 @@ from pathlib import Path
 # === 默认参数 ===
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9000
-DEFAULT_FILE = "data/synthetic_ticks.csv"
+DEFAULT_FILE = "data/scenarios/synthetic_ticks.csv"
 DEFAULT_DELAY = 0  # 毫秒延迟（0 表示按 CSV 时间戳间隔发送）
 
 def read_ticks(file_path):

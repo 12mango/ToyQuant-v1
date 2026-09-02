@@ -53,7 +53,7 @@ def main():
                         nargs="?", default="all")
     parser.add_argument("--count", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output-dir", default="data")
+    parser.add_argument("--output-dir", default="data/scenarios")
     args = parser.parse_args()
 
     scenarios = ("flat", "uptrend", "downtrend", "shock", "random")

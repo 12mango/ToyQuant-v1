@@ -1,5 +1,6 @@
 #include "exchange/matching_engine.h"
 
+#include <algorithm>
 #include <cassert>
 #include <vector>
 
