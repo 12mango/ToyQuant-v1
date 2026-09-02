@@ -39,11 +39,14 @@ bool OrderBook::cancel_order(uint64_t order_id)
     if (it == order_index_.end()) return false;
 
     OrderNode* node = it->second;
-    auto& book = books_[node->order.symbol];
+    const std::string symbol = node->order.symbol;
+    const exchange::Side side = node->order.side;
+    const double price = node->order.price;
+    auto& book = books_[symbol];
 
-    if (node->order.side == exchange::Side::Buy)
+    if (side == exchange::Side::Buy)
     {
-        auto price_it = book.bids_orders.find(node->order.price);
+        auto price_it = book.bids_orders.find(price);
         if (price_it == book.bids_orders.end())
         {
             order_index_.erase(order_id);
@@ -51,16 +54,16 @@ bool OrderBook::cancel_order(uint64_t order_id)
         }
         price_it->second.remove_if([order_id](const OrderNode& entry)
                                    { return entry.order.id == order_id; });
-        book.bids_qty[node->order.price] = level_quantity(price_it->second);
+        book.bids_qty[price] = level_quantity(price_it->second);
         if (price_it->second.empty())
         {
             book.bids_orders.erase(price_it);
-            book.bids_qty.erase(node->order.price);
+            book.bids_qty.erase(price);
         }
     }
     else
     {
-        auto price_it = book.asks_orders.find(node->order.price);
+        auto price_it = book.asks_orders.find(price);
         if (price_it == book.asks_orders.end())
         {
             order_index_.erase(order_id);
@@ -68,11 +71,11 @@ bool OrderBook::cancel_order(uint64_t order_id)
         }
         price_it->second.remove_if([order_id](const OrderNode& entry)
                                    { return entry.order.id == order_id; });
-        book.asks_qty[node->order.price] = level_quantity(price_it->second);
+        book.asks_qty[price] = level_quantity(price_it->second);
         if (price_it->second.empty())
         {
             book.asks_orders.erase(price_it);
-            book.asks_qty.erase(node->order.price);
+            book.asks_qty.erase(price);
         }
     }
 
@@ -114,9 +117,11 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
     if (remaining_after == 0)
     {
         node->state = OrderState::Filled;
-        if (node->order.side == exchange::Side::Buy)
+        const exchange::Side side = node->order.side;
+        const double price = node->order.price;
+        if (side == exchange::Side::Buy)
         {
-            auto price_it = book.bids_orders.find(node->order.price);
+            auto price_it = book.bids_orders.find(price);
             if (price_it != book.bids_orders.end())
             {
                 price_it->second.remove_if([order_id](const OrderNode& entry)
@@ -124,13 +129,13 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
                 if (price_it->second.empty())
                 {
                     book.bids_orders.erase(price_it);
-                    book.bids_qty.erase(node->order.price);
+                    book.bids_qty.erase(price);
                 }
             }
         }
         else
         {
-            auto price_it = book.asks_orders.find(node->order.price);
+            auto price_it = book.asks_orders.find(price);
             if (price_it != book.asks_orders.end())
             {
                 price_it->second.remove_if([order_id](const OrderNode& entry)
@@ -138,7 +143,7 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
                 if (price_it->second.empty())
                 {
                     book.asks_orders.erase(price_it);
-                    book.asks_qty.erase(node->order.price);
+                    book.asks_qty.erase(price);
                 }
             }
         }

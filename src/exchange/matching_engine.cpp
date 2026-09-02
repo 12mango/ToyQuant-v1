@@ -20,11 +20,12 @@ void MatchingEngine::cancel_order(uint64_t order_id)
     if (it == order_index_.end()) return;
 
     Order* ord = it->second;
-    auto& book = books_[ord->symbol];
+    const Order cancelled_order = *ord;
+    auto& book = books_[cancelled_order.symbol];
 
-    if (ord->side == exchange::Side::Buy)
+    if (cancelled_order.side == exchange::Side::Buy)
     {
-        auto pit = book.bids.find(ord->price);
+        auto pit = book.bids.find(cancelled_order.price);
         if (pit != book.bids.end())
         {
             pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
@@ -33,7 +34,7 @@ void MatchingEngine::cancel_order(uint64_t order_id)
     }
     else
     {
-        auto pit = book.asks.find(ord->price);
+        auto pit = book.asks.find(cancelled_order.price);
         if (pit != book.asks.end())
         {
             pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
@@ -41,15 +42,16 @@ void MatchingEngine::cancel_order(uint64_t order_id)
         }
     }
     order_index_.erase(it);
+    private_order_book_.cancel_order(order_id);
 
     // ==== 加入 side 字段 ====
     report(ExecutionReport{.order_id = order_id,
-                           .side = ord->side,
+                           .side = cancelled_order.side,
                            .exec_type = ExecType::Cancelled,
-                           .symbol = ord->symbol,
-                           .price = ord->price,
-                           .quantity = ord->remaining,
-                           .ts = ord->ts});
+                           .symbol = cancelled_order.symbol,
+                           .price = cancelled_order.price,
+                           .quantity = cancelled_order.remaining,
+                           .ts = cancelled_order.ts});
 
     std::cout << "Cancel order id=" << order_id << " done.\n";
 }
@@ -85,8 +87,26 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming)
                                        .quantity = traded,
                                        .ts = new_order.ts});
 
+                report(ExecutionReport{.order_id = resting.id,
+                                       .side = resting.side,
+                                       .exec_type = ExecType::Trade,
+                                       .symbol = resting.symbol,
+                                       .price = best_price,
+                                       .quantity = traded,
+                                       .ts = new_order.ts});
+
                 qty -= traded;
                 resting.remaining -= traded;
+                private_order_book_.apply_partial_fill(resting.id, traded);
+
+                report(ExecutionReport{
+                    .order_id = resting.id,
+                    .side = resting.side,
+                    .exec_type = resting.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
+                    .symbol = resting.symbol,
+                    .price = best_price,
+                    .quantity = resting.remaining,
+                    .ts = new_order.ts});
 
                 if (resting.remaining == 0)
                 {
@@ -97,11 +117,23 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming)
             if (ask_queue.empty()) book.asks.erase(best_ask_it);
         }
 
+        if (incoming.qty > qty)
+        {
+            report(ExecutionReport{.order_id = new_order.id,
+                                   .side = new_order.side,
+                                   .exec_type = qty == 0 ? ExecType::Filled : ExecType::PartialFill,
+                                   .symbol = new_order.symbol,
+                                   .price = new_order.price,
+                                   .quantity = qty,
+                                   .ts = new_order.ts});
+        }
+
         // 如果买单剩余没成交，挂入订单簿
         if (qty > 0)
         {
             book.bids[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.bids[new_order.price].orders.back();
+            private_order_book_.add_order(new_order);
 
             // ==== 加入 side ====
             report(ExecutionReport{.order_id = new_order.id,
@@ -142,8 +174,26 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming)
                                        .quantity = traded,
                                        .ts = new_order.ts});
 
+                report(ExecutionReport{.order_id = resting.id,
+                                       .side = resting.side,
+                                       .exec_type = ExecType::Trade,
+                                       .symbol = resting.symbol,
+                                       .price = best_price,
+                                       .quantity = traded,
+                                       .ts = new_order.ts});
+
                 qty -= traded;
                 resting.remaining -= traded;
+                private_order_book_.apply_partial_fill(resting.id, traded);
+
+                report(ExecutionReport{
+                    .order_id = resting.id,
+                    .side = resting.side,
+                    .exec_type = resting.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
+                    .symbol = resting.symbol,
+                    .price = best_price,
+                    .quantity = resting.remaining,
+                    .ts = new_order.ts});
 
                 if (resting.remaining == 0)
                 {
@@ -154,11 +204,23 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming)
             if (bid_queue.empty()) book.bids.erase(best_bid_it);
         }
 
+        if (incoming.qty > qty)
+        {
+            report(ExecutionReport{.order_id = new_order.id,
+                                   .side = new_order.side,
+                                   .exec_type = qty == 0 ? ExecType::Filled : ExecType::PartialFill,
+                                   .symbol = new_order.symbol,
+                                   .price = new_order.price,
+                                   .quantity = qty,
+                                   .ts = new_order.ts});
+        }
+
         // 如果卖单剩余没成交，挂入订单簿
         if (qty > 0)
         {
             book.asks[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.asks[new_order.price].orders.back();
+            private_order_book_.add_order(new_order);
 
             // ==== 加入 side ====
             report(ExecutionReport{.order_id = new_order.id,

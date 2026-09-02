@@ -21,6 +21,8 @@ enum class RunMode : uint8_t
 enum class ExecType : uint8_t
 {
     Trade = 0,
+    PartialFill,
+    Filled,
     Cancelled,
     Resting
 };

@@ -130,6 +130,7 @@ class Pipeline
             order.order_id = next_order_id_++;
             auto ex_order = to_exchange_order(order, tick.ts, "MarketMaker");
             write_order_csv_row(orders_out_, tick.ts, order);
+            strategy_.on_order_submitted(order);
             engine_.send_order(ex_order);
         }
     }

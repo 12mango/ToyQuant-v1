@@ -44,6 +44,7 @@ class OrderBook : public IOrderBook
 
     void add_order(const exchange::Order& order);
     bool cancel_order(uint64_t order_id);
+    // filled_qty is the quantity filled by this execution.
     bool apply_partial_fill(uint64_t order_id, uint64_t filled_qty);
     void on_tick(const Tick& t) override;
     TopOfBook top(const std::string& symbol) override;

@@ -31,6 +31,9 @@ class Strategy
     virtual std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                                       const TopOfBook& tob) = 0;
 
+    // 订单获得最终 ID 并发往撮合引擎前调用。
+    virtual void on_order_submitted(const StrategyOrder& order) = 0;
+
     // 收到成交、撤单、挂单等回报时调用
     virtual void on_order_update(const ExecutionReport& rpt) = 0;
 };

@@ -6,6 +6,7 @@
 
 #include "execution_report.h"
 #include "order.h"
+#include "orderbook/orderbook.h"
 
 struct PriceLevel
 {
@@ -51,5 +52,6 @@ class MatchingEngine : public IMatchingEngine
 
     std::unordered_map<std::string, MEOrderBook> books_;
     std::unordered_map<uint64_t, exchange::Order*> order_index_;  // 改成 exchange::Order*
+    OrderBook private_order_book_;
     ReportCallback report_cb_;
 };

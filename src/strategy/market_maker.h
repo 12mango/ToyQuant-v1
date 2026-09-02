@@ -27,7 +27,6 @@ class NaiveMarketMaker : public Strategy
                                               const TopOfBook& tob) override
     {
         std::vector<StrategyOrder> orders;
-        static uint64_t next_order_id = 1;
 
         if (tob.bid_price <= 0 || tob.ask_price <= 0) return orders;
 
@@ -35,23 +34,37 @@ class NaiveMarketMaker : public Strategy
         double buy_price = std::round((mid - base_spread / 2.0) / tick_size) * tick_size;
         double sell_price = std::round((mid + base_spread / 2.0) / tick_size) * tick_size;
 
-        StrategyOrder buy_order(Side::Buy, symbol, buy_price, base_order_size, next_order_id++);
-        StrategyOrder sell_order(Side::Sell, symbol, sell_price, base_order_size, next_order_id++);
+        StrategyOrder buy_order(Side::Buy, symbol, buy_price, base_order_size, 0);
+        StrategyOrder sell_order(Side::Sell, symbol, sell_price, base_order_size, 0);
 
         orders.push_back(buy_order);
         orders.push_back(sell_order);
-        open_orders[buy_order.order_id] = buy_order;
-        open_orders[sell_order.order_id] = sell_order;
         return orders;
+    }
+
+    void on_order_submitted(const StrategyOrder& order) override
+    {
+        open_orders[order.order_id] = order;
     }
 
     void on_order_update(const ExecutionReport& report) override
     {
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Resting)
+        if (report.exec_type == ExecType::Cancelled)
         {
             open_orders.erase(report.order_id);
             return;
         }
+
+        if (report.exec_type == ExecType::Filled)
+        {
+            open_orders.erase(report.order_id);
+            return;
+        }
+
+        if (report.exec_type == ExecType::Resting) return;
+
+        if (report.exec_type == ExecType::PartialFill) return;
+
         if (report.exec_type == ExecType::Trade)
         {
             auto it = open_orders.find(report.order_id);
@@ -95,7 +108,6 @@ class MarketMaker : public Strategy
                                               const TopOfBook& tob) override
     {
         std::vector<StrategyOrder> orders;
-        static uint64_t next_order_id = 1;
 
         if (tob.bid_price <= 0 || tob.ask_price <= 0) return orders;
 
@@ -165,29 +177,43 @@ class MarketMaker : public Strategy
 
             if (buy_qty > 0)
             {
-                StrategyOrder buy_order(Side::Buy, symbol, buy_price, buy_qty, next_order_id++);
+                StrategyOrder buy_order(Side::Buy, symbol, buy_price, buy_qty, 0);
                 orders.push_back(buy_order);
-                open_orders[buy_order.order_id] = buy_order;
             }
 
             if (sell_qty > 0)
             {
-                StrategyOrder sell_order(Side::Sell, symbol, sell_price, sell_qty, next_order_id++);
+                StrategyOrder sell_order(Side::Sell, symbol, sell_price, sell_qty, 0);
                 orders.push_back(sell_order);
-                open_orders[sell_order.order_id] = sell_order;
             }
         }
 
         return orders;
     }
 
+    void on_order_submitted(const StrategyOrder& order) override
+    {
+        open_orders[order.order_id] = order;
+    }
+
     void on_order_update(const ExecutionReport& report) override
     {
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Resting)
+        if (report.exec_type == ExecType::Cancelled)
         {
             open_orders.erase(report.order_id);
             return;
         }
+
+        if (report.exec_type == ExecType::Filled)
+        {
+            open_orders.erase(report.order_id);
+            return;
+        }
+
+        if (report.exec_type == ExecType::Resting) return;
+
+        if (report.exec_type == ExecType::PartialFill) return;
+
         if (report.exec_type == ExecType::Trade)
         {
             auto it = open_orders.find(report.order_id);
