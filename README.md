@@ -63,11 +63,10 @@ The default backtest log is `logs/backtest.log`. Repeated runs with the same inp
 
 ## Documentation
 
+- [User Guide](docs/USER_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Market Scenarios](docs/SCENARIOS.md)
 - [Data Files](data/README.md)
-
-A detailed tutorial-style user guide will be added in a future release.
 
 ## Contributing
 
