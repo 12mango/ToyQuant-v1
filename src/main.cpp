@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -265,11 +266,23 @@ struct OutputFiles
 
 OutputFiles open_output_files()
 {
-    std::string orders_file = to_abs_path("data/runtime/orders.csv");
-    std::string trades_file = to_abs_path("data/runtime/trades.csv");
-    std::filesystem::create_directories(std::filesystem::path(orders_file).parent_path());
+    const std::string orders_file = to_abs_path("data/runtime/orders.csv");
+    const std::string trades_file = to_abs_path("data/runtime/trades.csv");
+    const auto output_dir = std::filesystem::path(orders_file).parent_path();
+    std::error_code ec;
+    std::filesystem::create_directories(output_dir, ec);
+    if (ec)
+    {
+        throw std::runtime_error("failed to create output directory '" + output_dir.string() +
+                                 "': " + ec.message());
+    }
 
     OutputFiles files{std::ofstream(orders_file), std::ofstream(trades_file)};
+    if (!files.orders.is_open() || !files.trades.is_open())
+    {
+        throw std::runtime_error("failed to open runtime output files in '" + output_dir.string() +
+                                 "'");
+    }
     files.orders << "ts,symbol,side,price,quantity,order_id\n";
     files.trades << "ts,symbol,side,price,quantity,order_id\n";
     return files;
@@ -332,16 +345,24 @@ int main(int argc, char** argv)
         return error.empty() ? 0 : 1;
     }
 
-    if (cfg.mode == "csv")
+    try
     {
-        run_csv_mode(cfg);
-        return 0;
-    }
+        if (cfg.mode == "csv")
+        {
+            run_csv_mode(cfg);
+            return 0;
+        }
 
-    if (cfg.mode == "udp")
+        if (cfg.mode == "udp")
+        {
+            run_udp_mode(cfg);
+            return 0;
+        }
+    }
+    catch (const std::exception& ex)
     {
-        run_udp_mode(cfg);
-        return 0;
+        std::cerr << "Error: " << ex.what() << "\n";
+        return 1;
     }
 
     print_usage(argv[0]);

@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 #include "backtest/backtest_driver.h"
@@ -53,8 +54,26 @@ int main(int argc, char** argv)
     trades_file = to_abs_path(trades_file);
     log_file = to_abs_path(log_file);
 
-    // 自动确保日志的父级目录 (logs) 存在
-    std::filesystem::create_directories(std::filesystem::path(log_file).parent_path());
+    if (!std::filesystem::is_regular_file(tick_file))
+    {
+        std::cerr << "Error: tick file does not exist: " << tick_file << std::endl;
+        return 1;
+    }
+    if (!std::filesystem::is_regular_file(trades_file))
+    {
+        std::cerr << "Error: trades file does not exist: " << trades_file << std::endl;
+        return 1;
+    }
+
+    const auto log_parent = std::filesystem::path(log_file).parent_path();
+    std::error_code ec;
+    std::filesystem::create_directories(log_parent, ec);
+    if (ec)
+    {
+        std::cerr << "Error: failed to create log directory '" << log_parent.string()
+                  << "': " << ec.message() << std::endl;
+        return 1;
+    }
 
     // 3. 打印启动日志
     std::cout << "[Runtime CWD]: " << std::filesystem::current_path() << "\n"
@@ -68,8 +87,17 @@ int main(int argc, char** argv)
               << "Log file:      " << log_file << std::endl;
 
     // 4. 运行回测驱动
-    BacktestDriver driver(tick_file, orders_file, trades_file, slippage, fee_rate, mode, log_file);
-    driver.run();
+    try
+    {
+        BacktestDriver driver(tick_file, orders_file, trades_file, slippage, fee_rate, mode,
+                              log_file);
+        driver.run();
+    }
+    catch (const std::exception& ex)
+    {
+        std::cerr << "Error: " << ex.what() << std::endl;
+        return 1;
+    }
 
     return 0;
 }

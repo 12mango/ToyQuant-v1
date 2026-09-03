@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
 // ==================== 安全转换函数 ====================
 inline double safe_stod(const std::string& s)
@@ -79,10 +80,8 @@ BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& 
         }
         else
         {
-            // 打印具体的系统错误原因（比如 Permission denied）
-            std::cerr << "[ERROR] Failed to open log file: " << log_file
-                      << " | Reason: " << std::strerror(errno)
-                      << " | CWD: " << std::filesystem::current_path() << std::endl;
+            throw std::runtime_error("failed to open log file '" + log_file +
+                                     "': " + std::strerror(errno));
         }
     }
 }
