@@ -15,6 +15,12 @@ uint64_t OrderBook::level_quantity(const std::list<OrderNode>& orders)
 void OrderBook::add_order(const exchange::Order& order)
 {
     std::lock_guard<std::mutex> lock(mtx_);
+    if (order.id == 0 || order.qty == 0 || order.remaining == 0 || order.remaining > order.qty ||
+        state_index_.contains(order.id))
+    {
+        return;
+    }
+
     auto& book = books_[order.symbol];
     if (order.side == exchange::Side::Buy)
     {
@@ -54,8 +60,9 @@ bool OrderBook::cancel_order(uint64_t order_id)
             order_index_.erase(order_id);
             return false;
         }
-        price_it->second.remove_if([order_id](const OrderNode& entry)
-                                   { return entry.order.id == order_id; });
+        const auto removed = price_it->second.remove_if([order_id](const OrderNode& entry)
+                                                        { return entry.order.id == order_id; });
+        if (removed == 0) return false;
         book.bids_qty[price] = level_quantity(price_it->second);
         if (price_it->second.empty())
         {
@@ -71,8 +78,9 @@ bool OrderBook::cancel_order(uint64_t order_id)
             order_index_.erase(order_id);
             return false;
         }
-        price_it->second.remove_if([order_id](const OrderNode& entry)
-                                   { return entry.order.id == order_id; });
+        const auto removed = price_it->second.remove_if([order_id](const OrderNode& entry)
+                                                        { return entry.order.id == order_id; });
+        if (removed == 0) return false;
         book.asks_qty[price] = level_quantity(price_it->second);
         if (price_it->second.empty())
         {
@@ -94,9 +102,9 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
 
     OrderNode* node = it->second;
     if (filled_qty == 0) return true;
+    if (filled_qty > node->order.remaining) return false;
 
-    uint64_t remaining_after =
-        node->order.remaining > filled_qty ? node->order.remaining - filled_qty : 0;
+    uint64_t remaining_after = node->order.remaining - filled_qty;
     node->order.remaining = remaining_after;
 
     auto& book = books_[node->order.symbol];

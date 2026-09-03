@@ -10,6 +10,12 @@ using exchange::Order;
 
 void MatchingEngine::send_order(const exchange::Order& order)
 {
+    if (order.id == 0 || order.qty == 0 || order.remaining == 0 || order.remaining > order.qty ||
+        order_index_.contains(order.id))
+    {
+        return;
+    }
+
     auto& book = books_[order.symbol];
     match(book, order, true);
 }

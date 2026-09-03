@@ -12,6 +12,11 @@ int main()
 
     book.add_order(first);
     book.add_order(second);
+    book.add_order(first);
+    assert(book.top("EURUSD").bid_size == 150);
+
+    assert(!book.apply_partial_fill(1, 101));
+    assert(book.state_for_order(1) == OrderState::Active);
     assert(book.top("EURUSD").bid_size == 150);
 
     assert(book.apply_partial_fill(1, 40));
