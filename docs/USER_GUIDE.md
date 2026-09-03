@@ -1,18 +1,18 @@
 # HFT Demo User Guide
 
-## 1. Purpose and Audience
+## Who This Is For
 
-HFT Demo is a small, reproducible C++ market-making simulation. Its purpose is to make a complete trading-system data path visible and approachable:
+This guide assumes you can read basic C++ and understand ideas such as a bid, ask, trade, and position. It introduces how those ideas are connected inside a small quantitative trading system.
+
+The goal is not to imitate a production exchange. It is to make one complete, reproducible path visible:
 
 ```text
 Market data -> top of book -> strategy -> orders -> matching -> execution reports -> CSV output -> backtest
 ```
 
-The project is designed for learners who want to read and modify a realistic-shaped system without needing exchange credentials, a production network stack, or a large framework. It is also useful as a compact reference when reviewing C++ techniques such as interfaces, callbacks, containers, RAII, atomics, and error handling.
+Read each module using the same pattern: **trading role**, **code**, and **C++ idea**. This is not a production trading platform and must not be used for live trading or investment decisions.
 
-This is not a production trading platform. It must not be connected to a live venue or used to make investment decisions.
-
-## 2. What the Demo Does
+## What the Demo Does
 
 The current implementation can:
 
@@ -28,7 +28,7 @@ The current implementation can:
 
 The implementation intentionally does not model full exchange behavior. It has no authentication, live exchange connectivity, FIX protocol, complete market depth, queue position, persistent recovery, risk gateway, or latency model.
 
-## 3. Repository Map
+## Repository Map
 
 ```text
 src/
@@ -51,16 +51,16 @@ Useful companion documents:
 - [Market Scenarios](SCENARIOS.md)
 - [Data Files](../data/README.md)
 
-## 4. Build and Test
+## Build and Test
 
-### 4.1 Requirements
+### Requirements
 
 - CMake 3.16 or newer.
 - A compiler with C++20 support.
 - Python 3 for the helper scripts.
 - Linux or another POSIX-like environment for the current UDP implementation. The CMake presets also describe Windows and macOS configuration targets, but the UDP source currently includes POSIX socket headers.
 
-### 4.2 Configure and build
+### Configure and Build
 
 From the repository root:
 
@@ -79,7 +79,7 @@ This creates these executables under `build/`:
 
 CMake is configured for C++20. On non-MSVC compilers it enables `-Wall`, `-Wextra`, optimization, and `-march=native`. `-march=native` is convenient for a local demo but means a binary may not run on a different CPU family.
 
-### 4.3 Run tests
+### Run Tests
 
 Run all registered tests:
 
@@ -96,9 +96,9 @@ cmake --build build --target matching_engine_test
 
 The tests use the standard library `assert` macro. Assertions can be disabled when `NDEBUG` is defined, so use the default/debug-style configuration when you want the tests to actively check behavior.
 
-## 5. Running the Simulation
+## Run the Simulation
 
-### 5.1 CSV mode
+### CSV Mode
 
 The general form is:
 
@@ -129,7 +129,7 @@ The application validates the mode, strategy, delay, CSV path, and UDP port befo
 
 During CSV playback, the console prints one `[TICK]` line per input tick and a final `[SUMMARY]` line. A tick line shows the input event plus the current top-of-book values. The summary includes submitted order count and quantity, cancellation count, trade report count and quantity, fill rate, cancellation rate, net position, inventory exposure, and number of working orders.
 
-### 5.2 UDP mode
+### UDP Mode
 
 The general form is:
 
@@ -159,7 +159,7 @@ When `delay_ms` is omitted or zero, the Python sender sleeps according to the ti
 
 UDP mode runs until it is interrupted, normally with `Ctrl+C`. The current main loop is intentionally simple and continuously polls the feed when no tick is available. This keeps the demo easy to inspect, but it is not a production scheduling model.
 
-### 5.3 Generated runtime files
+### Generated Runtime Files
 
 Each `hft_demo` run creates or truncates:
 
@@ -172,9 +172,9 @@ The runtime directory is created automatically. Failure to create it or open eit
 
 Do not run two simulations that write to the same runtime directory at the same time. Both processes would truncate and append to the same output files.
 
-## 6. Data Contracts
+## Data Contracts
 
-### 6.1 Tick input
+### Tick Input
 
 Tick scenarios have this CSV schema:
 
@@ -193,7 +193,7 @@ ts,symbol,price,size,side
 
 `CsvFeed` skips a header whose first value is `ts` or `timestamp`. It logs malformed rows and continues with the next row. In contrast, `BacktestDriver` is strict: malformed numeric values or invalid trade sides abort the backtest with a row number.
 
-### 6.2 Order and trade output
+### Order and Trade Output
 
 Both output files use this schema:
 
@@ -219,6 +219,19 @@ A single match emits a trade report for each side. Filtering on the owner preven
 
 The ordering matters. Existing orders can be filled by the current market event before the strategy creates its next set of quotes. Then the strategy sees the updated top of book and its own updated position before it decides what to do next.
 
+```cpp
+void Pipeline::process_tick(const Tick& tick)
+{
+  order_book_.on_tick(tick);
+  engine_.process_market_tick(tick);
+  auto top = order_book_.top(tick.symbol);
+  auto orders = strategy_.on_top_of_book(tick.symbol, top);
+  // Cancel stale orders, assign IDs, then submit new orders.
+}
+```
+
+**C++ reading note:** `Pipeline` stores collaborators as references (`OrderBook&`, `Strategy&`, and `IMatchingEngine&`). References express required, non-null dependencies without transferring ownership.
+
 ## 8. Market Data Module
 
 ### 8.1 Shared types
@@ -228,16 +241,33 @@ The ordering matters. Existing orders can be filled by the current market event 
 `TickCallback` is an alias for:
 
 ```cpp
+struct Tick {
+  uint64_t ts;
+  std::string symbol;
+  double price;
+  uint64_t size;
+  Side side;
+};
+
 using TickCallback = std::function<void(const Tick&)>;
 ```
 
-It allows `CsvFeed` to receive any callable that accepts `const Tick&`, including a lambda that forwards data into `Pipeline::process_tick`.
+`std::function` can store a lambda, function, or function object with this signature. CSV mode uses a lambda to forward every parsed tick to `Pipeline::process_tick`.
 
 ### 8.2 CSV feed
 
 `CsvFeed` owns a file path, callback, and optional delay. Its `run()` method reads rows sequentially, parses each row into a `Tick`, invokes the callback, and optionally sleeps.
 
 This is intentionally a streaming parser rather than a loader that keeps all rows in memory. The trade-off is simple and appropriate for a demo: parsing is easy to follow, while CSV syntax beyond simple comma-separated fields is not supported.
+
+```cpp
+CsvFeed feed(csv_file,
+             [&](const Tick& tick) { pipeline.process_tick(tick, true); },
+             cfg.delay);
+feed.run();
+```
+
+**Syntax focus:** `[&]` captures local variables by reference. It is safe here because `feed.run()` completes while `pipeline` is still alive.
 
 ### 8.3 UDP feed
 
@@ -257,6 +287,16 @@ Important current limitations:
 - The feed should be stopped before destruction in a future lifecycle cleanup; the current application is intended to be interrupted as a demo process.
 
 These are useful discussion points when learning how a production feed handler differs from a compact demonstration.
+
+```cpp
+size_t next = (head + 1) % RING_SIZE;
+if (next != tail_.load(std::memory_order_acquire)) {
+  ring_[head] = tick;
+  head_.store(next, std::memory_order_release);
+}
+```
+
+**C++ and systems focus:** this is a single-producer/single-consumer ring-buffer pattern. Release/acquire ordering publishes the tick data before the producer publishes the new head index.
 
 ## 9. OrderBook: Local State and Top of Book
 
@@ -280,6 +320,17 @@ New -> Active -> PartialFilled -> Filled
 `Rejected` is returned when an ID is unknown to the state index. An order becomes `Active` when `add_order` accepts it. A partial fill decreases its remaining quantity; a full fill removes it from active order storage and marks it `Filled`. Cancellation removes it and marks it `Cancelled`.
 
 `add_order` rejects zero IDs, zero quantities, inconsistent `remaining > qty`, and IDs already known to the state index. `apply_partial_fill` rejects overfills, so an invalid update cannot silently reduce an order below zero.
+
+```cpp
+std::map<double, uint64_t, std::greater<double>> bids_qty;
+std::map<double, uint64_t> asks_qty;
+
+auto& queue = book.bids_orders[order.price];
+queue.push_back(OrderNode{order, OrderState::Active});
+order_index_[order.id] = &queue.back();
+```
+
+**Why these containers:** `std::map` keeps prices ordered, so `begin()` gives the best price. `std::list` preserves FIFO order and keeps the address of a non-erased node stable, allowing the ID index to store `OrderNode*`.
 
 ### 9.2 Simplified market view
 
@@ -327,6 +378,19 @@ For example, `" MarketMaker "` and `"marketmaker"` represent the same participan
 
 The policy is intentionally simple: it cancels the aggressor rather than cancelling or decrementing the resting order. Real venues use different self-trade-prevention policies, so do not treat this as an exchange specification.
 
+```cpp
+auto best_bid_it = book.bids.begin();
+double best_price = best_bid_it->first;
+if (new_order.price > best_price) break;
+
+Order& resting = bid_queue.front();
+uint64_t traded = std::min(qty, resting.remaining);
+qty -= traded;
+resting.remaining -= traded;
+```
+
+**Trading rule in code:** `begin()` selects the highest bid for a sell order; `front()` selects the earliest order at that price. Together, they implement price-time priority.
+
 ### 10.5 Execution reports
 
 `ExecutionReport` carries an order ID, side, event type, symbol, price, quantity, timestamp, and owner.
@@ -352,6 +416,16 @@ The interface separates quotation decisions from execution feedback:
 - `on_order_update`: consumes trade and lifecycle reports.
 - `net_position` and `working_order_count`: expose summary state.
 
+```cpp
+std::unique_ptr<Strategy> make_strategy(const std::string& name)
+{
+  if (name == "naive") return std::make_unique<NaiveMarketMaker>();
+  return std::make_unique<OptimizedMarketMaker>();
+}
+```
+
+**C++ design choice:** `Strategy` is an interface with pure virtual functions. `std::unique_ptr<Strategy>` owns one concrete strategy and releases it automatically through RAII.
+
 ### 11.1 NaiveMarketMaker
 
 The naive strategy calculates the midpoint:
@@ -376,6 +450,15 @@ The optimized strategy adds several teaching-oriented controls:
 It estimates working exposure from its open orders and combines it with filled position. When inventory is positive, it reduces buy size and biases buy prices lower; when inventory is negative, it reduces sell size and biases sell prices higher.
 
 This is a simple inventory-control example, not a calibrated market-making model. In particular, the variable named `tick_vol` is the current bid-ask spread, not a statistical volatility estimator.
+
+```cpp
+double smooth_mid = std::accumulate(mid_prices.begin(), mid_prices.end(), 0.0)
+                    / mid_prices.size();
+double raw_buy = smooth_mid - level_spread / 2.0 - std::max(0.0, trend);
+double buy_price = std::round(raw_buy / tick_size) * tick_size;
+```
+
+**Quant reading note:** smoothing reduces short-term noise, trend shifts a quote, and rounding forces the result onto the instrument tick grid.
 
 ### 11.3 Strategy state updates
 
@@ -447,65 +530,27 @@ With the same input files, parameters, and log path, repeated backtest runs shou
 
 Important limitation: the equity curve currently receives only the final equity value, so maximum drawdown is calculated over a one-point curve and is normally zero. A future version could append equity after each trade or tick to make drawdown meaningful.
 
-## 13. C++ Concepts Used by the Project
-
-### 13.1 Interfaces and runtime polymorphism
-
-`Strategy`, `IOrderBook`, and `IMatchingEngine` are abstract interfaces. A class becomes abstract when it has pure virtual functions:
-
 ```cpp
-virtual std::vector<StrategyOrder> on_top_of_book(...) = 0;
+positions.clear();
+last_price.clear();
+realized_pnl = 0.0;
+equity_curve_.clear();
+
+std::sort(symbols.begin(), symbols.end());
 ```
 
-The application holds a `std::unique_ptr<Strategy>`, which can own either `NaiveMarketMaker` or `OptimizedMarketMaker`. This is runtime polymorphism: the program chooses a concrete implementation while calling through one stable interface.
+**Reproducibility note:** clearing member state makes repeated `run()` calls independent. Sorting is necessary because `std::unordered_map` has no stable iteration order.
 
-The benefit is clear module boundaries. The cost is virtual dispatch and more indirection, both insignificant for this learning project.
+## 13. C++ Feature Map for Quant Interviews
 
-### 13.2 RAII and `std::unique_ptr`
+| Standard | Feature in this project | Read it in | Interview question to ask yourself |
+|---|---|---|---|
+| C++11 | `enum class`, lambdas, `std::thread`, atomics, RAII, `unique_ptr` | `common/types.h`, `main.cpp`, `udp_feed.cpp` | Why is `std::atomic` different from `volatile`? |
+| C++14 | General modern style; the code remains compatible with C++14 idioms | All modules | When would a generic lambda reduce duplication? |
+| C++17 | `std::filesystem`, `std::string_view`, structured bindings | `main.cpp`, `udp_feed.cpp`, `backtest_driver.cpp` | What lifetime rule makes a `string_view` unsafe? |
+| C++20 | `unordered_map::contains`, designated initializers, `std::from_chars` use in CLI code | `matching_engine.cpp`, `main.cpp` | Why is strict integer parsing useful at an input boundary? |
 
-RAII means resource acquisition is initialization: an object owns a resource and releases it in its destructor. Examples here include `std::ifstream`, `std::ofstream`, `std::lock_guard`, and `std::unique_ptr`.
-
-`std::unique_ptr<Strategy>` expresses exclusive ownership. When it leaves scope, its destructor deletes the concrete strategy automatically. No manual `delete` is required.
-
-### 13.3 References, pointers, and lifetime
-
-The pipeline stores `OrderBook&`, `Strategy&`, and `IMatchingEngine&`. References say these collaborators must exist for the pipeline's lifetime and cannot be null.
-
-The matching engine also stores `exchange::Order*` in an ID index. Those pointers refer to elements inside `std::list<exchange::Order>`. List node addresses remain stable when other elements are inserted, which makes this indexing approach workable. A pointer becomes invalid when its own order is erased, so the implementation erases the index entry before popping the corresponding list element.
-
-This is an important invariant. Replacing `std::list` with a container that relocates elements, such as a growing `std::vector`, would require redesigning the index.
-
-### 13.4 Ordered and hash maps
-
-`std::map` keeps keys sorted. That makes it suitable for prices because the best bid or ask is available at `begin()`. Map operations are typically $O(\log n)$.
-
-`std::unordered_map` is a hash table with expected $O(1)$ lookup. The project uses it for lookup by order ID and symbol. Its iteration order is not stable, which is why backtest reporting sorts symbols before writing output.
-
-### 13.5 Lambdas and callbacks
-
-The pipeline registers a lambda as the matching engine's report callback:
-
-```cpp
-engine_.set_report_callback([this](const ExecutionReport& report) { ... });
-```
-
-`[this]` captures the pipeline pointer so the lambda can update strategy state and output files. The callback must not outlive the pipeline; the current construction order ensures the pipeline remains alive while its engine is used.
-
-### 13.6 Atomics and the ring buffer
-
-`UdpFeed` has one producer thread and one consumer thread. Atomics coordinate the ring buffer indices. The producer publishes a new head index with release ordering; the consumer checks it with acquire ordering. This ensures the consumer sees the tick data written before the producer announced the new head position.
-
-Atomics prevent data races on the indices, but they do not make every design automatically correct. The implementation is deliberately minimal and suitable for a single-producer/single-consumer teaching example.
-
-### 13.7 Exceptions and error boundaries
-
-The CLI validates user input before entering runtime modes. Runtime file failures throw `std::runtime_error` and the application entry point catches `std::exception`, writes a readable error, and returns a non-zero exit code.
-
-The backtest parser throws `std::invalid_argument` for invalid data fields and adds the failing row number. This prevents malformed historical data from silently becoming a zero-valued trade.
-
-### 13.8 `std::from_chars` versus `std::stoi`
-
-The main CLI uses `std::from_chars` to parse integer delay and port arguments. Unlike `std::stoi`, it does not throw for ordinary parse failures and lets the code verify that every character was consumed. This is a useful pattern for command-line parsing.
+Use the module snippets above as the primary reference. For low-latency interviews, focus on container complexity and cache locality, pointer lifetime, `std::function` type-erasure cost, acquire/release ordering, allocation in hot paths, and why production systems often store prices as integer ticks rather than `double`.
 
 ## 14. Tests as Executable Documentation
 
@@ -519,53 +564,15 @@ The tests are small standalone programs registered with CTest. They are intentio
 
 When adding a behavior change, first decide which module owns the rule. Add a focused test in the corresponding test executable, then run that target directly before running all of CTest.
 
-## 15. Common Workflows
+## 15. Practice Loop
 
-### 15.1 Compare strategies on one scenario
+1. Generate a fixed-seed scenario: `python3 tools/gen_ticks.py flat --count 100 --seed 42 --output-dir data/scenarios`.
+2. Run `hft_demo` in CSV mode and inspect `[TICK]`, `[SUMMARY]`, `orders.csv`, and `trades.csv`.
+3. Run `backtest_main` against the generated files and read the PnL report.
+4. Change exactly one strategy parameter, repeat the same scenario, and compare outputs.
+5. Add or update the smallest test that proves the changed rule.
 
-```bash
-./build/hft_demo csv data/scenarios/flat_ticks.csv 0 naive
-cp data/runtime/trades.csv /tmp/naive_trades.csv
-./build/hft_demo csv data/scenarios/flat_ticks.csv 0 optimized
-cp data/runtime/trades.csv /tmp/optimized_trades.csv
-diff -u /tmp/naive_trades.csv /tmp/optimized_trades.csv
-```
-
-Each run overwrites `data/runtime/`, so copy artifacts before starting the next run.
-
-### 15.2 Generate deterministic scenarios
-
-```bash
-python3 tools/gen_ticks.py all --count 100 --seed 42 --output-dir data/scenarios
-```
-
-The generator uses a dedicated seeded `random.Random` object. The same scenario name, count, and seed produce the same data. When generating `all`, each scenario receives `seed + offset` to keep scenarios deterministic but distinct.
-
-### 15.3 Inspect a fill lifecycle
-
-1. Run a small scenario in CSV mode.
-2. Read `[TICK]` output and `data/runtime/trades.csv`.
-3. Run `matching_engine_test` to see concise examples of self-trade prevention, partial fill, full fill, FIFO, and best-price behavior.
-4. Trace `MatchingEngine::match` with a debugger if you want to watch `remaining` change order by order.
-
-### 15.4 Reproduce a backtest
-
-```bash
-./build/backtest_main \
-  data/scenarios/synthetic_ticks.csv \
-  data/runtime/orders.csv \
-  data/runtime/trades.csv \
-  0 0 backtest logs/repro.log
-cp logs/repro.log /tmp/repro_first.log
-./build/backtest_main \
-  data/scenarios/synthetic_ticks.csv \
-  data/runtime/orders.csv \
-  data/runtime/trades.csv \
-  0 0 backtest logs/repro.log
-diff -u /tmp/repro_first.log logs/repro.log
-```
-
-An empty `diff` output means the two logs are identical.
+Each simulation overwrites `data/runtime/`. Copy output files before comparing two runs.
 
 ## 16. Troubleshooting
 
@@ -580,31 +587,8 @@ An empty `diff` output means the two logs are identical.
 | UDP simulation receives nothing | Confirm the port, host, and sender file. Also note that the current application does not report a failed UDP bind explicitly. |
 | Tests pass but behavior changes in Release | Verify assertions are enabled; `assert` checks may be compiled out with `NDEBUG`. |
 
-## 17. Extension Ideas and Boundaries
+## 17. Next Steps and Boundaries
 
-Good next steps for this toy project include:
+Useful next steps are a plotting script for runtime CSV, scenario-based integration tests, explicit rejection reports, a per-tick equity curve, clean UDP shutdown, and separate external market depth from local order quantities.
 
-- Add a plotting script that reads runtime CSV files and shows price, quotes, fills, position, and equity.
-- Add a documented test framework or richer assertion messages.
-- Add explicit rejection reports for invalid orders.
-- Make the backtest equity curve update per trade or tick.
-- Add clean UDP shutdown and startup error reporting.
-- Separate external market depth from local order quantities.
-- Add scenario-based integration tests from tick input through CSV output.
-
-Features that should remain out of scope unless the project is intentionally re-positioned include live trading, exchange credentials, production risk controls, real venue protocol support, and claims of HFT-grade latency.
-
-## 18. Learning Checklist
-
-After working through this project, you should be able to answer:
-
-- How does a `Tick` move from a feed to a strategy decision?
-- Why are `std::map` and `std::list` useful for price-time matching?
-- What is the difference between a `Trade` report and a `PartialFill` report?
-- Why must the matching index remove a pointer before erasing a list node?
-- How does self-trade prevention change a matching outcome?
-- How does the strategy keep position separate from working exposure?
-- Why does deterministic output require resetting state and sorting unordered-map keys?
-- What ownership relationships are expressed by references, `std::unique_ptr`, and RAII-managed streams?
-
-Use the source alongside this guide. The system is small enough that following one tick through every module is practical, and that is where the most durable understanding comes from.
+Keep live trading, exchange credentials, production risk controls, real venue protocols, and HFT-latency claims out of scope unless the project is deliberately re-positioned.
