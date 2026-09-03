@@ -1,6 +1,7 @@
 #include <immintrin.h>
 
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -38,14 +39,82 @@ std::string to_abs_path(const std::string& input_path)
     return (fs::path(PROJECT_ROOT_DIR) / p).string();
 }
 
-AppConfig parse_config(int argc, char** argv)
+bool parse_integer(const std::string& value, int& result)
 {
-    AppConfig cfg;
+    if (value.empty()) return false;
+
+    const char* begin = value.data();
+    const char* end = begin + value.size();
+    const auto parsed = std::from_chars(begin, end, result);
+    return parsed.ec == std::errc{} && parsed.ptr == end;
+}
+
+void print_usage(const char* executable)
+{
+    std::cerr << "Usage: " << executable << " csv [path_to_csv] [ms_delay] [strategy]\n";
+    std::cerr << "   or: " << executable << " udp <port> [strategy]\n";
+    std::cerr << "   strategy: optimized (default) | naive\n";
+}
+
+bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
+{
+    if (argc == 2 && std::string(argv[1]) == "--help") return false;
+    if (argc > 5 || (argc > 1 && std::string(argv[1]) == "udp" && argc > 4))
+    {
+        error = "too many arguments";
+        return false;
+    }
+
     if (argc >= 2) cfg.mode = argv[1];
+    if (cfg.mode != "csv" && cfg.mode != "udp")
+    {
+        error = "mode must be 'csv' or 'udp'";
+        return false;
+    }
+
     if (argc >= 3) cfg.path_or_port = argv[2];
-    if (argc >= 4) cfg.delay = std::stoi(argv[3]);
+    if (cfg.mode == "csv" && cfg.path_or_port.empty())
+    {
+        error = "CSV path cannot be empty";
+        return false;
+    }
+    if (cfg.mode == "csv" && !std::filesystem::is_regular_file(to_abs_path(cfg.path_or_port)))
+    {
+        error = "CSV file does not exist: " + to_abs_path(cfg.path_or_port);
+        return false;
+    }
+
+    if (argc >= 4)
+    {
+        if (cfg.mode == "udp")
+        {
+            cfg.strategy_name = argv[3];
+        }
+        else if (!parse_integer(argv[3], cfg.delay) || cfg.delay < 0)
+        {
+            error = "delay must be a non-negative integer";
+            return false;
+        }
+    }
     if (argc >= 5) cfg.strategy_name = argv[4];
-    return cfg;
+
+    if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive")
+    {
+        error = "strategy must be 'optimized' or 'naive'";
+        return false;
+    }
+
+    if (cfg.mode == "udp")
+    {
+        int port = 0;
+        if (!parse_integer(cfg.path_or_port, port) || port < 1 || port > 65535)
+        {
+            error = "UDP port must be an integer from 1 to 65535";
+            return false;
+        }
+    }
+
+    return true;
 }
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
@@ -254,7 +323,14 @@ void run_udp_mode(const AppConfig& cfg)
 
 int main(int argc, char** argv)
 {
-    const AppConfig cfg = parse_config(argc, argv);
+    AppConfig cfg;
+    std::string error;
+    if (!parse_config(argc, argv, cfg, error))
+    {
+        if (!error.empty()) std::cerr << "Error: " << error << "\n";
+        print_usage(argv[0]);
+        return error.empty() ? 0 : 1;
+    }
 
     if (cfg.mode == "csv")
     {
@@ -268,9 +344,6 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    std::cerr << "Unknown mode: " << cfg.mode << "\n";
-    std::cerr << "Usage: ./hft_demo csv <path_to_csv> [ms_delay] [strategy]\n";
-    std::cerr << "   or: ./hft_demo udp <port> [strategy]\n";
-    std::cerr << "   strategy: optimized (default) | naive\n";
+    print_usage(argv[0]);
     return 1;
 }
