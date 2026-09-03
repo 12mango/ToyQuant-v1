@@ -27,19 +27,19 @@ class Strategy
    public:
     virtual ~Strategy() = default;
 
-    // 收到最新盘口时调用，返回要下的订单
+    // Called on a top-of-book update; returns orders to submit.
     virtual std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                                       const TopOfBook& tob) = 0;
 
-    // 订单获得最终 ID 并发往撮合引擎前调用。
+    // Called after an order receives its final ID and before it is sent to the engine.
     virtual void on_order_submitted(const StrategyOrder& order) = 0;
 
-    // 返回下一轮报价前需要撤销的工作订单。
+    // Returns working orders that must be cancelled before the next quote cycle.
     virtual std::vector<uint64_t> cancel_requests() = 0;
 
     virtual int64_t net_position() const = 0;
     virtual size_t working_order_count() const = 0;
 
-    // 收到成交、撤单、挂单等回报时调用
+    // Called for trade, cancellation, resting, and fill reports.
     virtual void on_order_update(const ExecutionReport& rpt) = 0;
 };

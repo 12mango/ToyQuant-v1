@@ -8,7 +8,7 @@
 
 #include "common/types.h"
 
-// ==================== 回测层专用类型 ====================
+// ==================== Backtest Types ====================
 struct BacktestExecutionReport
 {
     uint64_t ts = 0;

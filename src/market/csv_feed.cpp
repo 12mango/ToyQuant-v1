@@ -60,10 +60,10 @@ void CsvFeed::run()
                 t.side = to_side(token[0]);
             }
 
-            // 回调
+            // Dispatch the parsed tick to the consumer.
             cb_(t);
 
-            // 延迟
+            // Optional playback delay.
             if (ms_delay_ > 0)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms_delay_));
@@ -73,7 +73,7 @@ void CsvFeed::run()
         {
             std::cerr << "CsvFeed parse error on line: " << line << " , exception: " << e.what()
                       << std::endl;
-            continue;  // 忽略非法行
+            continue;  // Skip malformed rows.
         }
     }
 }

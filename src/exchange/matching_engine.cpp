@@ -69,7 +69,6 @@ void MatchingEngine::cancel_order(uint64_t order_id)
     order_index_.erase(it);
     private_order_book_.cancel_order(order_id);
 
-    // ==== 加入 side 字段 ====
     report(ExecutionReport{.order_id = order_id,
                            .side = cancelled_order.side,
                            .exec_type = ExecType::Cancelled,
@@ -84,11 +83,11 @@ void MatchingEngine::cancel_order(uint64_t order_id)
 
 void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
 {
-    Order new_order = incoming;  // 拷贝，因为要修改 remaining
+    Order new_order = incoming;  // Copy because matching updates remaining quantity.
     uint64_t& qty = new_order.remaining;
     qty = new_order.qty;
 
-    // ==================== 买单匹配逻辑 ====================
+    // ==================== Buy-Side Matching ====================
     if (incoming.side == exchange::Side::Buy)
     {
         while (qty > 0 && !book.asks.empty())
@@ -120,7 +119,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                 }
                 uint64_t traded = std::min(qty, resting.remaining);
 
-                // ==== 加入 side ====
                 report(ExecutionReport{.order_id = new_order.id,
                                        .side = new_order.side,
                                        .exec_type = ExecType::Trade,
@@ -174,14 +172,13 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .owner = new_order.owner});
         }
 
-        // 如果买单剩余没成交，挂入订单簿
+        // Rest any unfilled quantity in the bid book.
         if (qty > 0 && rest_incoming)
         {
             book.bids[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.bids[new_order.price].orders.back();
             private_order_book_.add_order(new_order);
 
-            // ==== 加入 side ====
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,
                                    .exec_type = ExecType::Resting,
@@ -195,7 +192,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                       << new_order.price << "\n";
         }
 
-        // ==================== 卖单匹配逻辑 ====================
+        // ==================== Sell-Side Matching ====================
     }
     else
     {
@@ -228,7 +225,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                 }
                 uint64_t traded = std::min(qty, resting.remaining);
 
-                // ==== 加入 side ====
                 report(ExecutionReport{.order_id = new_order.id,
                                        .side = new_order.side,
                                        .exec_type = ExecType::Trade,
@@ -282,14 +278,13 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .owner = new_order.owner});
         }
 
-        // 如果卖单剩余没成交，挂入订单簿
+        // Rest any unfilled quantity in the ask book.
         if (qty > 0 && rest_incoming)
         {
             book.asks[new_order.price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.asks[new_order.price].orders.back();
             private_order_book_.add_order(new_order);
 
-            // ==== 加入 side ====
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,
                                    .exec_type = ExecType::Resting,

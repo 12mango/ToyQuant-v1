@@ -5,18 +5,18 @@ import csv
 import sys
 from pathlib import Path
 
-# === 默认参数 ===
+# Default parameters.
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9000
 DEFAULT_FILE = "data/scenarios/synthetic_ticks.csv"
-DEFAULT_DELAY = 0  # 毫秒延迟（0 表示按 CSV 时间戳间隔发送）
+DEFAULT_DELAY = 0  # Delay in milliseconds; 0 replays CSV timestamp intervals.
 
 def read_ticks(file_path):
     ticks = []
     with open(file_path, "r") as f:
         reader = csv.reader(f)
         for row in reader:
-            if not row or row[0].startswith("ts"):  # 跳过表头
+            if not row or row[0].startswith("ts"):  # Skip the header row.
                 continue
             ticks.append(row)
     return ticks
@@ -31,7 +31,7 @@ def send_ticks(host, port, ticks, delay=0):
         if delay > 0:
             time.sleep(delay)
         elif prev_ts is not None:
-            # 按 CSV 时间戳间隔发送，单位 ms
+            # Replay the CSV timestamp interval in milliseconds.
             sleep_sec = (int(ts) - prev_ts) / 1000.0
             if sleep_sec > 0:
                 time.sleep(sleep_sec)
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     file_path = DEFAULT_FILE
     delay = DEFAULT_DELAY
 
-    # 可选命令行参数：host port file delay(ms)
+    # Optional command-line arguments: host port file delay_ms.
     if len(sys.argv) > 1:
         host = sys.argv[1]
     if len(sys.argv) > 2:
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 3:
         file_path = sys.argv[3]
     if len(sys.argv) > 4:
-        delay = float(sys.argv[4]) / 1000.0  # 转成秒
+        delay = float(sys.argv[4]) / 1000.0  # Convert milliseconds to seconds.
 
     file_path = Path(file_path)
     if not file_path.exists():

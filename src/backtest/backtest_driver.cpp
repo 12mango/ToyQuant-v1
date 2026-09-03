@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <vector>
 
-// ==================== 安全转换函数 ====================
+// ==================== Strict Conversion Helpers ====================
 inline double safe_stod(const std::string& s)
 {
     std::string str = s;
@@ -50,7 +50,7 @@ inline uint64_t safe_stoull(const std::string& s)
     }
 }
 
-// ==================== 构造函数 ====================
+// ==================== Construction ====================
 BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& orders_file,
                                const std::string& trades_file, double slippage, double fee_rate,
                                RunMode mode, const std::string& log_file)
@@ -77,7 +77,7 @@ BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& 
             }
         }
 
-        errno = 0;  // 重置 errno
+        errno = 0;  // Reset errno before opening the file.
         log_file_.open(log_file);
 
         if (log_file_.is_open())
@@ -93,7 +93,7 @@ BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& 
     }
 }
 
-// ==================== 析构函数 (确保缓冲区落盘) ====================
+// ==================== Destruction ====================
 BacktestDriver::~BacktestDriver()
 {
     if (log_file_.is_open())
@@ -103,13 +103,13 @@ BacktestDriver::~BacktestDriver()
     }
 }
 
-// ==================== 日志函数 ====================
+// ==================== Logging ====================
 void BacktestDriver::log(const std::string& msg)
 {
     (*log_out_) << msg << std::endl;
 }
 
-// ==================== 回测主流程 ====================
+// ==================== Backtest Execution ====================
 void BacktestDriver::run()
 {
     positions.clear();
@@ -132,13 +132,13 @@ void BacktestDriver::run()
         return;
     }
 
-    // ==================== 读取 tick 文件 ====================
-    std::getline(tick_in, line);  // 跳过表头
+    // ==================== Read Tick Data ====================
+    std::getline(tick_in, line);  // Skip the header row.
     std::size_t line_number = 1;
     while (std::getline(tick_in, line))
     {
         ++line_number;
-        if (line.empty()) continue;  // 跳过空行
+        if (line.empty()) continue;  // Skip empty rows.
         try
         {
             std::stringstream ss(line);
@@ -156,7 +156,7 @@ void BacktestDriver::run()
             t.side = tmp.empty() ? Side::Unknown : to_side(tmp[0]);
 
             if (t.symbol.empty()) throw std::invalid_argument("empty symbol");
-            last_price[t.symbol] = t.price;  // 更新最新价格
+            last_price[t.symbol] = t.price;  // Update the latest price.
         }
         catch (const std::exception& ex)
         {
@@ -165,8 +165,8 @@ void BacktestDriver::run()
         }
     }
 
-    // ==================== 读取 trades 文件，计算 PnL ====================
-    std::getline(trades_in, line);  // 跳过表头
+    // ==================== Read Trades and Calculate PnL ====================
+    std::getline(trades_in, line);  // Skip the header row.
     line_number = 1;
     while (std::getline(trades_in, line))
     {
@@ -178,7 +178,7 @@ void BacktestDriver::run()
             BacktestExecutionReport trade;
             std::string tmp, side_str;
 
-            // CSV 列顺: ts,symbol,side,price,quantity,order_id
+            // CSV column order: ts,symbol,side,price,quantity,order_id.
             std::getline(ss, tmp, ',');
             trade.ts = safe_stoull(tmp);          // ts
             std::getline(ss, trade.symbol, ',');  // symbol
@@ -196,7 +196,7 @@ void BacktestDriver::run()
             trade.side = (side_str == "B" ? Side::Buy : Side::Sell);
             trade.exec_type = ExecType::Trade;
 
-            // 应用滑点和手续费
+            // Apply slippage and fees.
             double exec_price = trade.price + (trade.side == Side::Buy ? slippage_ : -slippage_);
             double fee = trade.quantity * exec_price * fee_rate_;
 
@@ -250,7 +250,7 @@ void BacktestDriver::run()
     print_report();
 }
 
-// ==================== 输出策略报告 ====================
+// ==================== Report Results ====================
 void BacktestDriver::print_report()
 {
     double equity = realized_pnl;

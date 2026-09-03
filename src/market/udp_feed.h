@@ -24,7 +24,7 @@ class UdpFeed
    private:
     void loop();
 
-    // C++ 风格解析（string_view + find）
+    // C++ parser using string_view and find.
     bool parse_tick_cpp(std::string_view s, Tick& t);
 
     // static const

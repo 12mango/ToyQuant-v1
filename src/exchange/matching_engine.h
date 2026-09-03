@@ -13,13 +13,13 @@
 
 struct PriceLevel
 {
-    std::list<exchange::Order> orders;  // 改成 exchange::Order
+    std::list<exchange::Order> orders;
 };
 
 struct MEOrderBook
 {
-    std::map<double, PriceLevel, std::greater<double>> bids;  // 买盘（价格从高到低）
-    std::map<double, PriceLevel> asks;                        // 卖盘（价格从低到高）
+    std::map<double, PriceLevel, std::greater<double>> bids;  // Highest price first.
+    std::map<double, PriceLevel> asks;                        // Lowest price first.
 };
 
 class IMatchingEngine
@@ -73,7 +73,7 @@ class MatchingEngine : public IMatchingEngine
     }
 
     std::unordered_map<std::string, MEOrderBook> books_;
-    std::unordered_map<uint64_t, exchange::Order*> order_index_;  // 改成 exchange::Order*
+    std::unordered_map<uint64_t, exchange::Order*> order_index_;
     OrderBook private_order_book_;
     ReportCallback report_cb_;
 };

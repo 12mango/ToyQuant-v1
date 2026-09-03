@@ -1,19 +1,36 @@
-# Data directory
+# Data Directory
 
-This folder is split into two purposes:
+This directory has two purposes:
 
-- scenarios/: input tick files used as market-data scenarios.
-- runtime/: generated outputs from a run, such as orders.csv and trades.csv.
+- `scenarios/`: Tick scenarios used as market-data inputs.
+- `runtime/`: Generated order and trade outputs.
 
-## Scenario generation
+## Tick Input Format
 
-Run the scenario generator from the project root:
+Scenario files use CSV with a header row:
+
+```csv
+ts,symbol,price,size,side
+1759080000000,EURUSD,1.18300,58,B
+```
+
+| Field | Meaning |
+|---|---|
+| `ts` | Timestamp in milliseconds. |
+| `symbol` | Instrument symbol, for example `EURUSD`. |
+| `price` | Tick price. |
+| `size` | Tick quantity. |
+| `side` | `B` for buy direction and `S` for sell direction. |
+
+## Generate Scenarios
+
+Run this command from the project root:
 
 ```bash
 python3 tools/gen_ticks.py all --count 100 --seed 42 --output-dir data/scenarios
 ```
 
-This creates files such as:
+This command creates files such as:
 
 - data/scenarios/flat_ticks.csv
 - data/scenarios/uptrend_ticks.csv
@@ -22,18 +39,28 @@ This creates files such as:
 - data/scenarios/random_ticks.csv
 - data/scenarios/synthetic_ticks.csv
 
-## Runtime output
+See [Market Scenarios](../docs/SCENARIOS.md) for the purpose of each scenario.
 
-The application writes its generated orders and trades into:
+## Runtime Output
+
+The application writes strategy orders and trades to:
 
 - data/runtime/orders.csv
 - data/runtime/trades.csv
 
-## Typical workflow
+Both output files use this format:
 
-1. Generate or choose a scenario file in data/scenarios.
-2. Run the engine or backtest using that file.
-3. Inspect generated outputs under data/runtime.
-4. Reuse the scenario file for repeatable tests.
+```csv
+ts,symbol,side,price,quantity,order_id
+```
 
-The default app paths are aligned to this layout.
+`orders.csv` records submitted strategy orders. `trades.csv` records only actual `MarketMaker` trades and is read by `backtest_main`.
+
+## Typical Workflow
+
+1. Select or generate a scenario file in `data/scenarios/`.
+2. Run the engine with that file.
+3. Inspect the generated outputs in `data/runtime/`.
+4. Reuse the same scenario and parameters to compare repeated results.
+
+The application's default paths follow this directory layout.
