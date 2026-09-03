@@ -44,6 +44,28 @@ flowchart LR
 - A valid limit order that cannot be filled becomes a resting order.
 - Order ID, quantity, and remaining quantity are validated before entering the engine and order book to prevent duplicate orders or overfills from corrupting state.
 
+## Order Lifecycle
+
+`Resting` is an `ExecutionReport` event: it means the unfilled portion of a valid limit order has entered the matching book. In the local `OrderBook`, that order is tracked as `Active`. The two labels describe the same phase from different perspectives.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Submitted
+    Submitted --> Cancelled: self-trade prevention
+    Submitted --> Filled: fully matched immediately
+    Submitted --> PartialFill: partially matched
+    Submitted --> Resting: no immediate fill
+    PartialFill --> Filled: remaining quantity matched
+    PartialFill --> Resting: remaining quantity queued
+    Resting --> PartialFill: partial external fill
+    Resting --> Filled: final external fill
+    Resting --> Cancelled: cancel_order
+    Resting: Matching book event
+    Resting: Local OrderBook state = Active
+```
+
+Invalid submissions are rejected silently by the current API and do not enter this report lifecycle. `Trade` is emitted alongside a fill and carries the executed quantity. `PartialFill`, `Filled`, `Cancelled`, and `Resting` are lifecycle reports and carry the remaining quantity.
+
 ## Design Boundaries
 
 This project maintains a simplified order book for learning: `OrderBook` stores local orders and the top of book derived from ticks, while `MatchingEngine` owns separate matching price levels. Order submission, fills, and cancellations keep the two views synchronized.

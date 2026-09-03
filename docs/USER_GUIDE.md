@@ -309,7 +309,7 @@ The book stores bid and ask price levels separately. Bid maps sort high-to-low a
 
 ### 9.1 State lifecycle
 
-The order state enum is:
+The local order state enum is:
 
 ```text
 New -> Active -> PartialFilled -> Filled
@@ -317,7 +317,25 @@ New -> Active -> PartialFilled -> Filled
                        -> Cancelled
 ```
 
-`Rejected` is returned when an ID is unknown to the state index. An order becomes `Active` when `add_order` accepts it. A partial fill decreases its remaining quantity; a full fill removes it from active order storage and marks it `Filled`. Cancellation removes it and marks it `Cancelled`.
+The matching engine also emits lifecycle reports. `Resting` is the report sent when an unfilled limit order enters the matching queue; that same order is `Active` in the local `OrderBook`.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Submitted
+  Submitted --> Filled: fully matched
+  Submitted --> PartialFill: partially matched
+  Submitted --> Resting: no immediate fill
+  Submitted --> Cancelled: self-trade prevention
+  PartialFill --> Filled: remaining quantity matched
+  PartialFill --> Resting: remaining quantity queued
+  Resting --> PartialFill: partial fill
+  Resting --> Filled: final fill
+  Resting --> Cancelled: cancel_order
+  Resting: ExecutionReport event
+  Resting: OrderBook state = Active
+```
+
+Invalid submissions are silently rejected by the current matching-engine API and do not produce an `ExecutionReport`. `Rejected` is returned when an ID is unknown to the local state index. A partial fill decreases remaining quantity; a full fill removes the order from active storage and marks it `Filled`. Cancellation removes it and marks it `Cancelled`.
 
 `add_order` rejects zero IDs, zero quantities, inconsistent `remaining > qty`, and IDs already known to the state index. `apply_partial_fill` rejects overfills, so an invalid update cannot silently reduce an order below zero.
 
