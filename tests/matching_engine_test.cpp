@@ -70,24 +70,24 @@ int main()
                                     { fifo_reports.push_back(report); });
 
     fifo_engine.send_order({10, "XAUUSD", exchange::Side::Buy, exchange::OrderType::Limit, 2000.0,
-                            50, 50, 101, "MarketMaker"});
+                            50, 50, 101, "LiquidityProvider"});
     fifo_engine.send_order({11, "XAUUSD", exchange::Side::Buy, exchange::OrderType::Limit, 2000.0,
-                            50, 50, 102, "MarketMaker"});
+                            50, 50, 102, "LiquidityProvider"});
     fifo_engine.send_order({12, "XAUUSD", exchange::Side::Sell, exchange::OrderType::Limit, 2000.0,
                             80, 80, 103, "MarketMaker"});
 
     std::vector<uint64_t> trade_ids;
     for (const auto& report : fifo_reports)
     {
-        if (report.exec_type == ExecType::Trade)
+        if (report.exec_type == ExecType::Trade && report.order_id != 12)
         {
             trade_ids.push_back(report.order_id);
         }
     }
 
     assert(trade_ids.size() == 2);
-    assert(trade_ids[0] == 10 || trade_ids[0] == 11);
-    assert(trade_ids[1] == 10 || trade_ids[1] == 11);
+    assert(trade_ids[0] == 10);
+    assert(trade_ids[1] == 11);
 
     // Best-price priority: a buy order should prefer the highest bid and only then next levels.
     MatchingEngine price_engine;
@@ -95,12 +95,10 @@ int main()
     price_engine.set_report_callback([&price_reports](const ExecutionReport& report)
                                      { price_reports.push_back(report); });
 
-    price_engine.send_order({20, "EURUSD", exchange::Side::Sell, exchange::OrderType::Limit,
-                             1.10000, 30, 30, 201, "MarketMaker"});
     price_engine.send_order({21, "EURUSD", exchange::Side::Buy, exchange::OrderType::Limit, 1.10100,
-                             20, 20, 202, "MarketMaker"});
+                             20, 20, 202, "LiquidityProvider"});
     price_engine.send_order({22, "EURUSD", exchange::Side::Buy, exchange::OrderType::Limit, 1.10050,
-                             10, 10, 203, "MarketMaker"});
+                             10, 10, 203, "LiquidityProvider"});
     price_engine.send_order({23, "EURUSD", exchange::Side::Sell, exchange::OrderType::Limit,
                              1.10000, 40, 40, 204, "MarketMaker"});
 
