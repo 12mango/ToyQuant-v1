@@ -1,5 +1,7 @@
 site_name: ToyQuant-v1 Docs
 site_description: This is the web version of all project user manuals.
+site_url: https://12mango.github.io/ToyQuant-v1/
+repo_url: https://github.com/12mango/ToyQuant-v1
 
 theme:
   name: material
