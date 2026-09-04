@@ -2,10 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "1. HFT Demo (CSV 模式)",
+      "name": "1. ToyQuant (CSV mode)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${command:cmake.buildDirectory}/hft_demo",
+      "program": "${command:cmake.buildDirectory}/toy_quant",
       "args": [
         "csv",
         "data/synthetic_ticks.csv",
@@ -14,13 +14,13 @@
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "MIMode": "gdb",
-      "preLaunchTask": "Build hft_demo"
+      "preLaunchTask": "Build toy_quant"
     },
     {
-      "name": "2. HFT Demo (UDP 接收模式)",
+      "name": "2. ToyQuant (UDP mode)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${command:cmake.buildDirectory}/hft_demo",
+      "program": "${command:cmake.buildDirectory}/toy_quant",
       "args": [
         "udp",
         "9000"
@@ -28,10 +28,10 @@
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "MIMode": "gdb",
-      "preLaunchTask": "Build hft_demo"
+      "preLaunchTask": "Build toy_quant"
     },
     {
-      "name": "3. Backtest Main (经典回测驱动)",
+      "name": "3. Backtest Main (Backtest mode)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${command:cmake.buildDirectory}/backtest_main",

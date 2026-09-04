@@ -3,13 +3,13 @@
   "tasks": [
     {
       "type": "shell",
-      "label": "Build hft_demo",
+      "label": "Build toy_quant",
       "command": "cmake",
       "args": [
         "--build",
         "${command:cmake.buildDirectory}",
         "--target",
-        "hft_demo"
+        "toy_quant"
       ],
       "group": "build"
     },

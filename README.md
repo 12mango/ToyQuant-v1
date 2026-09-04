@@ -1,4 +1,4 @@
-# HFT Demo
+# ToyQuant-v1
 
 A reproducible C++ market-making simulator that demonstrates the complete flow from market data through order books, strategy decisions, matching, execution reports, and backtest metrics.
 
@@ -32,13 +32,13 @@ ctest --test-dir build --output-on-failure
 Run the optimized market-making strategy on a CSV scenario:
 
 ```bash
-./build/hft_demo csv data/scenarios/flat_ticks.csv 0 optimized
+./build/toy_quant csv data/scenarios/flat_ticks.csv 0 optimized
 ```
 
 Run in UDP mode:
 
 ```bash
-./build/hft_demo udp 9000 naive
+./build/toy_quant udp 9000 naive
 python3 tools/udp_sender.py --port 9000
 ```
 
@@ -54,7 +54,7 @@ Run a backtest:
 
 ## Output
 
-After running `hft_demo`, generated order and trade data is written to:
+After running `toy_quant`, generated order and trade data is written to:
 
 - `data/runtime/orders.csv`
 - `data/runtime/trades.csv`

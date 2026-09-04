@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(hft_demo LANGUAGES CXX)
+project(toy_quant LANGUAGES CXX)
 
 # ==================== Compiler Options ====================
 set(CMAKE_CXX_STANDARD 20)
@@ -40,11 +40,11 @@ set(COMMON_SOURCES
 # Cross-platform threading library.
 find_package(Threads REQUIRED)
 
-# ==================== hft_demo Executable ====================
-add_executable(hft_demo src/main.cpp src/market/udp_feed.cpp ${COMMON_SOURCES})
-target_include_directories(hft_demo PRIVATE ${COMMON_INCLUDE_DIRS})
-target_link_libraries(hft_demo PRIVATE Threads::Threads)
-set_target_properties(hft_demo PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+# ==================== toy_quant Executable ====================
+add_executable(toy_quant src/main.cpp src/market/udp_feed.cpp ${COMMON_SOURCES})
+target_include_directories(toy_quant PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(toy_quant PRIVATE Threads::Threads)
+set_target_properties(toy_quant PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ==================== backtest_main Executable ====================
 add_executable(backtest_main src/backtest/backtest_main.cpp src/backtest/backtest_driver.cpp ${COMMON_SOURCES})

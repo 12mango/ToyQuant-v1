@@ -15,7 +15,7 @@ Scenario files live in `data/scenarios/` and provide repeatable inputs for strat
 ## Run a Scenario
 
 ```bash
-./build/hft_demo csv data/scenarios/shock_ticks.csv 0 optimized
+./build/toy_quant csv data/scenarios/shock_ticks.csv 0 optimized
 ```
 
 The second optional argument is the delay in milliseconds between ticks. Use `0` for fastest processing, or a positive value to make console output easier to inspect.

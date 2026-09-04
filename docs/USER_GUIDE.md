@@ -1,4 +1,4 @@
-# HFT Demo User Guide
+# ToyQuant User Guide
 
 ## Who This Is For
 
@@ -71,7 +71,7 @@ cmake --build build
 
 This creates these executables under `build/`:
 
-- `hft_demo`: CSV or UDP simulation pipeline.
+- `toy_quant`: CSV or UDP simulation pipeline.
 - `backtest_main`: PnL replay application.
 - `strategy_state_test`: strategy state regression test.
 - `orderbook_state_test`: order-book state regression test.
@@ -103,14 +103,14 @@ The tests use the standard library `assert` macro. Assertions can be disabled wh
 The general form is:
 
 ```bash
-./build/hft_demo csv [path_to_csv] [ms_delay] [strategy]
+./build/toy_quant csv [path_to_csv] [ms_delay] [strategy]
 ```
 
 Examples:
 
 ```bash
-./build/hft_demo csv data/scenarios/flat_ticks.csv 0 optimized
-./build/hft_demo csv data/scenarios/shock_ticks.csv 100 naive
+./build/toy_quant csv data/scenarios/flat_ticks.csv 0 optimized
+./build/toy_quant csv data/scenarios/shock_ticks.csv 100 naive
 ```
 
 Arguments:
@@ -124,7 +124,7 @@ Arguments:
 The application validates the mode, strategy, delay, CSV path, and UDP port before starting. Use `--help` to print the command summary:
 
 ```bash
-./build/hft_demo --help
+./build/toy_quant --help
 ```
 
 During CSV playback, the console prints one `[TICK]` line per input tick and a final `[SUMMARY]` line. A tick line shows the input event plus the current top-of-book values. The summary includes submitted order count and quantity, cancellation count, trade report count and quantity, fill rate, cancellation rate, net position, inventory exposure, and number of working orders.
@@ -134,13 +134,13 @@ During CSV playback, the console prints one `[TICK]` line per input tick and a f
 The general form is:
 
 ```bash
-./build/hft_demo udp <port> [strategy]
+./build/toy_quant udp <port> [strategy]
 ```
 
 For example:
 
 ```bash
-./build/hft_demo udp 9000 optimized
+./build/toy_quant udp 9000 optimized
 ```
 
 In another terminal, send a scenario:
@@ -161,7 +161,7 @@ UDP mode runs until it is interrupted, normally with `Ctrl+C`. The current main 
 
 ### Generated Runtime Files
 
-Each `hft_demo` run creates or truncates:
+Each `toy_quant` run creates or truncates:
 
 ```text
 data/runtime/orders.csv
@@ -585,7 +585,7 @@ When adding a behavior change, first decide which module owns the rule. Add a fo
 ## 15. Practice Loop
 
 1. Generate a fixed-seed scenario: `python3 tools/gen_ticks.py flat --count 100 --seed 42 --output-dir data/scenarios`.
-2. Run `hft_demo` in CSV mode and inspect `[TICK]`, `[SUMMARY]`, `orders.csv`, and `trades.csv`.
+2. Run `toy_quant` in CSV mode and inspect `[TICK]`, `[SUMMARY]`, `orders.csv`, and `trades.csv`.
 3. Run `backtest_main` against the generated files and read the PnL report.
 4. Change exactly one strategy parameter, repeat the same scenario, and compare outputs.
 5. Add or update the smallest test that proves the changed rule.
