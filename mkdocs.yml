@@ -1,5 +1,5 @@
 site_name: ToyQuant-v1 Docs
-site_description: This is the web version of all project user manuals.
+site_description: Technical Documentation for ToyQuant-v1 C++20 Trading Engine Demo.
 site_url: https://12mango.github.io/ToyQuant-v1/
 repo_url: https://github.com/12mango/ToyQuant-v1
 
@@ -7,7 +7,7 @@ theme:
   name: material
   language: en
   palette:
-    # Palette toggle for automatic light/dark mode switching
+    # Light/Dark mode settings
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: orange
@@ -24,12 +24,19 @@ theme:
         name: Switch to light mode
 
   features:
-    - content.code.copy         # Enable one-click copy button for code blocks
-    - navigation.expand         # Expand all navigation sub-sections by default
-    - navigation.tabs           # Top navigation bar tabs
-    - navigation.sections       # Render sections in the left sidebar
-    - navigation.top            # Enable "Back to top" button when scrolling down
-    - header.autohide           # Auto-hide header when scrolling down
+    - content.code.copy
+    - navigation.expand
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - header.autohide
+
+# 显式定义导航菜单，对应你 docs/ 目录下的 4 个文件
+nav:
+  - Home: index.md
+  - Architecture: ARCHITECTURE.md
+  - Scenarios: SCENARIOS.md
+  - User Guide: USER_GUIDE.md
 
 markdown_extensions:
   - pymdownx.highlight:
@@ -38,4 +45,4 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences         # Enable full support for Mermaid sequence diagrams and code fences
+  - pymdownx.superfences
