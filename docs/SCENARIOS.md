@@ -1,40 +1,41 @@
-# Market Scenarios
+# Scenarios
 
-Scenario files live in `data/scenarios/` and provide repeatable inputs for strategy runs and backtests.
+Scenarios are CSV files containing synthetic market ticks. They make it easy to run the same strategy against different market conditions.
 
-| File | Market behavior | What to observe |
-|---|---|---|
-| `flat_ticks.csv` | Flat market | Quotes should remain near a stable price and inventory should not grow persistently in one direction. |
-| `uptrend_ticks.csv` | Rising market | The smoothed mid price and quotes should move upward. |
-| `downtrend_ticks.csv` | Falling market | The smoothed mid price and quotes should move downward. |
-| `shock_ticks.csv` | Sudden price movement | Quote refreshes, cancellations, and inventory-limit responses. |
-| `random_ticks.csv` | Random noise | Strategy stability under noisy input. |
-| `synthetic_ticks.csv` | Default mixed sample | Default data for a quick demo or backtest. |
-| `sample_ticks.csv` | Small sample | Debugging the CSV format and console output. |
+## Available Files
+
+All built-in files are in `data/scenarios/`:
+
+| File | Market behavior |
+|---|---|
+| `sample_ticks.csv` | Small input for a quick run |
+| `synthetic_ticks.csv` | General-purpose mixed sample |
+| `flat_ticks.csv` | Mostly stable prices |
+| `uptrend_ticks.csv` | Rising prices |
+| `downtrend_ticks.csv` | Falling prices |
+| `shock_ticks.csv` | Sudden price movement |
+| `random_ticks.csv` | Noisy price movement |
 
 ## Run a Scenario
+
+Pass the file to `toy_quant` in CSV mode:
 
 ```bash
 ./build/toy_quant csv data/scenarios/shock_ticks.csv 0 optimized
 ```
 
-The second optional argument is the delay in milliseconds between ticks. Use `0` for fastest processing, or a positive value to make console output easier to inspect.
+Replace the filename to compare scenarios. Replace `optimized` with `naive` to compare the two strategies. After each run, inspect the terminal summary, `data/runtime/orders.csv`, and `data/runtime/trades.csv`.
+
+The runtime CSV files are overwritten on the next run, so copy them first when comparing results.
 
 ## Generate Scenarios
+
+The generator creates reproducible input files:
 
 ```bash
 python3 tools/gen_ticks.py all --count 100 --seed 42 --output-dir data/scenarios
 ```
 
-Use a fixed `--seed` to generate identical data and reproduce a strategy or backtest result.
+Use the same `--seed` to recreate the same ticks. For a useful comparison, keep the scenario and seed fixed, change only the strategy or one parameter, and compare the orders and trades.
 
-## Inspect Results
-
-After each run, inspect:
-
-- `[TICK]` and `[SUMMARY]` in the console.
-- Strategy order records in `data/runtime/orders.csv`.
-- Trade records in `data/runtime/trades.csv`.
-- Realized PnL, unrealized PnL, equity, and maximum drawdown in the backtest log.
-
-Scenarios are intended to make system behavior understandable, not to establish real-market performance or strategy profitability.
+These scenarios are for learning and regression experiments. They do not represent real market data or production trading performance.

@@ -31,12 +31,11 @@ theme:
     - navigation.top
     - header.autohide
 
-# 显式定义导航菜单，对应你 docs/ 目录下的 4 个文件
 nav:
   - Home: index.md
+  - User Guide: USER_GUIDE.md
   - Architecture: ARCHITECTURE.md
   - Scenarios: SCENARIOS.md
-  - User Guide: USER_GUIDE.md
 
 markdown_extensions:
   - pymdownx.highlight:

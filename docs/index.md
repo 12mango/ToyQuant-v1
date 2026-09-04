@@ -1,27 +1,33 @@
-# ToyQuant-v1 Documentation
+# ToyQuant Documentation
 
-Welcome to the official documentation for **ToyQuant-v1** — an educational, high-performance C++20 HFT & Market Making Engine Demo.
+This documentation is organized into three layers:
 
----
-
-## 📚 Documentation Navigation
-
-Explore the technical design and usage guides through the following sections:
-
-- [ Architecture Overview](ARCHITECTURE.md)  
-  *Deep dive into the pipeline architecture, memory pool design, lock-free SPSC queues, OrderBook, and STP risk control.*
-
-- [ Scenarios & Mechanics](SCENARIOS.md)  
-  *Detailed explanations of backtesting, live-market simulation, order execution flow, and trading strategies.*
-
-- [ User Guide & API](USER_GUIDE.md)  
-  *Step-by-step instructions for building with CMake, running GoogleTest suites, configuring parameters, and running benchmarks.*
+1. **Getting Started**: how to build, run, and test the project.
+2. **Architecture**: what each module does and why the C++ design is structured this way.
+3. **Scenarios**: how to use synthetic market conditions to study behavior and compare strategies.
 
 ---
 
-## ⚡ Key Architecture Highlights
+## Documentation Navigation
 
-- **Modern C++20**: Utilizing concepts, `std::atomic` memory orders, and RAII.
-- **Hot Path Zero-Allocation**: Pre-allocated memory pools ensuring $\mathcal{O}(1)$ predictable latency.
-- **Lock-Free Concurrency**: Single-Producer Single-Consumer (SPSC) ring buffers for minimal thread contention.
-- **In-Memory OrderBook**: Real-time limit order book matching with Self-Match Prevention (STP).
+- [User Guide](USER_GUIDE.md)  
+  *Build instructions, CLI usage, testing, runtime artifacts, and basic troubleshooting.*
+
+- [Architecture](ARCHITECTURE.md)  
+  *A module-by-module explanation of the data flow, matching logic, and the purpose of each C++ component.*
+
+- [Scenarios](SCENARIOS.md)  
+  *Built-in scenario catalog and experiment workflow for understanding market behavior and strategy reactions.*
+
+---
+
+## What This Project Covers
+
+- **C++20 trading loop** for feed, order-book update, strategy decision, and matching.
+- **CSV and UDP market feeds** for reproduction and simulation.
+- **Order-book state and matching rules** with price-time priority and partial fills.
+- **Market-making strategies** such as `naive` and `optimized`.
+- **Backtest-oriented reporting** covering execution summaries and inventory exposure.
+- **CTest-based validation** for the behaviors that matter most to this project.
+
+This project is intentionally educational and does not aim to reproduce a production exchange stack or a production-grade low-latency HFT system.
