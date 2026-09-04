@@ -5,12 +5,35 @@ theme:
   name: material
   language: en
   palette:
-    primary: indigo            
+    # Palette toggle for automatic light/dark mode switching
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: orange
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: orange
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
   features:
-    - content.code.copy       
-    - navigation.expand        
+    - content.code.copy         # Enable one-click copy button for code blocks
+    - navigation.expand         # Expand all navigation sub-sections by default
+    - navigation.tabs           # Top navigation bar tabs
+    - navigation.sections       # Render sections in the left sidebar
+    - navigation.top            # Enable "Back to top" button when scrolling down
+    - header.autohide           # Auto-hide header when scrolling down
 
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences         # Enable full support for Mermaid sequence diagrams and code fences
