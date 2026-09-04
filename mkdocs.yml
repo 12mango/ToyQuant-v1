@@ -1,0 +1,16 @@
+site_name: Hft-demo Docs
+site_description: This is the web version of all project user manuals.
+
+theme:
+  name: material
+  language: en
+  palette:
+    primary: indigo            
+  features:
+    - content.code.copy       
+    - navigation.expand        
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
