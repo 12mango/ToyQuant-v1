@@ -87,7 +87,7 @@ python3 tools/udp_sender.py --port 9000
 Generate your own scenarios with a fixed seed for reproducible runs:
 
 ```bash
-python3 tools/gen_ticks.py all --count 100 --seed 42 --output-dir data/scenarios
+python3 tools/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
 ```
 
 ## Output
@@ -98,6 +98,24 @@ Each `toy_quant` run creates or truncates:
 - `data/runtime/trades.csv` — every execution report the engine returned.
 
 The default backtest log is `logs/backtest.log`.
+
+## Visual Report
+
+Generate a static report with the market price, strategy quotes, executions, net inventory, and run summary:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python tools/plot_report.py \
+  --ticks data/scenarios/synthetic_ticks.csv \
+  --orders data/runtime/orders.csv \
+  --trades data/runtime/trades.csv \
+  --output reports/synthetic_ticks_optimized.png
+```
+
+The generated PNG is designed for quick inspection and README screenshots. Runtime CSV files are overwritten by the next simulation, so generate or copy the report before starting another run.
+
+![ToyQuant simulation report](reports/synthetic_ticks_optimized.png)
 
 ## Non-Goals
 

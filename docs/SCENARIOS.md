@@ -4,7 +4,7 @@ Scenarios are CSV files containing synthetic market ticks. They make it easy to 
 
 ## Available Files
 
-All built-in files are in `data/scenarios/`:
+All built-in files are in `data/scenarios/`. The generated scenarios contain 1,000 ticks each; `sample_ticks.csv` is intentionally kept small for quick format checks.
 
 | File | Market behavior |
 |---|---|

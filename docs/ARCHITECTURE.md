@@ -307,9 +307,9 @@ double fee = trade.quantity * exec_price * fee_rate_;
 auto& pos = positions[trade.symbol];
 ```
 
-The PnL logic first closes an opposite position, then uses any residual quantity to open or extend the new direction. `Position` stores signed quantity and average price; `realized_pnl` stores closed-position results. Final equity adds unrealized PnL using the latest tick price.
+The PnL logic uses a **net-position** model. `Position::qty` is signed: a positive value is net long, a negative value is net short, and zero is flat. A buy first closes an existing short; a sell first closes an existing long. Only any quantity left after that close opens or extends the opposite net position. The implementation therefore supports simultaneous buy and sell *orders*, but it does not keep separate long and short inventory ledgers for the same symbol.
 
-The driver clears positions, prices, realized PnL, and the equity curve at the beginning of `run()`. It sorts symbols before reporting, avoiding unstable `unordered_map` output order. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The `orders_file` constructor argument remains for CLI compatibility but is not currently read.
+`Position` also stores the average entry price of the current net position. Closing quantity contributes to `realized_pnl`; remaining open quantity contributes unrealized PnL when it is marked against the latest tick price. The driver clears positions, prices, realized PnL, and the equity curve at the beginning of `run()`, then sorts symbols before reporting to avoid unstable `unordered_map` output order. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The `orders_file` constructor argument remains for CLI compatibility but is not currently read.
 
 ## 8. C++ Feature Map and Reading Order
 

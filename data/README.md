@@ -56,6 +56,8 @@ ts,symbol,side,price,quantity,order_id
 
 `orders.csv` records submitted strategy orders. `trades.csv` records only actual `MarketMaker` trades and is read by `backtest_main`.
 
+The generated built-in scenarios contain 1,000 ticks each, which is enough for a meaningful demo and visualization. `sample_ticks.csv` remains a small 20-tick input for quick format checks.
+
 ## Typical Workflow
 
 1. Select or generate a scenario file in `data/scenarios/`.

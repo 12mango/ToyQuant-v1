@@ -199,16 +199,21 @@ class OptimizedMarketMaker : public Strategy
             double buy_price = std::round(raw_buy / tick_size) * tick_size;
             double sell_price = std::round(raw_sell / tick_size) * tick_size;
 
-            double qty_scale = 1.0;
+            double buy_qty_scale = 1.0;
+            double sell_qty_scale = 1.0;
             if (inventory > 0)
-                qty_scale = std::max(0.0, 1.0 - double(inventory) / double(inventory_limit));
+            {
+                buy_qty_scale = std::max(0.0, 1.0 - double(inventory) / double(inventory_limit));
+            }
             if (inventory < 0)
-                qty_scale = std::max(0.0, 1.0 - double(-inventory) / double(inventory_limit));
+            {
+                sell_qty_scale = std::max(0.0, 1.0 - double(-inventory) / double(inventory_limit));
+            }
 
-            uint64_t buy_qty =
-                uint64_t(std::max(0.0, std::floor(base_order_size * qty_scale / double(level))));
-            uint64_t sell_qty =
-                uint64_t(std::max(0.0, std::floor(base_order_size * qty_scale / double(level))));
+            uint64_t buy_qty = uint64_t(
+                std::max(0.0, std::floor(base_order_size * buy_qty_scale / double(level))));
+            uint64_t sell_qty = uint64_t(
+                std::max(0.0, std::floor(base_order_size * sell_qty_scale / double(level))));
 
             if (inventory > inventory_limit) buy_qty = 0;
             if (inventory < -inventory_limit) sell_qty = 0;
