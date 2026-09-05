@@ -1,0 +1,999 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Technical Documentation for ToyQuant-v1 C++20 Trading Engine Demo.">
+      
+      
+      
+        <link rel="canonical" href="https://12mango.github.io/ToyQuant-v1/ARCHITECTURE/">
+      
+      
+        <link rel="prev" href="../USER_GUIDE/">
+      
+      
+        <link rel="next" href="../SCENARIOS/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Architecture - ToyQuant-v1 Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="slate" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="ToyQuant-v1 Docs" class="md-header__button md-logo" aria-label="ToyQuant-v1 Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ToyQuant-v1 Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="slate" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="slate" data-md-color-accent="deep-orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/12mango/ToyQuant-v1" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    12mango/ToyQuant-v1
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="ToyQuant-v1 Docs" class="md-nav__button md-logo" aria-label="ToyQuant-v1 Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ToyQuant-v1 Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/12mango/ToyQuant-v1" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    12mango/ToyQuant-v1
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../USER_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-system-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. System Map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-shared-types-and-input-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Shared Types and Input Boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-application-coordinator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Application Coordinator
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-orderbook-market-view-and-local-order-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. OrderBook: Market View and Local Order State
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-matchingengine-orders-queues-and-reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. MatchingEngine: Orders, Queues, and Reports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-strategy-the-main-decision-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Strategy: The Main Decision Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-backtest-replay-pnl-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Backtest: Replay, PnL, and Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-c-feature-map-and-reading-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. C++ Feature Map and Reading Order
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SCENARIOS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scenarios
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-system-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. System Map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-shared-types-and-input-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Shared Types and Input Boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-application-coordinator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Application Coordinator
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-orderbook-market-view-and-local-order-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. OrderBook: Market View and Local Order State
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-matchingengine-orders-queues-and-reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. MatchingEngine: Orders, Queues, and Reports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-strategy-the-main-decision-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Strategy: The Main Decision Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-backtest-replay-pnl-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Backtest: Replay, PnL, and Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-c-feature-map-and-reading-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. C++ Feature Map and Reading Order
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<p>ToyQuant is a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. This page explains the implementation by source file; <a href="../USER_GUIDE/">User Guide</a> contains the commands, while <a href="../SCENARIOS/">Scenarios</a> contains the input catalog.</p>
+<h2 id="1-system-map">1. System Map<a class="headerlink" href="#1-system-map" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    CSV[CsvFeed\nCSV rows] --&gt; T[Tick]
+    UDP[UdpFeed\nUDP packets] --&gt; T
+    T --&gt; P[Pipeline::process_tick]
+    P --&gt; OB[OrderBook\non_tick / top]
+    P --&gt; ME[MatchingEngine\nmarket tick]
+    OB --&gt; S[Strategy]
+    S --&gt;|quotes and cancels| P
+    P --&gt;|limit orders| ME
+    ME --&gt;|ExecutionReport| S
+    ME --&gt;|Trade reports| TR[trades.csv]
+    P --&gt;|submitted orders| OR[orders.csv]
+    TR --&gt; BT[BacktestDriver]
+    T --&gt; BT</code></pre>
+<p>The central path is intentionally short:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>input -&gt; Tick -&gt; OrderBook / MatchingEngine -&gt; Strategy -&gt; orders -&gt; reports -&gt; output
+</span></code></pre></div>
+<p>The source map is:</p>
+<table>
+<thead>
+<tr>
+<th>Responsibility</th>
+<th>Main files</th>
+<th>Key types or functions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shared data</td>
+<td><code>src/common/types.h</code></td>
+<td><code>Tick</code>, <code>Side</code>, <code>ExecType</code>, <code>TickCallback</code></td>
+</tr>
+<tr>
+<td>Input</td>
+<td><code>src/market/csv_feed.*</code>, <code>udp_feed.*</code></td>
+<td><code>CsvFeed::run</code>, <code>UdpFeed::loop</code></td>
+</tr>
+<tr>
+<td>Coordination</td>
+<td><code>src/main.cpp</code></td>
+<td><code>Pipeline::process_tick</code>, output callbacks</td>
+</tr>
+<tr>
+<td>Local state</td>
+<td><code>src/orderbook/orderbook.*</code></td>
+<td><code>TopOfBook</code>, <code>OrderBook</code>, <code>OrderState</code></td>
+</tr>
+<tr>
+<td>Matching</td>
+<td><code>src/exchange/matching_engine.*</code></td>
+<td><code>MatchingEngine::match</code>, <code>send_order</code></td>
+</tr>
+<tr>
+<td>Strategy</td>
+<td><code>src/strategy/strategy.h</code>, <code>market_maker.h</code></td>
+<td><code>Strategy</code>, two market makers</td>
+</tr>
+<tr>
+<td>Analysis</td>
+<td><code>src/backtest/backtest_driver.*</code></td>
+<td><code>BacktestDriver::run</code>, <code>print_report</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-shared-types-and-input-boundary">2. Shared Types and Input Boundary<a class="headerlink" href="#2-shared-types-and-input-boundary" title="Permanent link">&para;</a></h2>
+<h3 id="files-srccommontypesh-srcmarketcsv_feed-srcmarketudp_feed">Files: <code>src/common/types.h</code>, <code>src/market/csv_feed.*</code>, <code>src/market/udp_feed.*</code><a class="headerlink" href="#files-srccommontypesh-srcmarketcsv_feed-srcmarketudp_feed" title="Permanent link">&para;</a></h3>
+<p>Every feed produces the same <code>Tick</code>, so downstream modules are independent of the transport:</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Tick</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="p">{</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">ts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">symbol</span><span class="p">;</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">;</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="n">Side</span><span class="w"> </span><span class="n">side</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Side</span><span class="o">::</span><span class="n">Unknown</span><span class="p">;</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">};</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="k">using</span><span class="w"> </span><span class="n">TickCallback</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">Tick</span><span class="o">&amp;</span><span class="p">)</span><span class="o">&gt;</span><span class="p">;</span>
+</span></code></pre></div>
+<p><code>CsvFeed::run</code> reads one line at a time, skips the header, converts fields with <code>stoull</code> and <code>stod</code>, then invokes <code>cb_(t)</code>. A malformed row is reported and skipped. Its callback design is a C++11-style type-erased boundary: callers can provide a lambda without making the feed depend on <code>Pipeline</code>.</p>
+<p><code>UdpFeed</code> has a different transport but the same output contract. On Linux, <code>recvmmsg</code> receives up to eight datagrams per call. <code>parse_tick_cpp</code> uses <code>std::string_view</code> and <code>find</code> to split the packet, and the parsed tick is published into a fixed-size ring buffer:</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kt">size_t</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">head_</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_relaxed</span><span class="p">);</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kt">size_t</span><span class="w"> </span><span class="n">next</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">h</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">RING_SIZE</span><span class="p">;</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">next</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">tail_</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_acquire</span><span class="p">))</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">{</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="n">ring_</span><span class="p">[</span><span class="n">h</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span><span class="p">;</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="n">head_</span><span class="p">.</span><span class="n">store</span><span class="p">(</span><span class="n">next</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_release</span><span class="p">);</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The producer writes the tick before release-storing <code>head_</code>; the consumer acquire-loads the index before reading the slot. This is a single-producer/single-consumer pattern using C++11 atomics. A full ring drops the incoming tick, which is an intentional limitation of this compact feed.</p>
+<p>The UDP implementation also shows later library choices: <code>std::string_view</code> is a C++17 non-owning view, <code>std::thread</code> owns the receiver loop, and <code>std::vector&lt;std::array&lt;char, MAX_PKT&gt;&gt;</code> provides fixed-size receive storage. The parser still constructs strings for numeric conversion, so this is not a zero-allocation parser.</p>
+<h2 id="3-application-coordinator">3. Application Coordinator<a class="headerlink" href="#3-application-coordinator" title="Permanent link">&para;</a></h2>
+<h3 id="file-srcmaincpp-class-pipeline">File: <code>src/main.cpp</code>, class <code>Pipeline</code><a class="headerlink" href="#file-srcmaincpp-class-pipeline" title="Permanent link">&para;</a></h3>
+<p><code>main.cpp</code> wires concrete objects together. <code>run_csv_mode</code> creates an <code>OrderBook</code>, one polymorphic strategy, a <code>MatchingEngine</code>, a <code>Pipeline</code>, and a <code>CsvFeed</code>. The feed only knows its callback; <code>Pipeline</code> owns the domain sequence.</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant F as Feed
+    participant P as Pipeline
+    participant B as OrderBook
+    participant M as MatchingEngine
+    participant S as Strategy
+    F-&gt;&gt;P: process_tick(tick)
+    P-&gt;&gt;B: on_tick(tick)
+    P-&gt;&gt;M: process_market_tick(tick)
+    P-&gt;&gt;B: top(symbol)
+    B--&gt;&gt;P: TopOfBook
+    P-&gt;&gt;S: on_top_of_book(top)
+    S--&gt;&gt;P: new orders
+    P-&gt;&gt;M: cancel_order / send_order
+    M--&gt;&gt;S: ExecutionReport
+    M--&gt;&gt;P: write trades.csv</code></pre>
+<p>The report callback is the other important application boundary:</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">engine_</span><span class="p">.</span><span class="n">set_report_callback</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="p">[</span><span class="k">this</span><span class="p">](</span><span class="k">const</span><span class="w"> </span><span class="n">ExecutionReport</span><span class="o">&amp;</span><span class="w"> </span><span class="n">report</span><span class="p">)</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p">{</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">        </span><span class="n">strategy_</span><span class="p">.</span><span class="n">on_order_update</span><span class="p">(</span><span class="n">report</span><span class="p">);</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">        </span><span class="n">write_trade_csv_row</span><span class="p">(</span><span class="n">trades_out_</span><span class="p">,</span><span class="w"> </span><span class="n">report</span><span class="p">);</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="p">});</span>
+</span></code></pre></div>
+<p>The <code>[this]</code> lambda is a C++11 closure. <code>Pipeline</code> stores references to its collaborators rather than owning them; the run function constructs them in an enclosing scope and destroys them after the feed finishes. <code>std::unique_ptr&lt;Strategy&gt;</code> expresses exclusive ownership of the selected concrete strategy, while <code>std::atomic&lt;uint64_t&gt;</code> supplies the order-ID counter.</p>
+<p><code>orders.csv</code> is written when the pipeline submits a candidate order, before the matching result is known. <code>trades.csv</code> receives only <code>Trade</code> reports owned by <code>MarketMaker</code>; <code>Resting</code>, <code>Filled</code>, and <code>Cancelled</code> are lifecycle events, not additional executions.</p>
+<h2 id="4-orderbook-market-view-and-local-order-state">4. OrderBook: Market View and Local Order State<a class="headerlink" href="#4-orderbook-market-view-and-local-order-state" title="Permanent link">&para;</a></h2>
+<h3 id="files-srcorderbookorderbookh-srcorderbookorderbookcpp">Files: <code>src/orderbook/orderbook.h</code>, <code>src/orderbook/orderbook.cpp</code><a class="headerlink" href="#files-srcorderbookorderbookh-srcorderbookorderbookcpp" title="Permanent link">&para;</a></h3>
+<p><code>OrderBook</code> combines two pieces of state:</p>
+<ol>
+<li><code>bids_qty</code> and <code>asks_qty</code> provide the simplified external top of book.</li>
+<li><code>bids_orders</code> and <code>asks_orders</code> hold local strategy orders and their states.</li>
+</ol>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">SideBook</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">{</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span><span class="w"> </span><span class="kt">uint64_t</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">greater</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">bids_qty</span><span class="p">;</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span><span class="w"> </span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">asks_qty</span><span class="p">;</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">list</span><span class="o">&lt;</span><span class="n">OrderNode</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">greater</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">bids_orders</span><span class="p">;</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">list</span><span class="o">&lt;</span><span class="n">OrderNode</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">asks_orders</span><span class="p">;</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">};</span>
+</span></code></pre></div>
+<p>The comparator is the key rule: <code>bids_qty.begin()</code> is the highest bid, while <code>asks_qty.begin()</code> is the lowest ask. A <code>std::list</code> keeps queue-node addresses stable when other nodes are inserted, allowing <code>order_index_</code> to point at an active <code>OrderNode</code>. This is readable ordered price-level storage; production systems often use integer ticks instead of <code>double</code> prices.</p>
+<p><code>on_tick</code> updates one price level from the incoming tick; <code>top</code> reads the first level on both sides. A tick does not rebuild complete depth or delete old external levels. The result is a top-of-book teaching abstraction, not a full exchange book.</p>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; New
+    New --&gt; Active: add_order
+    Active --&gt; PartialFilled: partial fill
+    PartialFilled --&gt; PartialFilled: more partial fill
+    Active --&gt; Filled: full fill
+    PartialFilled --&gt; Filled: remaining filled
+    Active --&gt; Cancelled: cancel_order
+    New --&gt; Rejected: invalid input</code></pre>
+<p><code>order_index_</code> contains active orders only. <code>state_index_</code> retains terminal states, so <code>state_for_order</code> can distinguish <code>Filled</code>, <code>Cancelled</code>, and unknown <code>Rejected</code>. <code>std::lock_guard&lt;std::mutex&gt;</code> protects mutations and queries with RAII: the mutex is released automatically on every return path.</p>
+<h2 id="5-matchingengine-orders-queues-and-reports">5. MatchingEngine: Orders, Queues, and Reports<a class="headerlink" href="#5-matchingengine-orders-queues-and-reports" title="Permanent link">&para;</a></h2>
+<h3 id="files-srcexchangeorderh-execution_reporth-matching_engine">Files: <code>src/exchange/order.h</code>, <code>execution_report.h</code>, <code>matching_engine.*</code><a class="headerlink" href="#files-srcexchangeorderh-execution_reporth-matching_engine" title="Permanent link">&para;</a></h3>
+<p>The exchange namespace defines the order vocabulary. <code>Order</code> carries identity, symbol, side, limit or market type, original quantity, remaining quantity, timestamp, and owner. <code>ExecutionReport</code> adds the event type and reports either a fill or a lifecycle transition.</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">ExecutionReport</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">{</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">order_id</span><span class="p">{};</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="n">exchange</span><span class="o">::</span><span class="n">Side</span><span class="w"> </span><span class="n">side</span><span class="p">{};</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="n">ExecType</span><span class="w"> </span><span class="n">exec_type</span><span class="p">{};</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">symbol</span><span class="p">;</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">price</span><span class="p">{};</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">quantity</span><span class="p">{};</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">ts</span><span class="p">{};</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">owner</span><span class="p">;</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="p">};</span>
+</span></code></pre></div>
+<p><code>send_order</code> rejects zero IDs, zero quantities, inconsistent remaining quantity, and duplicate active IDs. <code>process_market_tick</code> creates a market order owned by <code>Market</code>; that order can consume strategy liquidity but is never rested. <code>cancel_order</code> removes an active order from its price queue, updates the private <code>OrderBook</code>, and emits <code>Cancelled</code>.</p>
+<p>The matching algorithm is a direct price-time implementation:</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">best_ask_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">book</span><span class="p">.</span><span class="n">asks</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kt">double</span><span class="w"> </span><span class="n">best_price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">best_ask_it</span><span class="o">-&gt;</span><span class="n">first</span><span class="p">;</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">new_order</span><span class="p">.</span><span class="n">price</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">best_price</span><span class="p">)</span><span class="w"> </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">Order</span><span class="o">&amp;</span><span class="w"> </span><span class="n">resting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ask_queue</span><span class="p">.</span><span class="n">front</span><span class="p">();</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="kt">uint64_t</span><span class="w"> </span><span class="n">traded</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">min</span><span class="p">(</span><span class="n">qty</span><span class="p">,</span><span class="w"> </span><span class="n">resting</span><span class="p">.</span><span class="n">remaining</span><span class="p">);</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">qty</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="n">traded</span><span class="p">;</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">resting</span><span class="p">.</span><span class="n">remaining</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="n">traded</span><span class="p">;</span>
+</span></code></pre></div>
+<p>For buys, ascending asks select the lowest executable price. For sells, descending bids select the highest executable price. <code>front()</code> selects the earliest order at that price. The engine reports a <code>Trade</code> for both participants, then reports <code>PartialFill</code> or <code>Filled</code> for the resting order. An unfilled incoming limit order receives <code>Resting</code> and enters the appropriate queue.</p>
+<pre class="mermaid"><code>flowchart TD
+    I[Incoming order] --&gt; V{Valid?}
+    V -- no --&gt; X[Ignore submission]
+    V -- yes --&gt; P{Crosses best opposite price?}
+    P -- no --&gt; R[Rest limit order]
+    P -- yes --&gt; Q[Take front order at best price]
+    Q --&gt; ST{Same normalized owner?}
+    ST -- yes --&gt; C[Cancel incoming order]
+    ST -- no --&gt; F[Emit two Trade reports]
+    F --&gt; L{Quantity remains?}
+    L -- yes --&gt; Q
+    L -- no --&gt; D[Emit Filled or PartialFill]</code></pre>
+<p>Owner normalization removes whitespace and lowercases characters. It prevents <code>MarketMaker</code> from trading against itself, but the policy cancels the aggressor and is not a general exchange standard. A subtle reporting rule is documented in <code>execution_report.h</code>: <code>Trade.quantity</code> is executed quantity; lifecycle quantities are remaining quantity.</p>
+<h2 id="6-strategy-the-main-decision-module">6. Strategy: The Main Decision Module<a class="headerlink" href="#6-strategy-the-main-decision-module" title="Permanent link">&para;</a></h2>
+<h3 id="files-srcstrategystrategyh-srcstrategymarket_makerh">Files: <code>src/strategy/strategy.h</code>, <code>src/strategy/market_maker.h</code><a class="headerlink" href="#files-srcstrategystrategyh-srcstrategymarket_makerh" title="Permanent link">&para;</a></h3>
+<p>The strategy is the decision layer, not the matching layer. It sees <code>TopOfBook</code>, keeps its own working-order and position state, and returns candidate <code>StrategyOrder</code> values. The pipeline later assigns IDs and converts them to <code>exchange::Order</code>.</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Strategy</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="p">{</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">   </span><span class="k">public</span><span class="o">:</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="o">~</span><span class="n">Strategy</span><span class="p">()</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">default</span><span class="p">;</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">StrategyOrder</span><span class="o">&gt;</span><span class="w"> </span><span class="n">on_top_of_book</span><span class="p">(</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">        </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">symbol</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">TopOfBook</span><span class="o">&amp;</span><span class="w"> </span><span class="n">tob</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">on_order_submitted</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">StrategyOrder</span><span class="o">&amp;</span><span class="w"> </span><span class="n">order</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cancel_requests</span><span class="p">()</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="nf">net_position</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="nf">working_order_count</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">on_order_update</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">ExecutionReport</span><span class="o">&amp;</span><span class="w"> </span><span class="n">report</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="p">};</span>
+</span></code></pre></div>
+<p>This interface is the key substitution point. <code>main.cpp</code> selects an implementation with <code>std::make_unique</code>, and the rest of the pipeline calls virtual functions without knowing whether it is naive or optimized. The virtual destructor makes deleting through <code>Strategy*</code> safe; pure virtual functions make the lifecycle contract explicit.</p>
+<h3 id="61-naivemarketmaker-baseline-quote">6.1 NaiveMarketMaker: baseline quote<a class="headerlink" href="#61-naivemarketmaker-baseline-quote" title="Permanent link">&para;</a></h3>
+<p>The naive strategy requires both sides of the top of book, computes the midpoint, places one quote on each side, and rounds both prices to the configured tick size:</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kt">double</span><span class="w"> </span><span class="n">mid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">tob</span><span class="p">.</span><span class="n">bid_price</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">tob</span><span class="p">.</span><span class="n">ask_price</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="p">;</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kt">double</span><span class="w"> </span><span class="n">buy_price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">round</span><span class="p">((</span><span class="n">mid</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">base_spread</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">tick_size</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">tick_size</span><span class="p">;</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kt">double</span><span class="w"> </span><span class="n">sell_price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">round</span><span class="p">((</span><span class="n">mid</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">base_spread</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">tick_size</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">tick_size</span><span class="p">;</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">orders</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">StrategyOrder</span><span class="p">(</span><span class="n">Side</span><span class="o">::</span><span class="n">Buy</span><span class="p">,</span><span class="w"> </span><span class="n">symbol</span><span class="p">,</span><span class="w"> </span><span class="n">buy_price</span><span class="p">,</span><span class="w"> </span><span class="n">base_order_size</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">orders</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">StrategyOrder</span><span class="p">(</span><span class="n">Side</span><span class="o">::</span><span class="n">Sell</span><span class="p">,</span><span class="w"> </span><span class="n">symbol</span><span class="p">,</span><span class="w"> </span><span class="n">sell_price</span><span class="p">,</span><span class="w"> </span><span class="n">base_order_size</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+</span></code></pre></div>
+<p>It does not request cancellations, so its <code>open_orders</code> can accumulate. It updates <code>position</code> only from <code>Trade</code> reports and removes an order on <code>Filled</code> or <code>Cancelled</code>. This makes it a deliberately simple baseline for comparison.</p>
+<h3 id="62-optimizedmarketmaker-stateful-quoting">6.2 OptimizedMarketMaker: stateful quoting<a class="headerlink" href="#62-optimizedmarketmaker-stateful-quoting" title="Permanent link">&para;</a></h3>
+<p>The optimized strategy adds controls in a deliberate order:</p>
+<pre class="mermaid"><code>flowchart LR
+    T[TopOfBook] --&gt; M[Midpoint]
+    M --&gt; W[deque midpoint window]
+    W --&gt; SM[Smoothed midpoint]
+    SM --&gt; TR[Simple trend]
+    SM --&gt; SP[Spread adjustment]
+    TR --&gt; Q[Three quote levels]
+    SP --&gt; Q
+    INV[Position + working exposure] --&gt; Q
+    Q --&gt; O[Buy/sell StrategyOrder]
+    O --&gt; C[Refresh and cancel policy]</code></pre>
+<p>The implementation keeps recent midpoints in <code>std::deque&lt;double&gt;</code>. It averages the window, estimates trend as the change from the previous smoothed midpoint, and calculates up to three levels. The core inventory-aware price adjustment is:</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kt">double</span><span class="w"> </span><span class="n">raw_buy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">smooth_mid</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">level_spread</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">trend</span><span class="p">)</span><span class="w"> </span><span class="o">-</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">                 </span><span class="n">inv_spread_bias</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">inventory</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="mf">1.0</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="kt">double</span><span class="w"> </span><span class="n">raw_sell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">smooth_mid</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">level_spread</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">trend</span><span class="p">)</span><span class="w"> </span><span class="o">+</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">                  </span><span class="n">inv_spread_bias</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">inventory</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="mf">1.0</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="kt">double</span><span class="w"> </span><span class="n">buy_price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">round</span><span class="p">(</span><span class="n">raw_buy</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">tick_size</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">tick_size</span><span class="p">;</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="kt">double</span><span class="w"> </span><span class="n">sell_price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">round</span><span class="p">(</span><span class="n">raw_sell</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">tick_size</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">tick_size</span><span class="p">;</span>
+</span></code></pre></div>
+<p>Inventory is <code>position + working_exposure</code>, where working buy quantities count positive and working sell quantities count negative. Positive inventory pushes buy prices lower and reduces buy size; negative inventory does the symmetric thing to sells. Once the inventory limit is exceeded, the strategy sets the risky side's quantity to zero.</p>
+<p>The refresh policy separates “should quote now?” from “which old orders must be cancelled?”:</p>
+<ul>
+<li><code>quote_age_ticks</code> forces refresh after an age limit.</li>
+<li><code>quote_refresh_ticks</code> compares the current smoothed midpoint with <code>last_quote_mid</code>.</li>
+<li><code>cancel_requests()</code> returns active IDs when the quote is stale.</li>
+<li><code>on_order_submitted()</code> records IDs and resets quote age.</li>
+</ul>
+<p>This is the main strategy state machine: market observations create candidate quotes, submitted IDs become working state, execution reports reduce quantities or position, and stale quotes are cancelled before replacement.</p>
+<h3 id="63-execution-feedback-and-c-state-handling">6.3 Execution feedback and C++ state handling<a class="headerlink" href="#63-execution-feedback-and-c-state-handling" title="Permanent link">&para;</a></h3>
+<p>Both strategies use <code>std::unordered_map&lt;uint64_t, StrategyOrder&gt;</code> for direct order-ID lookup. On a <code>Trade</code>, they update position according to side and reduce the tracked quantity. On <code>Filled</code> or <code>Cancelled</code>, they erase the working order. <code>Resting</code> and <code>PartialFill</code> are lifecycle notifications in the current implementation and do not directly change position.</p>
+<p>The strategy module demonstrates C++11 ownership and polymorphism (<code>std::unique_ptr</code>, virtual interfaces, and lambdas in the surrounding pipeline), C++14-era container-oriented style, C++17 library types, and C++20 usage in the surrounding project such as <code>unordered_map::contains</code> and designated report initialization. The important lesson is how each feature makes ownership, lookup, or event flow explicit.</p>
+<h2 id="7-backtest-replay-pnl-and-limits">7. Backtest: Replay, PnL, and Limits<a class="headerlink" href="#7-backtest-replay-pnl-and-limits" title="Permanent link">&para;</a></h2>
+<h3 id="files-srcbacktestbacktest_driverh-backtest_drivercpp">Files: <code>src/backtest/backtest_driver.h</code>, <code>backtest_driver.cpp</code><a class="headerlink" href="#files-srcbacktestbacktest_driverh-backtest_drivercpp" title="Permanent link">&para;</a></h3>
+<p><code>BacktestDriver</code> is an offline analysis component. It reads ticks to establish the final mark price, reads the recorded trade CSV, applies slippage and fees, updates per-symbol positions, and writes a report. It does not participate in live order matching.</p>
+<div class="language-cpp highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">double</span><span class="w"> </span><span class="n">exec_price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">trade</span><span class="p">.</span><span class="n">price</span><span class="w"> </span><span class="o">+</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="p">(</span><span class="n">trade</span><span class="p">.</span><span class="n">side</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">Side</span><span class="o">::</span><span class="n">Buy</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">slippage_</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="o">-</span><span class="n">slippage_</span><span class="p">);</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kt">double</span><span class="w"> </span><span class="n">fee</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">trade</span><span class="p">.</span><span class="n">quantity</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">exec_price</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">fee_rate_</span><span class="p">;</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">pos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">positions</span><span class="p">[</span><span class="n">trade</span><span class="p">.</span><span class="n">symbol</span><span class="p">];</span>
+</span></code></pre></div>
+<p>The PnL logic uses a <strong>net-position</strong> model. <code>Position::qty</code> is signed: a positive value is net long, a negative value is net short, and zero is flat. A buy first closes an existing short; a sell first closes an existing long. Only any quantity left after that close opens or extends the opposite net position. The implementation therefore supports simultaneous buy and sell <em>orders</em>, but it does not keep separate long and short inventory ledgers for the same symbol.</p>
+<p><code>Position</code> also stores the average entry price of the current net position. Closing quantity contributes to <code>realized_pnl</code>; remaining open quantity contributes unrealized PnL when it is marked against the latest tick price. The driver clears positions, prices, realized PnL, and the equity curve at the beginning of <code>run()</code>, then sorts symbols before reporting to avoid unstable <code>unordered_map</code> output order. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The <code>orders_file</code> constructor argument remains for CLI compatibility but is not currently read.</p>
+<h2 id="8-c-feature-map-and-reading-order">8. C++ Feature Map and Reading Order<a class="headerlink" href="#8-c-feature-map-and-reading-order" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Standard</th>
+<th>Feature visible in this project</th>
+<th>Where to inspect it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C++11</td>
+<td>lambdas, <code>std::thread</code>, atomics, mutex RAII, <code>unique_ptr</code>, <code>enum class</code></td>
+<td><code>src/main.cpp</code>, <code>src/market/udp_feed.cpp</code>, <code>src/common/types.h</code></td>
+</tr>
+<tr>
+<td>C++14</td>
+<td>modern factory and container-oriented implementation style</td>
+<td><code>src/main.cpp</code>, <code>src/strategy/market_maker.h</code></td>
+</tr>
+<tr>
+<td>C++17</td>
+<td><code>std::filesystem</code>, <code>std::string_view</code>, structured bindings</td>
+<td><code>src/main.cpp</code>, <code>src/market/udp_feed.cpp</code>, <code>src/backtest/backtest_driver.cpp</code></td>
+</tr>
+<tr>
+<td>C++20</td>
+<td><code>unordered_map::contains</code>, designated initializers, strict <code>from_chars</code> parsing</td>
+<td><code>src/exchange/matching_engine.cpp</code>, <code>src/main.cpp</code></td>
+</tr>
+</tbody>
+</table>
+<p>For a code-reading pass, follow this order:</p>
+<ol>
+<li><code>src/common/types.h</code> for the shared vocabulary.</li>
+<li><code>src/main.cpp</code> for object construction and event order.</li>
+<li><code>src/strategy/strategy.h</code> and <code>market_maker.h</code> for decisions and state.</li>
+<li><code>src/orderbook/</code> and <code>src/exchange/</code> for storage and matching rules.</li>
+<li><code>src/backtest/</code> for offline performance calculation.</li>
+<li><code>tests/</code> to see the intended observable behavior.</li>
+</ol>
+<p>The project intentionally does not model full depth, real exchange protocols, persistence and recovery, risk gateways, queue position, or production latency. Those are boundaries, not hidden guarantees. The value of this codebase is that one complete market-making path remains visible enough to study.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "navigation.expand", "navigation.sections", "navigation.top", "navigation.tracking", "header.autohide"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
