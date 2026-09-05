@@ -33,7 +33,7 @@ The runtime CSV files are overwritten on the next run, so copy them first when c
 The generator creates reproducible input files:
 
 ```bash
-python3 tools/gen_ticks.py all --count 100 --seed 42 --output-dir data/scenarios
+python3 tools/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
 ```
 
 Use the same `--seed` to recreate the same ticks. For a useful comparison, keep the scenario and seed fixed, change only the strategy or one parameter, and compare the orders and trades.

@@ -27,7 +27,7 @@ ts,symbol,price,size,side
 Run this command from the project root:
 
 ```bash
-python3 tools/gen_ticks.py all --count 100 --seed 42 --output-dir data/scenarios
+python3 tools/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
 ```
 
 This command creates files such as:
