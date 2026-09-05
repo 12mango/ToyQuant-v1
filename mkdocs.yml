@@ -2,22 +2,22 @@ site_name: ToyQuant-v1 Docs
 site_description: Technical Documentation for ToyQuant-v1 C++20 Trading Engine Demo.
 site_url: https://12mango.github.io/ToyQuant-v1/
 repo_url: https://github.com/12mango/ToyQuant-v1
+repo_name: 12mango/ToyQuant-v1
 
 theme:
   name: material
   language: en
   palette:
-    # Light/Dark mode settings
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: orange
+      primary: slate
       accent: deep orange
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: orange
+      primary: slate
       accent: deep orange
       toggle:
         icon: material/brightness-4
@@ -26,9 +26,9 @@ theme:
   features:
     - content.code.copy
     - navigation.expand
-    - navigation.tabs
     - navigation.sections
     - navigation.top
+    - navigation.tracking
     - header.autohide
 
 nav:
@@ -38,10 +38,17 @@ nav:
   - Scenarios: SCENARIOS.md
 
 markdown_extensions:
+  - toc:
+      permalink: true
+      toc_depth: 2
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
