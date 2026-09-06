@@ -117,6 +117,76 @@ The `[this]` lambda is a C++11 closure. `Pipeline` stores references to its coll
 
 `orders.csv` is written when the pipeline submits a candidate order, before the matching result is known. `trades.csv` receives only `Trade` reports owned by `MarketMaker`; `Resting`, `Filled`, and `Cancelled` are lifecycle events, not additional executions.
 
+### 3.1 Dependency injection at the coordinator boundary
+
+`Pipeline` does not construct the order book, strategy, matching engine, or output streams itself. They are created by `run_csv_mode` and passed into the constructor:
+
+```cpp
+auto output_files = open_output_files();
+OrderBook order_book;
+auto strategy = make_strategy(cfg.strategy_name);
+MatchingEngine engine;
+Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
+```
+
+The constructor receives the domain collaborators through their interfaces and stores references to them:
+
+```cpp
+Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
+         Strategy& strategy, IMatchingEngine& engine)
+    : orders_out_(orders_out),
+      trades_out_(trades_out),
+      order_book_(order_book),
+      strategy_(strategy),
+      engine_(engine)
+{
+    // Install the report boundary after the collaborators are available.
+}
+```
+
+This is constructor injection: the `Pipeline` declares what it needs, while the caller chooses the concrete implementations. `IOrderBook` and `IMatchingEngine` make the coordinator depend on behavior rather than on `OrderBook` and `MatchingEngine` details. The strategy is injected through the `Strategy` base class, so the same pipeline can run `NaiveMarketMaker` or `OptimizedMarketMaker`:
+
+```cpp
+std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
+{
+    if (strategy_name == "naive")
+    {
+        return std::make_unique<NaiveMarketMaker>(100, 0.00001);
+    }
+    return std::make_unique<OptimizedMarketMaker>(100, 0.000003);
+}
+```
+
+Dependency injection keeps the event sequence in one place without making `Pipeline` responsible for configuration, construction, or ownership of every component. It also gives tests a narrow substitution point: a fake `IOrderBook`, `IMatchingEngine`, or `Strategy` can record calls and verify that `process_tick` sends market data, cancellations, and orders in the expected order. The same design is used for the feed callback: `CsvFeed` receives a `TickCallback`, so it publishes ticks without depending on the `Pipeline` class.
+
+### 3.2 RAII and lifetime-bound resources
+
+The application uses RAII, or Resource Acquisition Is Initialization, to bind cleanup to object lifetime. In CSV mode, the local objects are created in dependency order and remain alive while the feed invokes the pipeline:
+
+```cpp
+auto output_files = open_output_files();
+OrderBook order_book;
+auto strategy = make_strategy(cfg.strategy_name);
+MatchingEngine engine;
+Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
+CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay);
+feed.run();
+```
+
+When `run_csv_mode` returns, destruction runs in reverse declaration order. `feed` is destroyed first, then `pipeline`, `engine`, `strategy`, `order_book`, and finally `output_files`; the `std::ofstream` members flush and close without an explicit cleanup path. If `feed.run()` or another operation throws, stack unwinding still performs the same destruction. This is why the callback must not outlive `pipeline`, and why the enclosing scope deliberately owns all of them together.
+
+The locking code applies the same rule to synchronization:
+
+```cpp
+TopOfBook OrderBook::top(const std::string& symbol)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    // Read the protected book state and return a snapshot.
+}
+```
+
+Constructing `lock` acquires `mtx_`; leaving the function releases it automatically, including early returns such as an unknown symbol. The same pattern protects `on_tick`, `add_order`, `cancel_order`, and fill updates. RAII therefore handles both external resources such as files and internal resources such as mutex ownership, making exceptional and multi-return control flow less error-prone. `std::unique_ptr<Strategy>` is another ownership example: it destroys the selected concrete strategy through the virtual destructor when its scope ends.
+
 ## 4. OrderBook: Market View and Local Order State
 
 ### Files: `src/orderbook/orderbook.h`, `src/orderbook/orderbook.cpp`
@@ -153,6 +223,61 @@ stateDiagram-v2
 ```
 
 `order_index_` contains active orders only. `state_index_` retains terminal states, so `state_for_order` can distinguish `Filled`, `Cancelled`, and unknown `Rejected`. `std::lock_guard<std::mutex>` protects mutations and queries with RAII: the mutex is released automatically on every return path.
+
+### 4.1 Why `map` and `unordered_map` are both present
+
+`OrderBook` mixes two access patterns:
+
+```cpp
+std::map<std::string, SideBook> books_;
+std::unordered_map<uint64_t, OrderNode*> order_index_;
+std::unordered_map<uint64_t, OrderState> state_index_;
+```
+
+The `map` versions are used when the code needs ordered iteration by price or symbol. `books_` is keyed by symbol, and each `SideBook` keeps price levels in sorted order:
+
+```cpp
+std::map<double, uint64_t, std::greater<double>> bids_qty;
+std::map<double, std::list<OrderNode>, std::greater<double>> bids_orders;
+```
+
+This makes `bids_qty.begin()` the best bid and `asks_qty.begin()` the best ask, which is exactly what `top()` wants. The downside is that `std::map` is $O(\log n)$ for lookup and iteration is ordered by key.
+
+`unordered_map` is used for order IDs and states, because the code mostly needs direct lookup and duplicate checks:
+
+```cpp
+auto it = order_index_.find(order_id);
+if (it == order_index_.end()) return false;
+```
+
+and
+
+```cpp
+if (state_index_.contains(order.id))
+{
+    return;
+}
+```
+
+Here the goal is not ordering but constant-time average lookup: `unordered_map` is $O(1)$ average, which is useful when a fill, cancel, or state transition needs to find one active order by ID. In other words, the project chooses `map` for “sorted market view” and `unordered_map` for “fast order identity lookup.”
+
+### 4.2 Precision and the future integer conversion
+
+The current book uses `double` for prices, which is simple and readable but not ideal for exchange-grade precision:
+
+```cpp
+std::map<double, uint64_t, std::greater<double>> bids_qty;
+```
+
+A value like `99.999999` can exist as a floating-point artifact, especially after repeated calculations or normalization. That is acceptable in a teaching project, but not ideal for deterministic matching or backtesting.
+
+The natural next step is to move the book to integer ticks at the boundary. Instead of storing raw `double` prices, the code would convert prices to integer ticks before inserting them into the book, e.g.:
+
+```cpp
+long long tick_price = static_cast<long long>(std::llround(raw_price / tick_size));
+```
+
+Then comparisons and ordering remain exact, and the rest of the order book can keep the same logic while avoiding floating-point drift. In real exchange systems this is the standard pattern: the book is built on integer ticks, while the display layer converts back to human-readable prices. This project keeps `double` for simplicity, but the architecture already points toward that later optimization.
 
 ## 5. MatchingEngine: Orders, Queues, and Reports
 
