@@ -3,8 +3,9 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <thread>
+
+#include "market/tick_csv_parser.h"
 
 CsvFeed::CsvFeed(const std::string& path, TickCallback cb, int ms_delay)
     : path_(path), cb_(cb), ms_delay_(ms_delay)
@@ -25,40 +26,15 @@ void CsvFeed::run()
     {
         if (line.empty()) continue;
 
-        std::istringstream ss(line);
-        std::string token;
-        Tick t;
-
         try
         {
-            if (!std::getline(ss, token, ',')) continue;
-            if (token == "ts" || token == "timestamp")
+            const auto first_separator = line.find(',');
+            const std::string_view first_field = std::string_view(line).substr(0, first_separator);
+            if (first_field == "ts" || first_field == "timestamp")
             {
                 continue;
             }
-            t.ts = std::stoull(token);
-
-            // symbol
-            if (!std::getline(ss, t.symbol, ',')) continue;
-
-            // price
-            if (!std::getline(ss, token, ',')) continue;
-            t.price = std::stod(token);
-
-            // size
-            if (!std::getline(ss, token, ',')) continue;
-            t.size = std::stoull(token);
-
-            // side
-            if (!std::getline(ss, token, ',')) continue;
-            if (token.empty())
-            {
-                t.side = Side::Unknown;
-            }
-            else
-            {
-                t.side = to_side(token[0]);
-            }
+            const Tick t = tick_csv::parse_row(line);
 
             // Dispatch the parsed tick to the consumer.
             cb_(t);

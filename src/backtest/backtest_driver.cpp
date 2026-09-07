@@ -1,7 +1,6 @@
 #include "backtest_driver.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
@@ -10,6 +9,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
+
+#include "market/tick_csv_parser.h"
 
 // ==================== Strict Conversion Helpers ====================
 inline double safe_stod(const std::string& s)
@@ -141,21 +142,7 @@ void BacktestDriver::run()
         if (line.empty()) continue;  // Skip empty rows.
         try
         {
-            std::stringstream ss(line);
-            Tick t;
-            std::string tmp;
-
-            std::getline(ss, tmp, ',');
-            t.ts = safe_stoull(tmp);
-            std::getline(ss, t.symbol, ',');
-            std::getline(ss, tmp, ',');
-            t.price = safe_stod(tmp);
-            std::getline(ss, tmp, ',');
-            t.size = safe_stoull(tmp);
-            std::getline(ss, tmp, ',');
-            t.side = tmp.empty() ? Side::Unknown : to_side(tmp[0]);
-
-            if (t.symbol.empty()) throw std::invalid_argument("empty symbol");
+            const Tick t = tick_csv::parse_row(line);
             last_price[t.symbol] = t.price;  // Update the latest price.
         }
         catch (const std::exception& ex)

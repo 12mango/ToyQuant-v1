@@ -299,7 +299,11 @@ struct ExecutionReport
 };
 ```
 
-`send_order` rejects zero IDs, zero quantities, inconsistent remaining quantity, and duplicate active IDs. `process_market_tick` creates a market order owned by `Market`; that order can consume strategy liquidity but is never rested. `cancel_order` removes an active order from its price queue, updates the private `OrderBook`, and emits `Cancelled`.
+Three details matter here:
+
+- External ticks become `Market` orders via `process_market_tick`, so they can consume strategy liquidity but are never rested.
+- Each price level uses `std::list<exchange::Order>` to keep FIFO order, and `front()` / `pop_front()` implement price-time priority.
+- The engine normalizes `owner` before comparing resting and incoming orders, which prevents `MarketMaker` from trading with itself.
 
 The matching algorithm is a direct price-time implementation:
 
@@ -412,11 +416,16 @@ The refresh policy separates “should quote now?” from “which old orders mu
 
 This is the main strategy state machine: market observations create candidate quotes, submitted IDs become working state, execution reports reduce quantities or position, and stale quotes are cancelled before replacement.
 
-### 6.3 Execution feedback and C++ state handling
+### 6.3 Strategy comparison
 
-Both strategies use `std::unordered_map<uint64_t, StrategyOrder>` for direct order-ID lookup. On a `Trade`, they update position according to side and reduce the tracked quantity. On `Filled` or `Cancelled`, they erase the working order. `Resting` and `PartialFill` are lifecycle notifications in the current implementation and do not directly change position.
+For the same `sample_ticks.csv` run, the two strategies diverge immediately:
 
-The strategy module demonstrates C++11 ownership and polymorphism (`std::unique_ptr`, virtual interfaces, and lambdas in the surrounding pipeline), C++14-era container-oriented style, C++17 library types, and C++20 usage in the surrounding project such as `unordered_map::contains` and designated report initialization. The important lesson is how each feature makes ownership, lookup, or event flow explicit.
+| Strategy | Submitted orders | Submitted quantity | Cancel requests | Fill rate | Net position | Current equity |
+|---|---:|---:|---:|---:|---:|---:|
+| `naive` | 38 | 3800 | 0 | 0.231579 | -880 | -0.713200 |
+| `optimized` | 24 | 1379 | 9 | 0.31037 | -428 | -0.329810 |
+
+The table shows the core difference: `naive` is more aggressive and leaves more working orders behind, while `optimized` submits less, cancels stale quotes, and ends with a smaller adverse position. That is why the optimized version is the better demonstration of stateful market making in this project.
 
 ## 7. Backtest: Replay, PnL, and Limits
 
@@ -434,7 +443,7 @@ auto& pos = positions[trade.symbol];
 
 The PnL logic uses a **net-position** model. `Position::qty` is signed: a positive value is net long, a negative value is net short, and zero is flat. A buy first closes an existing short; a sell first closes an existing long. Only any quantity left after that close opens or extends the opposite net position. The implementation therefore supports simultaneous buy and sell *orders*, but it does not keep separate long and short inventory ledgers for the same symbol.
 
-`Position` also stores the average entry price of the current net position. Closing quantity contributes to `realized_pnl`; remaining open quantity contributes unrealized PnL when it is marked against the latest tick price. The driver clears positions, prices, realized PnL, and the equity curve at the beginning of `run()`, then sorts symbols before reporting to avoid unstable `unordered_map` output order. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The `orders_file` constructor argument remains for CLI compatibility but is not currently read.
+`Position` also stores the average entry price of the current net position. Closing quantity contributes to `realized_pnl`; remaining open quantity contributes unrealized PnL when it is marked against the latest tick price. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The `orders_file` constructor argument remains for CLI compatibility but is not currently read.
 
 ## 8. C++ Feature Map and Reading Order
 
