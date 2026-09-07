@@ -39,7 +39,7 @@ This command creates files such as:
 - data/scenarios/random_ticks.csv
 - data/scenarios/synthetic_ticks.csv
 
-See [Market Scenarios](../docs/SCENARIOS.md) for the purpose of each scenario.
+See the [User Guide](../docs/USER_GUIDE.md#scenarios) for the purpose of each scenario.
 
 ## Runtime Output
 
@@ -55,6 +55,8 @@ ts,symbol,side,price,quantity,order_id
 ```
 
 `orders.csv` records submitted strategy orders. `trades.csv` records only actual `MarketMaker` trades and is read by `backtest_main`.
+
+Each runtime file begins with a `# source_ticks=...` metadata line. The backtest uses it to detect a mismatch between the Tick file used to generate the trades and the Tick file supplied for marking prices. Older files without this metadata remain compatible.
 
 The generated built-in scenarios contain 1,000 ticks each, which is enough for a meaningful demo and visualization. `sample_ticks.csv` remains a small 20-tick input for quick format checks.
 

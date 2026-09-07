@@ -50,6 +50,36 @@ python3 tools/udp_sender.py 127.0.0.1 9000 data/scenarios/sample_ticks.csv 0
 
 CSV mode is easier for repeatable experiments; UDP mode is useful for observing a streaming feed.
 
+## Scenarios
+
+Scenarios are CSV files containing synthetic market ticks. They make it easy to run the same
+strategy against different market conditions. Built-in files live in `data/scenarios/`:
+
+| File | Market behavior |
+|---|---|
+| `sample_ticks.csv` | Small input for a quick run |
+| `synthetic_ticks.csv` | General-purpose mixed sample |
+| `flat_ticks.csv` | Mostly stable prices |
+| `uptrend_ticks.csv` | Rising prices |
+| `downtrend_ticks.csv` | Falling prices |
+| `shock_ticks.csv` | Sudden price movement |
+| `random_ticks.csv` | Noisy price movement |
+
+The generated scenarios contain 1,000 ticks each; `sample_ticks.csv` is intentionally small for
+quick format checks. Keep the scenario file fixed when comparing `naive` and `optimized`, and
+remember that runtime CSV files are overwritten by the next simulation.
+
+Generate reproducible scenarios with a fixed seed:
+
+```bash
+python3 tools/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
+```
+
+Using the same seed recreates the same ticks. For a controlled experiment, keep the scenario and
+seed fixed, change only the strategy or one parameter, and compare the orders and trades. These
+scenarios are for learning and regression experiments; they do not represent real market data or
+production trading performance.
+
 ## Generate a Visual Report
 
 After running a scenario, create a static report with the three main views:
@@ -66,7 +96,7 @@ Set up the optional plotting environment and generate the report with:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python tools/plot_report.py \
-  --ticks data/scenarios/synthetic_ticks.csv \
+  --ticks data/scenarios/sample_ticks.csv \
   --orders data/runtime/orders.csv \
   --trades data/runtime/trades.csv \
   --output reports/synthetic_ticks_optimized.png
@@ -82,6 +112,8 @@ Each run updates:
 data/runtime/orders.csv
 data/runtime/trades.csv
 ```
+
+The runtime files begin with a `# source_ticks=...` metadata line. Reuse that same Tick file for `backtest_main`; the backtest validates the source when the metadata is available.
 
 The terminal shows tick and summary information. Backtest reports are written under `logs/`:
 
@@ -100,4 +132,5 @@ The terminal shows tick and summary information. Backtest reports are written un
 - Use a non-negative integer for the delay and a UDP port between `1` and `65535`.
 - If there are no trades, try `shock_ticks.csv` or `random_ticks.csv`; a quiet scenario may not cross the strategy's orders.
 
-For implementation details, see [Architecture](ARCHITECTURE.md). For available market inputs, see [Scenarios](SCENARIOS.md).
+For implementation details, see [Architecture](ARCHITECTURE.md). Data file details are documented
+in `data/README.md` in the repository.

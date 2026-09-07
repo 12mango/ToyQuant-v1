@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "backtest/backtest_driver.h"
+#include "backtest/performance.h"
 #include "exchange/matching_engine.h"
 #include "market/csv_feed.h"
 #include "market/udp_feed.h"
@@ -227,12 +228,10 @@ class Pipeline
 
     void print_summary() const
     {
-        double fill_rate = submitted_quantity_ == 0 ? 0.0
-                                                    : static_cast<double>(trade_report_quantity_) /
-                                                          static_cast<double>(submitted_quantity_);
-        double cancel_rate = submitted_orders_ == 0 ? 0.0
-                                                    : static_cast<double>(cancel_requests_) /
-                                                          static_cast<double>(submitted_orders_);
+        const double fill_rate =
+            metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_);
+        const double cancel_rate =
+            metrics::compute_cancel_rate(submitted_orders_, cancel_requests_);
         double exposure = metrics::compute_inventory_exposure(strategy_.net_position());
 
         logger_.log("[SUMMARY] submitted_orders=", submitted_orders_,
@@ -265,7 +264,7 @@ struct OutputFiles
     std::ofstream trades;
 };
 
-OutputFiles open_output_files()
+OutputFiles open_output_files(const std::string& source_ticks)
 {
     const std::string orders_file = to_abs_path("data/runtime/orders.csv");
     const std::string trades_file = to_abs_path("data/runtime/trades.csv");
@@ -284,6 +283,8 @@ OutputFiles open_output_files()
         throw std::runtime_error("failed to open runtime output files in '" + output_dir.string() +
                                  "'");
     }
+    files.orders << "# source_ticks=" << source_ticks << "\n";
+    files.trades << "# source_ticks=" << source_ticks << "\n";
     files.orders << "ts,symbol,side,price,quantity,order_id\n";
     files.trades << "ts,symbol,side,price,quantity,order_id\n";
     return files;
@@ -296,7 +297,7 @@ void run_csv_mode(const AppConfig& cfg)
     logger.log("[Mode: CSV] Opening: ", csv_file, " (delay: ", cfg.delay,
                "ms) strategy=", cfg.strategy_name);
 
-    auto output_files = open_output_files();
+    auto output_files = open_output_files(csv_file);
     OrderBook order_book;
     auto strategy = make_strategy(cfg.strategy_name);
     MatchingEngine engine(&logger);
@@ -314,7 +315,7 @@ void run_udp_mode(const AppConfig& cfg)
     Logger logger(to_abs_path("logs/toy_quant.log"));
     logger.log("[Mode: UDP] Listening on UDP port: ", port, "... strategy=", cfg.strategy_name);
 
-    auto output_files = open_output_files();
+    auto output_files = open_output_files("udp://" + std::to_string(port));
     OrderBook order_book;
     auto strategy = make_strategy(cfg.strategy_name);
     MatchingEngine engine(&logger);

@@ -1,3 +1,4 @@
+# source_ticks=/home/mango12/work/ToyQuant-v1/data/scenarios/sample_ticks.csv
 ts,symbol,side,price,quantity,order_id
 1625097600100,EURUSD,B,1.18505,100,1
 1625097600100,EURUSD,S,1.18505,100,2

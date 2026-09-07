@@ -1,6 +1,6 @@
 # Architecture
 
-ToyQuant is a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. This page explains the implementation by source file; [User Guide](USER_GUIDE.md) contains the commands, while [Scenarios](SCENARIOS.md) contains the input catalog.
+ToyQuant is a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. This page explains the implementation by source file; [User Guide](USER_GUIDE.md) contains the commands, scenarios, and experiment workflow.
 
 ## 1. System Map
 
@@ -462,7 +462,7 @@ For the same `sample_ticks.csv` run, the two strategies diverge immediately:
 
 The table shows the core difference: `naive` is more aggressive and leaves more working orders behind, while `optimized` submits less, cancels stale quotes, and ends with a smaller adverse position. That is why the optimized version is the better demonstration of stateful market making in this project.
 
-## 7. Backtest: Replay, PnL, and Limits
+## 7. Backtest and Performance Metrics
 
 **Files:** `src/backtest/backtest_driver.h`, `backtest_driver.cpp`
 
@@ -480,22 +480,16 @@ The PnL logic uses a **net-position** model. `Position::qty` is signed: a positi
 
 `Position` also stores the average entry price of the current net position. Closing quantity contributes to `realized_pnl`; remaining open quantity contributes unrealized PnL when it is marked against the latest tick price. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The `orders_file` constructor argument remains for CLI compatibility but is not currently read.
 
-## 8. C++ Feature Map and Reading Order
+**Files:** `src/backtest/performance.*`, `tests/performance_test.cpp`
 
-| Standard | Feature visible in this project | Where to inspect it |
+The reusable `metrics` module keeps calculations independent from both the live pipeline and `BacktestDriver`. The CSV/UDP pipeline uses it for execution summary values, while the backtest uses it for maximum drawdown:
+
+| Metric | Meaning | Current consumer |
 |---|---|---|
-| C++11 | lambdas, `std::thread`, atomics, mutex RAII, `unique_ptr`, `enum class` | `src/main.cpp`, `src/market/udp_feed.cpp`, `src/common/types.h` |
-| C++14 | modern factory and container-oriented implementation style | `src/main.cpp`, `src/strategy/market_maker.h` |
-| C++17 | `std::filesystem`, `std::string_view`, structured bindings | `src/main.cpp`, `src/market/udp_feed.cpp`, `src/backtest/backtest_driver.cpp` |
-| C++20 | `unordered_map::contains`, designated initializers, strict `from_chars` parsing | `src/exchange/matching_engine.cpp`, `src/main.cpp` |
+| `fill_rate` | Filled quantity divided by submitted quantity | `main.cpp` execution summary |
+| `cancel_rate` | Cancel requests divided by submitted orders | `main.cpp` execution summary |
+| `inventory_exposure` | Absolute value of net position | `main.cpp` execution summary |
+| `max_drawdown` | Largest decline from an equity peak | `BacktestDriver` |
 
-For a code-reading pass, follow this order:
+The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating formulas in `main.cpp`.
 
-1. `src/common/types.h` for the shared vocabulary.
-2. `src/main.cpp` for object construction and event order.
-3. `src/strategy/strategy.h` and `market_maker.h` for decisions and state.
-4. `src/orderbook/` and `src/exchange/` for storage and matching rules.
-5. `src/backtest/` for offline performance calculation.
-6. `tests/` to see the intended observable behavior.
-
-The project intentionally does not model full depth, real exchange protocols, persistence and recovery, risk gateways, queue position, or production latency. Those are boundaries, not hidden guarantees. The value of this codebase is that one complete market-making path remains visible enough to study.

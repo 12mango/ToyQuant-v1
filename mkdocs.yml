@@ -35,7 +35,6 @@ nav:
   - Home: index.md
   - User Guide: USER_GUIDE.md
   - Architecture: ARCHITECTURE.md
-  - Scenarios: SCENARIOS.md
 
 markdown_extensions:
   - toc:

@@ -1,12 +1,15 @@
 #include "backtest_driver.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
+#include "backtest/performance.h"
 #include "market/tick_csv_parser.h"
 #include "utils/logger.h"
 
@@ -106,7 +109,22 @@ void BacktestDriver::run()
     }
 
     // ==================== Read Trades and Calculate PnL ====================
-    std::getline(trades_in, line);  // Skip the header row.
+    std::getline(trades_in, line);
+    constexpr std::string_view source_prefix = "# source_ticks=";
+    if (line.rfind(source_prefix, 0) == 0)
+    {
+        const auto recorded_source = line.substr(source_prefix.size());
+        std::error_code ec;
+        const auto expected_path = std::filesystem::weakly_canonical(tick_file_, ec);
+        const auto recorded_path = std::filesystem::weakly_canonical(recorded_source, ec);
+        if (!ec && expected_path != recorded_path)
+        {
+            throw std::invalid_argument("tick file does not match trades source: expected '" +
+                                        expected_path.string() + "', recorded '" +
+                                        recorded_path.string() + "'");
+        }
+        std::getline(trades_in, line);  // Skip the CSV header row.
+    }
     line_number = 1;
     while (std::getline(trades_in, line))
     {

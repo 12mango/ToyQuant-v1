@@ -4,20 +4,17 @@ This documentation is organized into three layers:
 
 1. **Getting Started**: how to build, run, and test the project.
 2. **Architecture**: what each module does and why the C++ design is structured this way.
-3. **Scenarios**: how to use synthetic market conditions to study behavior and compare strategies.
+3. **Data and experiments**: how to use synthetic market conditions to study behavior and compare strategies.
 
 ---
 
 ## Documentation Navigation
 
 - [User Guide](USER_GUIDE.md)  
-  *Build instructions, CLI usage, testing, runtime artifacts, and basic troubleshooting.*
+  *Build instructions, CLI usage, scenarios, experiments, runtime artifacts, and troubleshooting.*
 
 - [Architecture](ARCHITECTURE.md)  
   *A module-by-module explanation of the data flow, matching logic, and the purpose of each C++ component.*
-
-- [Scenarios](SCENARIOS.md)  
-  *Built-in scenario catalog and experiment workflow for understanding market behavior and strategy reactions.*
 
 ---
 

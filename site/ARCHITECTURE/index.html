@@ -16,8 +16,6 @@
         <link rel="prev" href="../USER_GUIDE/">
       
       
-        <link rel="next" href="../SCENARIOS/">
-      
       
       <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.4">
@@ -498,18 +496,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-backtest-replay-pnl-and-limits" class="md-nav__link">
+  <a href="#7-backtest-and-performance-metrics" class="md-nav__link">
     <span class="md-ellipsis">
-      7. Backtest: Replay, PnL, and Limits
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#8-c-feature-map-and-reading-order" class="md-nav__link">
-    <span class="md-ellipsis">
-      8. C++ Feature Map and Reading Order
+      7. Backtest and Performance Metrics
     </span>
   </a>
   
@@ -519,27 +508,6 @@
   
 </nav>
       
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../SCENARIOS/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Scenarios
-    
-  </span>
-  
-
-      </a>
     </li>
   
 
@@ -724,18 +692,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-backtest-replay-pnl-and-limits" class="md-nav__link">
+  <a href="#7-backtest-and-performance-metrics" class="md-nav__link">
     <span class="md-ellipsis">
-      7. Backtest: Replay, PnL, and Limits
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#8-c-feature-map-and-reading-order" class="md-nav__link">
-    <span class="md-ellipsis">
-      8. C++ Feature Map and Reading Order
+      7. Backtest and Performance Metrics
     </span>
   </a>
   
@@ -761,7 +720,7 @@
 
 
 <h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
-<p>ToyQuant is a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. This page explains the implementation by source file; <a href="../USER_GUIDE/">User Guide</a> contains the commands, while <a href="../SCENARIOS/">Scenarios</a> contains the input catalog.</p>
+<p>ToyQuant is a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. This page explains the implementation by source file; <a href="../USER_GUIDE/">User Guide</a> contains the commands, scenarios, and experiment workflow.</p>
 <h2 id="1-system-map">1. System Map<a class="headerlink" href="#1-system-map" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart LR
     CSV[CsvFeed\nCSV rows] --&gt; T[Tick]
@@ -1157,7 +1116,7 @@
 </tbody>
 </table>
 <p>The table shows the core difference: <code>naive</code> is more aggressive and leaves more working orders behind, while <code>optimized</code> submits less, cancels stale quotes, and ends with a smaller adverse position. That is why the optimized version is the better demonstration of stateful market making in this project.</p>
-<h2 id="7-backtest-replay-pnl-and-limits">7. Backtest: Replay, PnL, and Limits<a class="headerlink" href="#7-backtest-replay-pnl-and-limits" title="Permanent link">&para;</a></h2>
+<h2 id="7-backtest-and-performance-metrics">7. Backtest and Performance Metrics<a class="headerlink" href="#7-backtest-and-performance-metrics" title="Permanent link">&para;</a></h2>
 <p><strong>Files:</strong> <code>src/backtest/backtest_driver.h</code>, <code>backtest_driver.cpp</code></p>
 <p><code>BacktestDriver</code> is an offline analysis component. It reads ticks to establish the final mark price, reads the recorded trade CSV, applies slippage and fees, updates per-symbol positions, and writes a report. It does not participate in live order matching.</p>
 <div class="language-cpp highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kt">double</span><span class="w"> </span><span class="n">exec_price</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">trade</span><span class="p">.</span><span class="n">price</span><span class="w"> </span><span class="o">+</span>
@@ -1168,48 +1127,40 @@
 </span></code></pre></div>
 <p>The PnL logic uses a <strong>net-position</strong> model. <code>Position::qty</code> is signed: a positive value is net long, a negative value is net short, and zero is flat. A buy first closes an existing short; a sell first closes an existing long. Only any quantity left after that close opens or extends the opposite net position. The implementation therefore supports simultaneous buy and sell <em>orders</em>, but it does not keep separate long and short inventory ledgers for the same symbol.</p>
 <p><code>Position</code> also stores the average entry price of the current net position. Closing quantity contributes to <code>realized_pnl</code>; remaining open quantity contributes unrealized PnL when it is marked against the latest tick price. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The <code>orders_file</code> constructor argument remains for CLI compatibility but is not currently read.</p>
-<h2 id="8-c-feature-map-and-reading-order">8. C++ Feature Map and Reading Order<a class="headerlink" href="#8-c-feature-map-and-reading-order" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong> <code>src/backtest/performance.*</code>, <code>tests/performance_test.cpp</code></p>
+<p>The reusable <code>metrics</code> module keeps calculations independent from both the live pipeline and <code>BacktestDriver</code>. The CSV/UDP pipeline uses it for execution summary values, while the backtest uses it for maximum drawdown:</p>
 <table>
 <thead>
 <tr>
-<th>Standard</th>
-<th>Feature visible in this project</th>
-<th>Where to inspect it</th>
+<th>Metric</th>
+<th>Meaning</th>
+<th>Current consumer</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>C++11</td>
-<td>lambdas, <code>std::thread</code>, atomics, mutex RAII, <code>unique_ptr</code>, <code>enum class</code></td>
-<td><code>src/main.cpp</code>, <code>src/market/udp_feed.cpp</code>, <code>src/common/types.h</code></td>
+<td><code>fill_rate</code></td>
+<td>Filled quantity divided by submitted quantity</td>
+<td><code>main.cpp</code> execution summary</td>
 </tr>
 <tr>
-<td>C++14</td>
-<td>modern factory and container-oriented implementation style</td>
-<td><code>src/main.cpp</code>, <code>src/strategy/market_maker.h</code></td>
+<td><code>cancel_rate</code></td>
+<td>Cancel requests divided by submitted orders</td>
+<td><code>main.cpp</code> execution summary</td>
 </tr>
 <tr>
-<td>C++17</td>
-<td><code>std::filesystem</code>, <code>std::string_view</code>, structured bindings</td>
-<td><code>src/main.cpp</code>, <code>src/market/udp_feed.cpp</code>, <code>src/backtest/backtest_driver.cpp</code></td>
+<td><code>inventory_exposure</code></td>
+<td>Absolute value of net position</td>
+<td><code>main.cpp</code> execution summary</td>
 </tr>
 <tr>
-<td>C++20</td>
-<td><code>unordered_map::contains</code>, designated initializers, strict <code>from_chars</code> parsing</td>
-<td><code>src/exchange/matching_engine.cpp</code>, <code>src/main.cpp</code></td>
+<td><code>max_drawdown</code></td>
+<td>Largest decline from an equity peak</td>
+<td><code>BacktestDriver</code></td>
 </tr>
 </tbody>
 </table>
-<p>For a code-reading pass, follow this order:</p>
-<ol>
-<li><code>src/common/types.h</code> for the shared vocabulary.</li>
-<li><code>src/main.cpp</code> for object construction and event order.</li>
-<li><code>src/strategy/strategy.h</code> and <code>market_maker.h</code> for decisions and state.</li>
-<li><code>src/orderbook/</code> and <code>src/exchange/</code> for storage and matching rules.</li>
-<li><code>src/backtest/</code> for offline performance calculation.</li>
-<li><code>tests/</code> to see the intended observable behavior.</li>
-</ol>
-<p>The project intentionally does not model full depth, real exchange protocols, persistence and recovery, risk gateways, queue position, or production latency. Those are boundaries, not hidden guarantees. The value of this codebase is that one complete market-making path remains visible enough to study.</p>
+<p>The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding <code>backtest_driver.h</code> or duplicating formulas in <code>main.cpp</code>.</p>
 
 
 

@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen)](tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[User Guide](docs/USER_GUIDE.md) · [Architecture](docs/ARCHITECTURE.md) · [Scenarios](docs/SCENARIOS.md) · [Data Formats](data/README.md)
+[User Guide](docs/USER_GUIDE.md) · [Architecture](docs/ARCHITECTURE.md) · [Data Formats](data/README.md)
 
 </div>
 
@@ -78,7 +78,7 @@ python3 tools/udp_sender.py --port 9000
 
 ```bash
 ./build/backtest_main \
-  data/scenarios/synthetic_ticks.csv \
+  data/scenarios/sample_ticks.csv \
   data/runtime/orders.csv \
   data/runtime/trades.csv \
   0 0 backtest logs/backtest.log
@@ -96,6 +96,8 @@ Each `toy_quant` run creates or truncates:
 
 - `data/runtime/orders.csv` — every order the strategy submitted.
 - `data/runtime/trades.csv` — every execution report the engine returned.
+
+Both runtime files include a `# source_ticks=...` metadata line. Pass the same Tick file to `backtest_main`; when metadata is present, the backtest rejects a mismatched file. Older runtime files without metadata remain readable.
 
 The default backtest log is `logs/backtest.log`.
 
@@ -125,9 +127,8 @@ ToyQuant deliberately excludes real exchange connectivity, FIX, a risk gateway, 
 
 | Document | Contents |
 |---|---|
-| [User Guide](docs/USER_GUIDE.md) | CLI reference, data contracts, practice loop, troubleshooting |
+| [User Guide](docs/USER_GUIDE.md) | CLI reference, scenarios, experiments, data contracts, and troubleshooting |
 | [Architecture](docs/ARCHITECTURE.md) | Data flow, module responsibilities, matching rules, order lifecycle |
-| [Market Scenarios](docs/SCENARIOS.md) | Built-in scenarios and the tick generator |
 | [Data Files](data/README.md) | Tick CSV format, runtime outputs, typical workflow |
 
 ## Contributing
