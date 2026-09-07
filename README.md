@@ -22,7 +22,7 @@ It is a toy project for learning and experimentation, not a production trading s
 ## Demo
 
 ```console
-$ ./build/toy_quant csv data/scenarios/sample_ticks.csv 0 optimized
+$ ./out/build/linux-debug/toy_quant csv data/scenarios/sample_ticks.csv 0 optimized
 
 [TICK] EURUSD ts:1625097601900 price:1.1859 size:100 side:S | Top Bid: 1.1855@150 | Top Ask: 1.1851@50
 ...
@@ -31,7 +31,7 @@ $ ./build/toy_quant csv data/scenarios/sample_ticks.csv 0 optimized
           net_position=-414 inventory_exposure=414 working_orders=6
 ```
 
-Same input, same parameters, same output paths — the backtest log is byte-for-byte reproducible.
+The same input and parameters produce deterministic runtime CSV output for this simulator.
 
 ## How It Works
 
@@ -48,36 +48,36 @@ Same input, same parameters, same output paths — the backtest log is byte-for-
 - **Two market-making strategies** — `naive` and `optimized` behind a common interface.
 - **Price–time priority matching** with self-trade prevention and partial fills.
 - **Stateful execution reports** — position and working orders update from trade, cancel, and fill events.
-- **Deterministic backtests** — realized/unrealized PnL, equity curve, and maximum drawdown.
-- **No external dependencies** — CMake, a C++20 compiler, and Python 3 for the scenario tools.
+- **Deterministic backtests** — realized/unrealized PnL and a reusable drawdown calculation.
+- **Small toolchain** — CMake, a C++20 compiler, and Python 3 for the optional scenario and report tools.
 
 ## Quick Start
 
 Requirements: CMake 3.16+, a C++20-capable compiler, and Python 3.
 
 ```bash
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --preset linux-debug
+cmake --build --preset linux-debug
+ctest --preset linux-debug
 ```
 
 **Run a CSV scenario** (flat, trending, shock, and random markets ship in [data/scenarios](data/scenarios)):
 
 ```bash
-./build/toy_quant csv data/scenarios/flat_ticks.csv 0 optimized
+./out/build/linux-debug/toy_quant csv data/scenarios/flat_ticks.csv 0 optimized
 ```
 
 **Stream ticks over UDP** (and send a scenario from another terminal):
 
 ```bash
-./build/toy_quant udp 9000 naive
+./out/build/linux-debug/toy_quant udp 9000 naive
 python3 tools/udp_sender.py --port 9000
 ```
 
 **Replay a backtest** from generated order and trade records:
 
 ```bash
-./build/backtest_main \
+./out/build/linux-debug/backtest_main \
   data/scenarios/sample_ticks.csv \
   data/runtime/orders.csv \
   data/runtime/trades.csv \

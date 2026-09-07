@@ -8,8 +8,9 @@
       "program": "${command:cmake.buildDirectory}/toy_quant",
       "args": [
         "csv",
-        "data/synthetic_ticks.csv",
-        "0"
+        "data/scenarios/sample_ticks.csv",
+        "0",
+        "optimized"
       ],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
@@ -36,9 +37,9 @@
       "request": "launch",
       "program": "${command:cmake.buildDirectory}/backtest_main",
       "args": [
-        "data/synthetic_ticks.csv",
-        "data/orders.csv",
-        "data/trades.csv",
+        "data/scenarios/sample_ticks.csv",
+        "data/runtime/orders.csv",
+        "data/runtime/trades.csv",
         "0.0005",
         "0.0002",
         "backtest",

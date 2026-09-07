@@ -16,21 +16,21 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 TICK_SIZE = 0.00001
 DEFAULT_MAX_INVENTORY = 1000
 
-# 📊 顶级量化终端配色方案 (Terminal Dark Theme)
+# Terminal-style color palette (dark theme)
 COLORS = {
-    "bg": "#0B0E14",             # 极深黑蓝色背景
-    "panel": "#131822",          # 子图面板背景
-    "mid": "#E0E6ED",            # 冰白 Reference Mid Line
-    "buy": "#00E676",            # 霓虹绿 (Buy Band & Trades)
-    "sell": "#FF5252",           # 鲜艳红 (Sell Band & Trades)
-    "inventory": "#00E5FF",      # 电光蓝 (Net Inventory Line)
-    "limit": "#FF9100",          # 琥珀黄 (Risk Limits)
-    "grid": "#212B3B",           # 极浅网格线
-    "text": "#E2E8F0",           # 主文字
-    "muted": "#64748B",          # 次要/暗色文字
-    "card_bg": "#131822",        # 右侧 Dashboard 卡片背景
-    "card_border": "#212B3B",    # Dashboard 边框
-    "alert": "#FF5252",          # 越界警示区
+    "bg": "#0B0E14",             # Deep blue-black background
+    "panel": "#131822",          # Subplot panel background
+    "mid": "#E0E6ED",            # Reference mid line
+    "buy": "#00E676",            # Buy band and trades
+    "sell": "#FF5252",           # Sell band and trades
+    "inventory": "#00E5FF",      # Net inventory line
+    "limit": "#FF9100",          # Risk limits
+    "grid": "#212B3B",           # Subtle grid lines
+    "text": "#E2E8F0",           # Primary text
+    "muted": "#64748B",          # Secondary text
+    "card_bg": "#131822",        # Dashboard card background
+    "card_border": "#212B3B",    # Dashboard card border
+    "alert": "#FF5252",          # Limit breach area
 }
 
 
@@ -199,7 +199,7 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
         distance_ax.plot(distance_sell_x, sell_distance_high, color=COLORS["sell"], linewidth=1.0)
     distance_ax.axhline(0, color=COLORS["muted"], linewidth=0.8, linestyle="--")
 
-    # [修正纵轴爆框问题] 设置充足的比例留白
+    # Add enough margin to keep the y-axis labels inside the figure.
     distance_ax.set_ylim(-max(18, distance_peak * 1.3), max(18, distance_peak * 1.3))
     distance_ax.set_title("Quote Distance to Reference Mid", loc="left", color=COLORS["text"], fontsize=12)
     distance_ax.set_ylabel("Distance (ticks)", color=COLORS["muted"], fontsize=9)
@@ -210,7 +210,7 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
     inventory_ax.axhline(max_inventory, color=COLORS["limit"], linestyle=":", linewidth=1.2)
     inventory_ax.axhline(-max_inventory, color=COLORS["limit"], linestyle=":", linewidth=1.2)
 
-    # [修正风险警告色块对称]
+    # Keep the risk warning areas symmetric.
     inventory_ax.axhspan(max_inventory, max_inventory * 1.5, color=COLORS["alert"], alpha=0.12)
     inventory_ax.axhspan(-max_inventory * 1.5, -max_inventory, color=COLORS["alert"], alpha=0.12)
 
@@ -218,7 +218,7 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
     inventory_ax.set_ylabel("Position", color=COLORS["muted"], fontsize=9)
     inventory_ax.set_xlabel("Seconds from First Tick", color=COLORS["muted"], fontsize=9)
 
-    # 统一网格与边框美化
+    # Apply consistent grid and border styling.
     for axis in (price_ax, distance_ax, inventory_ax):
         axis.grid(True, color=COLORS["grid"], linestyle=":", linewidth=0.6, alpha=0.7)
         axis.spines["top"].set_visible(False)
@@ -256,7 +256,7 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
         kpi_ax.text(0.10, y - 0.038, value, fontsize=11, fontweight="bold",
                     color=COLORS["text"], transform=kpi_ax.transAxes)
 
-    # 顶部标题 & 图例排版
+    # Arrange the title and legend.
     fig.subplots_adjust(top=0.82, bottom=0.08, left=0.08, right=0.97)
     fig.suptitle("ToyQuant Strategy Report", x=0.08, y=0.96, ha="left", fontsize=20,
                  fontweight="bold", color=COLORS["text"])

@@ -7,7 +7,7 @@ This directory has two purposes:
 
 ## Tick Input Format
 
-Scenario files use CSV with a header row:
+Scenario files use CSV with a header row. Generated scenario files contain the header directly:
 
 ```csv
 ts,symbol,price,size,side
@@ -20,7 +20,10 @@ ts,symbol,price,size,side
 | `symbol` | Instrument symbol, for example `EURUSD`. |
 | `price` | Tick price. |
 | `size` | Tick quantity. |
-| `side` | `B` for buy direction and `S` for sell direction. |
+| `side` | `B` for buy, `S` for sell; it may be empty and then becomes `Unknown`. |
+
+The parser requires the first four fields, accepts an optional `side` field, and ignores extra
+columns so the input can be extended without changing the core fields.
 
 ## Generate Scenarios
 
@@ -48,7 +51,7 @@ The application writes strategy orders and trades to:
 - data/runtime/orders.csv
 - data/runtime/trades.csv
 
-Both output files use this format:
+Both output files begin with a `# source_ticks=...` metadata line and then use this format:
 
 ```csv
 ts,symbol,side,price,quantity,order_id

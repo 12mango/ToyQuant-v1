@@ -59,9 +59,12 @@ struct Tick
 using TickCallback = std::function<void(const Tick&)>;
 ```
 
-`CsvFeed::run` reads one line at a time, skips the header, converts fields with `stoull` and `stod`, then invokes `cb_(t)`. A malformed row is reported and skipped. Its callback design is a C++11-style type-erased boundary: callers can provide a lambda without making the feed depend on `Pipeline`.
+`CsvFeed::run` reads rows, converts them into `Tick`, and invokes `cb_(t)`. Malformed rows are
+reported and skipped. The callback keeps the feed independent from `Pipeline`.
 
-`UdpFeed` has a different transport but the same output contract. On Linux, `recvmmsg` receives up to eight datagrams per call. `parse_tick_cpp` uses `std::string_view` and `find` to split the packet, and the parsed tick is published into a fixed-size ring buffer:
+`UdpFeed` has a different transport but the same output contract. On Linux, `recvmmsg` receives
+datagrams in batches. The parser uses `std::string_view` and `find`, then publishes parsed ticks
+through a fixed-size ring buffer:
 
 ```cpp
 size_t h = head_.load(std::memory_order_relaxed);
@@ -74,9 +77,9 @@ if (next != tail_.load(std::memory_order_acquire))
 }
 ```
 
-The producer writes the tick before release-storing `head_`; the consumer acquire-loads the index before reading the slot. This is a single-producer/single-consumer pattern using C++11 atomics. A full ring drops the incoming tick, which is an intentional limitation of this compact feed.
-
-The UDP implementation also shows later library choices: `std::string_view` is a C++17 non-owning view, `std::thread` owns the receiver loop, and `std::vector<std::array<char, MAX_PKT>>` provides fixed-size receive storage. The parser still constructs strings for numeric conversion, so this is not a zero-allocation parser.
+The producer publishes the tick before release-storing `head_`; the consumer acquire-loads the
+index before reading the slot. This is a single-producer/single-consumer atomic queue. A full ring
+drops the incoming tick by design.
 
 ## 3. Application Coordinator
 
@@ -123,7 +126,7 @@ The `[this]` lambda is a C++11 closure. `Pipeline` stores references to its coll
 `Pipeline` does not construct the order book, strategy, matching engine, or output streams itself. They are created by `run_csv_mode` and passed into the constructor:
 
 ```cpp
-auto output_files = open_output_files();
+auto output_files = open_output_files(csv_file);
 OrderBook order_book;
 auto strategy = make_strategy(cfg.strategy_name);
 Logger logger(to_abs_path("logs/toy_quant.log"));
@@ -160,7 +163,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
 }
 ```
 
-Dependency injection keeps the event sequence in one place without making `Pipeline` responsible for configuration, construction, or ownership of every component. It also gives tests a narrow substitution point: a fake `IOrderBook`, `IMatchingEngine`, or `Strategy` can record calls and verify that `process_tick` sends market data, cancellations, and orders in the expected order. The same design is used for the feed callback: `CsvFeed` receives a `TickCallback`, so it publishes ticks without depending on the `Pipeline` class.
+Dependency injection keeps construction at the application boundary and the event sequence in
+`Pipeline`. Interfaces and callbacks also give focused tests substitution points without requiring
+the complete application.
 
 ### 3.2 RAII and lifetime-bound resources
 
@@ -178,7 +183,9 @@ CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true)
 feed.run();
 ```
 
-When `run_csv_mode` returns, destruction runs in reverse declaration order. `feed` is destroyed first, then `pipeline`, `engine`, `strategy`, `order_book`, and finally `output_files`; the `std::ofstream` members flush and close without an explicit cleanup path. If `feed.run()` or another operation throws, stack unwinding still performs the same destruction. This is why the callback must not outlive `pipeline`, and why the enclosing scope deliberately owns all of them together.
+When `run_csv_mode` returns, destruction runs in reverse declaration order. The feed, pipeline,
+logger, strategy, order book, and output streams clean themselves up through object lifetime. The
+same cleanup occurs during stack unwinding if the feed throws.
 
 The locking code applies the same rule to synchronization:
 
@@ -190,7 +197,8 @@ TopOfBook OrderBook::top(const std::string& symbol)
 }
 ```
 
-Constructing `lock` acquires `mtx_`; leaving the function releases it automatically, including early returns such as an unknown symbol. The same pattern protects `on_tick`, `add_order`, `cancel_order`, and fill updates. RAII therefore handles both external resources such as files and internal resources such as mutex ownership, making exceptional and multi-return control flow less error-prone. `std::unique_ptr<Strategy>` is another ownership example: it destroys the selected concrete strategy through the virtual destructor when its scope ends.
+Constructing `lock` acquires `mtx_`; leaving the function releases it automatically. The same RAII
+pattern protects order-book updates, while `std::unique_ptr<Strategy>` owns the selected strategy.
 
 ### 3.3 Unified runtime logging
 
@@ -296,23 +304,21 @@ if (state_index_.contains(order.id))
 
 Here the goal is not ordering but constant-time average lookup: `unordered_map` is $O(1)$ average, which is useful when a fill, cancel, or state transition needs to find one active order by ID. In other words, the project chooses `map` for “sorted market view” and `unordered_map` for “fast order identity lookup.”
 
-### 4.2 Precision and the future integer conversion
+### 4.2 Price representation
 
-The current book uses `double` for prices, which is simple and readable but not ideal for exchange-grade precision:
+The book currently uses `double` for readability. A production-oriented implementation would
+convert prices to integer ticks at the boundary:
 
 ```cpp
 std::map<double, uint64_t, std::greater<double>> bids_qty;
 ```
 
-A value like `99.999999` can exist as a floating-point artifact, especially after repeated calculations or normalization. That is acceptable in a teaching project, but not ideal for deterministic matching or backtesting.
-
-The natural next step is to move the book to integer ticks at the boundary. Instead of storing raw `double` prices, the code would convert prices to integer ticks before inserting them into the book, e.g.:
-
 ```cpp
 long long tick_price = static_cast<long long>(std::llround(raw_price / tick_size));
 ```
 
-Then comparisons and ordering remain exact, and the rest of the order book can keep the same logic while avoiding floating-point drift. In real exchange systems this is the standard pattern: the book is built on integer ticks, while the display layer converts back to human-readable prices. This project keeps `double` for simplicity, but the architecture already points toward that later optimization.
+Integer ticks make comparison and ordering deterministic. This project keeps `double` to keep the
+teaching path short.
 
 ## 5. MatchingEngine: Orders, Queues, and Reports
 
@@ -334,11 +340,11 @@ struct ExecutionReport
 };
 ```
 
-Three details matter here:
+The main matching rules are:
 
-- External ticks become `Market` orders via `process_market_tick`, so they can consume strategy liquidity but are never rested.
-- Each price level uses `std::list<exchange::Order>` to keep FIFO order, and `front()` / `pop_front()` implement price-time priority.
-- The engine normalizes `owner` before comparing resting and incoming orders, which prevents `MarketMaker` from trading with itself.
+- External ticks become `Market` orders, so they consume strategy liquidity but are never rested.
+- Each price level uses FIFO order and matches the best executable price first.
+- Owner normalization prevents `MarketMaker` from trading with itself.
 
 The matching algorithm is a direct price-time implementation:
 
@@ -353,7 +359,8 @@ qty -= traded;
 resting.remaining -= traded;
 ```
 
-For buys, ascending asks select the lowest executable price. For sells, descending bids select the highest executable price. `front()` selects the earliest order at that price. The engine reports a `Trade` for both participants, then reports `PartialFill` or `Filled` for the resting order. An unfilled incoming limit order receives `Resting` and enters the appropriate queue.
+The engine emits `Trade` reports for executions, then `PartialFill` or `Filled` for the resting
+order. An unfilled incoming limit order receives `Resting` and enters the appropriate queue.
 
 ```mermaid
 flowchart TD
@@ -370,7 +377,8 @@ flowchart TD
     L -- no --> D[Emit Filled or PartialFill]
 ```
 
-Owner normalization removes whitespace and lowercases characters. It prevents `MarketMaker` from trading against itself, but the policy cancels the aggressor and is not a general exchange standard. A subtle reporting rule is documented in `execution_report.h`: `Trade.quantity` is executed quantity; lifecycle quantities are remaining quantity.
+Owner normalization removes whitespace and lowercases characters. A self-trade cancels the
+aggressor. `Trade.quantity` is executed quantity; lifecycle quantities are remaining quantity.
 
 ## 6. Strategy: The Main Decision Module
 
@@ -393,7 +401,9 @@ class Strategy
 };
 ```
 
-This interface is the key substitution point. `main.cpp` selects an implementation with `std::make_unique`, and the rest of the pipeline calls virtual functions without knowing whether it is naive or optimized. The virtual destructor makes deleting through `Strategy*` safe; pure virtual functions make the lifecycle contract explicit.
+`main.cpp` selects an implementation with `std::make_unique`; the pipeline then uses the common
+interface without knowing which strategy is active. The virtual destructor makes polymorphic
+ownership safe.
 
 ### 6.1 NaiveMarketMaker: baseline quote
 
@@ -408,7 +418,8 @@ orders.push_back(StrategyOrder(Side::Buy, symbol, buy_price, base_order_size, 0)
 orders.push_back(StrategyOrder(Side::Sell, symbol, sell_price, base_order_size, 0));
 ```
 
-It does not request cancellations, so its `open_orders` can accumulate. It updates `position` only from `Trade` reports and removes an order on `Filled` or `Cancelled`. This makes it a deliberately simple baseline for comparison.
+It does not request cancellations, so working orders can accumulate. It updates position from
+`Trade` reports and serves as a deliberately simple baseline.
 
 ### 6.2 OptimizedMarketMaker: stateful quoting
 
@@ -428,7 +439,9 @@ flowchart LR
     O --> C[Refresh and cancel policy]
 ```
 
-The implementation keeps recent midpoints in `std::deque<double>`. It averages the window, estimates trend as the change from the previous smoothed midpoint, and calculates up to three levels. The core inventory-aware price adjustment is:
+`OptimizedMarketMaker` is the stateful strategy. It keeps a window of recent midpoints in a
+`std::deque`, averages that window, and estimates short-term trend from the change in the smoothed
+midpoint. It then builds up to three quote levels. The core price adjustment is:
 
 ```cpp
 double raw_buy = smooth_mid - level_spread / 2.0 - std::max(0.0, trend) -
@@ -440,16 +453,20 @@ double buy_price = std::round(raw_buy / tick_size) * tick_size;
 double sell_price = std::round(raw_sell / tick_size) * tick_size;
 ```
 
-Inventory is `position + working_exposure`, where working buy quantities count positive and working sell quantities count negative. Positive inventory pushes buy prices lower and reduces buy size; negative inventory does the symmetric thing to sells. Once the inventory limit is exceeded, the strategy sets the risky side's quantity to zero.
+Inventory is `position + working_exposure`, with buys positive and sells negative. If inventory is
+long, the strategy makes buys less attractive and reduces buy size, encouraging future sells. If
+inventory is short, it applies the symmetric adjustment to sells. Once the limit is exceeded, the
+risky side is disabled.
 
 The refresh policy separates “should quote now?” from “which old orders must be cancelled?”:
 
 - `quote_age_ticks` forces refresh after an age limit.
-- `quote_refresh_ticks` compares the current smoothed midpoint with `last_quote_mid`.
-- `cancel_requests()` returns active IDs when the quote is stale.
+- `quote_refresh_ticks` compares the smoothed midpoint with `last_quote_mid`.
+- `cancel_requests()` returns active IDs when a quote is stale.
 - `on_order_submitted()` records IDs and resets quote age.
 
-This is the main strategy state machine: market observations create candidate quotes, submitted IDs become working state, execution reports reduce quantities or position, and stale quotes are cancelled before replacement.
+In short: observations create quotes, submitted IDs become working state, execution reports update
+quantities and position, and stale quotes are cancelled before replacement.
 
 ### 6.3 Strategy comparison
 
@@ -466,7 +483,8 @@ The table shows the core difference: `naive` is more aggressive and leaves more 
 
 **Files:** `src/backtest/backtest_driver.h`, `backtest_driver.cpp`
 
-`BacktestDriver` is an offline analysis component. It reads ticks to establish the final mark price, reads the recorded trade CSV, applies slippage and fees, updates per-symbol positions, and writes a report. It does not participate in live order matching.
+`BacktestDriver` is an offline analysis component. It reads the Tick file and recorded trades,
+replays positions with slippage, and writes a report. It does not participate in live matching.
 
 ```cpp
 double exec_price = trade.price +
@@ -476,13 +494,19 @@ double fee = trade.quantity * exec_price * fee_rate_;
 auto& pos = positions[trade.symbol];
 ```
 
-The PnL logic uses a **net-position** model. `Position::qty` is signed: a positive value is net long, a negative value is net short, and zero is flat. A buy first closes an existing short; a sell first closes an existing long. Only any quantity left after that close opens or extends the opposite net position. The implementation therefore supports simultaneous buy and sell *orders*, but it does not keep separate long and short inventory ledgers for the same symbol.
+The PnL logic uses a **net-position** model: positive quantity is long, negative quantity is short,
+and zero is flat. A buy first closes a short; a sell first closes a long; any remainder extends the
+opposite position.
 
-`Position` also stores the average entry price of the current net position. Closing quantity contributes to `realized_pnl`; remaining open quantity contributes unrealized PnL when it is marked against the latest tick price. The current equity curve receives only the final equity value, so maximum drawdown is not a per-tick risk series yet. The `orders_file` constructor argument remains for CLI compatibility but is not currently read.
+`Position` stores the average entry price. Closing quantity contributes to `realized_pnl`; remaining
+quantity contributes unrealized PnL at the latest Tick price. The equity curve currently contains
+only the final value, so `max_drawdown` is normally `0`. The `orders_file` argument is retained for
+CLI compatibility but is not read.
 
 **Files:** `src/backtest/performance.*`, `tests/performance_test.cpp`
 
-The reusable `metrics` module keeps calculations independent from both the live pipeline and `BacktestDriver`. The CSV/UDP pipeline uses it for execution summary values, while the backtest uses it for maximum drawdown:
+The reusable `metrics` module keeps formulas independent from the live pipeline and `BacktestDriver`.
+The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 
 | Metric | Meaning | Current consumer |
 |---|---|---|
