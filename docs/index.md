@@ -24,7 +24,7 @@ This documentation is organized into three layers:
 - **CSV and UDP market feeds** for reproduction and simulation.
 - **Order-book state and matching rules** with price-time priority and partial fills.
 - **Market-making strategies** such as `naive` and `optimized`.
-- **Backtest-oriented reporting** covering execution summaries and inventory exposure.
+- **Backtest-oriented reporting** covering execution summaries, equity, drawdown, and inventory exposure.
 - **CTest-based validation** for the behaviors that matter most to this project.
 
 This project is intentionally educational and does not aim to reproduce a production exchange stack or a production-grade low-latency HFT system.

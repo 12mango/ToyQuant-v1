@@ -472,12 +472,12 @@ quantities and position, and stale quotes are cancelled before replacement.
 
 For the same `sample_ticks.csv` run, the two strategies diverge immediately:
 
-| Strategy | Submitted orders | Submitted quantity | Cancel requests | Fill rate | Net position | Current equity |
-|---|---:|---:|---:|---:|---:|---:|
-| `naive` | 38 | 3800 | 0 | 0.231579 | -880 | -0.713200 |
-| `optimized` | 24 | 1379 | 9 | 0.31037 | -428 | -0.329810 |
+| Strategy | Submitted orders | Submitted quantity | Cancel requests | Fill rate | Net position | Current equity | Max drawdown |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `naive` | 38 | 3800 | 0 | 0.231579 | -880 | 999.286800 | 0.000717 |
+| `optimized` | 24 | 1379 | 9 | 0.31037 | -428 | 999.670190 | 0.000334 |
 
-The table shows the core difference: `naive` is more aggressive and leaves more working orders behind, while `optimized` submits less, cancels stale quotes, and ends with a smaller adverse position. That is why the optimized version is the better demonstration of stateful market making in this project.
+The table uses an initial capital of `1000.0`. It shows the core difference: `naive` is more aggressive and leaves more working orders behind, while `optimized` submits less, cancels stale quotes, and ends with smaller adverse position and drawdown. That is why the optimized version is the better demonstration of stateful market making in this project.
 
 ## 7. Backtest and Performance Metrics
 
@@ -499,9 +499,10 @@ and zero is flat. A buy first closes a short; a sell first closes a long; any re
 opposite position.
 
 `Position` stores the average entry price. Closing quantity contributes to `realized_pnl`; remaining
-quantity contributes unrealized PnL at the latest Tick price. The equity curve currently contains
-only the final value, so `max_drawdown` is normally `0`. The `orders_file` argument is retained for
-CLI compatibility but is not read.
+quantity contributes unrealized PnL at the latest Tick price. The backtest uses an initial capital
+baseline, records equity while replaying ticks and trades in timestamp order, and then computes
+`max_drawdown` from that equity curve. The `orders_file` argument is retained for CLI compatibility
+but is not read.
 
 **Files:** `src/backtest/performance.*`, `tests/performance_test.cpp`
 

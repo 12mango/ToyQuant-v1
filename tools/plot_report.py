@@ -15,6 +15,7 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 
 TICK_SIZE = 0.00001
 DEFAULT_MAX_INVENTORY = 1000
+INITIAL_CAPITAL = 1000.0
 
 # Terminal-style color palette (dark theme)
 COLORS = {
@@ -36,12 +37,17 @@ COLORS = {
 
 def read_rows(path):
     text = path.read_text()
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        if line.strip():
-            if line.lstrip().startswith("#"):
-                lines[index] = line.replace("#", "", 1).lstrip()
-            break
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if line.lstrip().startswith("#"):
+            stripped = line.replace("#", "", 1).lstrip()
+            if "," not in stripped:
+                continue
+            line = stripped
+        lines.append(line)
     return list(csv.DictReader(io.StringIO("\n".join(lines))))
 
 
@@ -86,6 +92,84 @@ def distance_series(rows, tick_timestamps, tick_prices):
         levels[int(row["ts"])].append((float(row["price"]) - reference) / TICK_SIZE)
     timestamps = sorted(levels)
     return timestamps, [min(levels[ts]) for ts in timestamps], [max(levels[ts]) for ts in timestamps]
+
+
+def apply_trade(positions, trade):
+    symbol = trade["symbol"]
+    price = float(trade["price"])
+    quantity = int(trade["quantity"])
+    position = positions.setdefault(symbol, {"qty": 0, "avg_price": 0.0})
+    qty = position["qty"]
+    avg_price = position["avg_price"]
+    realized_pnl = 0.0
+
+    if trade["side"] == "B":
+        if qty < 0:
+            close_qty = min(-qty, quantity)
+            realized_pnl += close_qty * (avg_price - price)
+            qty += close_qty
+            quantity -= close_qty
+        if quantity > 0:
+            avg_price = (avg_price * qty + price * quantity) / (qty + quantity)
+            qty += quantity
+    else:
+        if qty > 0:
+            close_qty = min(qty, quantity)
+            realized_pnl += close_qty * (price - avg_price)
+            qty -= close_qty
+            quantity -= close_qty
+        if quantity > 0:
+            avg_price = (avg_price * (-qty) + price * quantity) / (-qty + quantity)
+            qty -= quantity
+
+    position["qty"] = qty
+    position["avg_price"] = avg_price
+    return realized_pnl
+
+
+def current_equity(realized_pnl, positions, last_prices):
+    equity = INITIAL_CAPITAL + realized_pnl
+    for symbol, position in positions.items():
+        if symbol in last_prices:
+            equity += position["qty"] * (last_prices[symbol] - position["avg_price"])
+    return equity
+
+
+def max_drawdown(equity_curve):
+    if not equity_curve:
+        return 0.0
+    peak = equity_curve[0]
+    result = 0.0
+    for value in equity_curve:
+        peak = max(peak, value)
+        drawdown = (peak - value) / peak if peak > 0.0 else 0.0
+        result = max(result, drawdown)
+    return result
+
+
+def equity_metrics(tick_rows, trade_rows):
+    positions = {}
+    last_prices = {}
+    realized_pnl = 0.0
+    equity_curve = []
+    trade_index = 0
+
+    for tick in tick_rows:
+        tick_ts = int(tick["ts"])
+        last_prices[tick["symbol"]] = float(tick["price"])
+        while trade_index < len(trade_rows) and int(trade_rows[trade_index]["ts"]) <= tick_ts:
+            realized_pnl += apply_trade(positions, trade_rows[trade_index])
+            trade_index += 1
+        equity_curve.append(current_equity(realized_pnl, positions, last_prices))
+
+    while trade_index < len(trade_rows):
+        realized_pnl += apply_trade(positions, trade_rows[trade_index])
+        trade_index += 1
+        equity_curve.append(current_equity(realized_pnl, positions, last_prices))
+
+    if not equity_curve:
+        equity_curve.append(current_equity(realized_pnl, positions, last_prices))
+    return equity_curve[-1], max_drawdown(equity_curve)
 
 
 def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
@@ -146,6 +230,7 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
     order_ids = {row["order_id"] for row in order_rows}
     traded_ids = {row["order_id"] for row in trade_rows}
     unexecuted_orders = len(order_ids - traded_ids)
+    final_equity, report_max_drawdown = equity_metrics(tick_rows, trade_rows)
 
     plt.style.use("dark_background")
     plt.rcParams.update({
@@ -246,12 +331,15 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
         ("Traded Qty", f"{traded_quantity:,}"),
         ("Buy / Sell Qty", f"{buy_trade_quantity:,} / {sell_trade_quantity:,}"),
         ("Fill Rate", f"{fill_rate:.1%}"),
+        ("Initial Capital", f"{INITIAL_CAPITAL:,.0f}"),
+        ("Current Equity", f"{final_equity:.6f}"),
+        ("Max Drawdown", f"{report_max_drawdown:.6f}"),
         ("Final Inventory", f"{inventory:+,}"),
         ("Peak |Inventory|", f"{max_abs_inventory:,}"),
         ("Unexecuted Orders", f"{unexecuted_orders:,}"),
     ]
     for index, (label, value) in enumerate(kpi_metrics):
-        y = 0.86 - index * 0.088
+        y = 0.86 - index * 0.074
         kpi_ax.text(0.10, y, label, fontsize=8, color=COLORS["muted"], transform=kpi_ax.transAxes)
         kpi_ax.text(0.10, y - 0.038, value, fontsize=11, fontweight="bold",
                     color=COLORS["text"], transform=kpi_ax.transAxes)

@@ -89,7 +89,8 @@ After running a scenario, create a static report with the three main views:
 - `Quote Distance to Reference Mid`: quote displacement from the reference price in ticks.
 - `Net Inventory Profile`: signed inventory and the configured `+/-1000` inventory boundary.
 
-The report also includes a right-side summary panel with order count, executions, traded quantity, fill rate, inventory peak, and unexecuted orders.
+The report also includes a right-side summary panel with order count, executions, traded quantity,
+fill rate, initial capital, current equity, max drawdown, inventory peak, and unexecuted orders.
 
 Set up the optional plotting environment and generate the report with:
 
