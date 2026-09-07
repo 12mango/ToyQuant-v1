@@ -17,6 +17,7 @@
 #include "market/udp_feed.h"
 #include "orderbook/orderbook.h"
 #include "strategy/market_maker.h"
+#include "utils/logger.h"
 
 #ifndef PROJECT_ROOT_DIR
 #define PROJECT_ROOT_DIR "."
@@ -162,24 +163,24 @@ void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
         << report.quantity << "," << report.order_id << "\n";
 }
 
-void print_tick(const Tick& t, const TopOfBook& top)
+void print_tick(Logger& logger, const Tick& t, const TopOfBook& top)
 {
-    std::cout << "[TICK] " << t.symbol << " ts:" << t.ts << " price:" << t.price
-              << " size:" << t.size << " side:" << to_char(t.side)
-              << " | Top Bid: " << top.bid_price << "@" << top.bid_size
-              << " | Top Ask: " << top.ask_price << "@" << top.ask_size << "\n";
+    logger.log("[TICK] ", t.symbol, " ts:", t.ts, " price:", t.price, " size:", t.size,
+               " side:", to_char(t.side), " | Top Bid: ", top.bid_price, "@", top.bid_size,
+               " | Top Ask: ", top.ask_price, "@", top.ask_size);
 }
 
 class Pipeline
 {
    public:
     Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-             Strategy& strategy, IMatchingEngine& engine)
+             Strategy& strategy, IMatchingEngine& engine, Logger& logger)
         : orders_out_(orders_out),
           trades_out_(trades_out),
           order_book_(order_book),
           strategy_(strategy),
-          engine_(engine)
+          engine_(engine),
+          logger_(logger)
     {
         engine_.set_report_callback(
             [this](const ExecutionReport& report)
@@ -202,7 +203,7 @@ class Pipeline
         order_book_.on_tick(tick);
         engine_.process_market_tick(tick);
         auto top = order_book_.top(tick.symbol);
-        if (enable_print) print_tick(tick, top);
+        if (enable_print) print_tick(logger_, tick, top);
 
         auto orders = strategy_.on_top_of_book(tick.symbol, top);
 
@@ -234,14 +235,13 @@ class Pipeline
                                                           static_cast<double>(submitted_orders_);
         double exposure = metrics::compute_inventory_exposure(strategy_.net_position());
 
-        std::cout << "[SUMMARY] submitted_orders=" << submitted_orders_
-                  << " submitted_quantity=" << submitted_quantity_
-                  << " cancel_requests=" << cancel_requests_ << " trade_reports=" << trade_reports_
-                  << " fill_rate=" << fill_rate << " cancel_rate=" << cancel_rate
-                  << " trade_report_quantity=" << trade_report_quantity_
-                  << " net_position=" << strategy_.net_position()
-                  << " inventory_exposure=" << exposure
-                  << " working_orders=" << strategy_.working_order_count() << "\n";
+        logger_.log("[SUMMARY] submitted_orders=", submitted_orders_,
+                    " submitted_quantity=", submitted_quantity_,
+                    " cancel_requests=", cancel_requests_, " trade_reports=", trade_reports_,
+                    " fill_rate=", fill_rate, " cancel_rate=", cancel_rate,
+                    " trade_report_quantity=", trade_report_quantity_,
+                    " net_position=", strategy_.net_position(), " inventory_exposure=", exposure,
+                    " working_orders=", strategy_.working_order_count());
     }
 
    private:
@@ -250,6 +250,7 @@ class Pipeline
     IOrderBook& order_book_;
     Strategy& strategy_;
     IMatchingEngine& engine_;
+    Logger& logger_;
     std::atomic<uint64_t> next_order_id_{1};
     uint64_t submitted_orders_{0};
     uint64_t submitted_quantity_{0};
@@ -291,15 +292,18 @@ OutputFiles open_output_files()
 void run_csv_mode(const AppConfig& cfg)
 {
     std::string csv_file = to_abs_path(cfg.path_or_port);
-    std::cout << "[Mode: CSV] Opening: " << csv_file << " (delay: " << cfg.delay
-              << "ms) strategy=" << cfg.strategy_name << "\n";
+    Logger logger(to_abs_path("logs/toy_quant.log"));
+    logger.log("[Mode: CSV] Opening: ", csv_file, " (delay: ", cfg.delay,
+               "ms) strategy=", cfg.strategy_name);
 
     auto output_files = open_output_files();
     OrderBook order_book;
     auto strategy = make_strategy(cfg.strategy_name);
-    MatchingEngine engine;
-    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
-    CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay);
+    MatchingEngine engine(&logger);
+    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
+                      logger);
+    CsvFeed feed(
+        csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay, &logger);
     feed.run();
     pipeline.print_summary();
 }
@@ -307,14 +311,15 @@ void run_csv_mode(const AppConfig& cfg)
 void run_udp_mode(const AppConfig& cfg)
 {
     int port = std::stoi(cfg.path_or_port);
-    std::cout << "[Mode: UDP] Listening on UDP port: " << port
-              << "... strategy=" << cfg.strategy_name << "\n";
+    Logger logger(to_abs_path("logs/toy_quant.log"));
+    logger.log("[Mode: UDP] Listening on UDP port: ", port, "... strategy=", cfg.strategy_name);
 
     auto output_files = open_output_files();
     OrderBook order_book;
     auto strategy = make_strategy(cfg.strategy_name);
-    MatchingEngine engine;
-    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
+    MatchingEngine engine(&logger);
+    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
+                      logger);
     UdpFeed feed(port);
     feed.start();
 

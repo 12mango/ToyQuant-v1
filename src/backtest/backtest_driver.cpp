@@ -1,9 +1,6 @@
 #include "backtest_driver.h"
 
 #include <algorithm>
-#include <cerrno>
-#include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -11,6 +8,7 @@
 #include <vector>
 
 #include "market/tick_csv_parser.h"
+#include "utils/logger.h"
 
 // ==================== Strict Conversion Helpers ====================
 inline double safe_stod(const std::string& s)
@@ -54,60 +52,15 @@ inline uint64_t safe_stoull(const std::string& s)
 // ==================== Construction ====================
 BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& orders_file,
                                const std::string& trades_file, double slippage, double fee_rate,
-                               RunMode mode, const std::string& log_file)
+                               RunMode mode, Logger& logger)
     : tick_file_(tick_file),
       orders_file_(orders_file),
       trades_file_(trades_file),
       slippage_(slippage),
       fee_rate_(fee_rate),
       mode_(mode),
-      log_out_(&std::cout)
+      logger_(logger)
 {
-    if (!log_file.empty())
-    {
-        std::filesystem::path p(log_file);
-
-        if (p.has_parent_path() && !p.parent_path().empty())
-        {
-            std::error_code ec;
-            std::filesystem::create_directories(p.parent_path(), ec);
-            if (ec)
-            {
-                std::cerr << "[Error] Failed to create log directory: " << ec.message()
-                          << std::endl;
-            }
-        }
-
-        errno = 0;  // Reset errno before opening the file.
-        log_file_.open(log_file);
-
-        if (log_file_.is_open())
-        {
-            log_out_ = &log_file_;
-            std::cout << "[SUCCESS] Log file opened: " << log_file << std::endl;
-        }
-        else
-        {
-            throw std::runtime_error("failed to open log file '" + log_file +
-                                     "': " + std::strerror(errno));
-        }
-    }
-}
-
-// ==================== Destruction ====================
-BacktestDriver::~BacktestDriver()
-{
-    if (log_file_.is_open())
-    {
-        log_file_.flush();
-        log_file_.close();
-    }
-}
-
-// ==================== Logging ====================
-void BacktestDriver::log(const std::string& msg)
-{
-    (*log_out_) << msg << std::endl;
 }
 
 // ==================== Backtest Execution ====================
@@ -223,9 +176,10 @@ void BacktestDriver::run()
                 }
             }
 
-            log("Trade: " + trade.symbol + " " + to_char(trade.side) + " " +
-                std::to_string(exec_price) + " qty=" + std::to_string(trade.quantity) +
-                " Fee=" + std::to_string(fee) + " RealizedPnL=" + std::to_string(realized_pnl));
+            logger_.log("Trade: " + trade.symbol + " " + to_char(trade.side) + " " +
+                        std::to_string(exec_price) + " qty=" + std::to_string(trade.quantity) +
+                        " Fee=" + std::to_string(fee) +
+                        " RealizedPnL=" + std::to_string(realized_pnl));
         }
         catch (const std::exception& ex)
         {
@@ -251,15 +205,16 @@ void BacktestDriver::print_report()
         const auto& pos = positions.at(symbol);
         double unrealized_pnl = pos.qty * (last_price[symbol] - pos.avg_price);
         equity += unrealized_pnl;
-        log("Symbol: " + symbol + " Qty: " + std::to_string(pos.qty) + " AvgPrice: " +
-            std::to_string(pos.avg_price) + " UnrealizedPnL: " + std::to_string(unrealized_pnl));
+        logger_.log("Symbol: " + symbol + " Qty: " + std::to_string(pos.qty) +
+                    " AvgPrice: " + std::to_string(pos.avg_price) +
+                    " UnrealizedPnL: " + std::to_string(unrealized_pnl));
     }
     equity_curve_.push_back(equity);
 
     double max_drawdown = metrics::compute_max_drawdown(equity_curve_);
 
-    log("\n=== Strategy Report ===");
-    log("Realized PnL: " + std::to_string(realized_pnl));
-    log("Current Equity: " + std::to_string(equity));
-    log("Max Drawdown: " + std::to_string(max_drawdown));
+    logger_.log("\n=== Strategy Report ===");
+    logger_.log("Realized PnL: " + std::to_string(realized_pnl));
+    logger_.log("Current Equity: " + std::to_string(equity));
+    logger_.log("Max Drawdown: " + std::to_string(max_drawdown));
 }

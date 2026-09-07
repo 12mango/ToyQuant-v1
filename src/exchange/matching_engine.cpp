@@ -5,6 +5,7 @@
 
 #include "execution_report.h"
 #include "order.h"
+#include "utils/logger.h"
 
 using exchange::Order;
 
@@ -78,7 +79,10 @@ void MatchingEngine::cancel_order(uint64_t order_id)
                            .ts = cancelled_order.ts,
                            .owner = cancelled_order.owner});
 
-    std::cout << "Cancel order id=" << order_id << " done.\n";
+    if (logger_)
+        logger_->log("Cancel order id=", order_id, " done.");
+    else
+        std::cout << "Cancel order id=" << order_id << " done.\n";
 }
 
 void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
@@ -188,8 +192,12 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .ts = new_order.ts,
                                    .owner = new_order.owner});
 
-            std::cout << "Resting Buy order id=" << new_order.id << " qty=" << qty << " @ "
-                      << new_order.price << "\n";
+            if (logger_)
+                logger_->log("Resting Buy order id=", new_order.id, " qty=", qty, " @ ",
+                             new_order.price);
+            else
+                std::cout << "Resting Buy order id=" << new_order.id << " qty=" << qty << " @ "
+                          << new_order.price << "\n";
         }
 
         // ==================== Sell-Side Matching ====================
@@ -294,8 +302,12 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .ts = new_order.ts,
                                    .owner = new_order.owner});
 
-            std::cout << "Resting Sell order id=" << new_order.id << " qty=" << qty << " @ "
-                      << new_order.price << "\n";
+            if (logger_)
+                logger_->log("Resting Sell order id=", new_order.id, " qty=", qty, " @ ",
+                             new_order.price);
+            else
+                std::cout << "Resting Sell order id=" << new_order.id << " qty=" << qty << " @ "
+                          << new_order.price << "\n";
         }
     }
 }

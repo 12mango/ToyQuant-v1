@@ -1,12 +1,12 @@
 #pragma once
 #include <cstdint>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "common/types.h"
+
+class Logger;
 
 // ==================== Backtest Types ====================
 struct BacktestExecutionReport
@@ -66,14 +66,12 @@ class BacktestDriver
 {
    public:
     BacktestDriver(const std::string& tick_file, const std::string& orders_file,
-                   const std::string& trades_file, double slippage = 0.0, double fee_rate = 0.0,
-                   RunMode mode = RunMode::Backtest, const std::string& log_file = "");
-    ~BacktestDriver();
+                   const std::string& trades_file, double slippage, double fee_rate, RunMode mode,
+                   Logger& logger);
     void run();
 
    private:
     void print_report();
-    void log(const std::string& msg);
 
     std::string tick_file_;
     std::string orders_file_;
@@ -87,6 +85,5 @@ class BacktestDriver
     double realized_pnl = 0.0;
     std::vector<double> equity_curve_;
 
-    std::ofstream log_file_;
-    std::ostream* log_out_;
+    Logger& logger_;
 };

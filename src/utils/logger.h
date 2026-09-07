@@ -1,38 +1,36 @@
 #pragma once
-#include <chrono>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
-
-#include "common/types.h"
+#include <utility>
 
 class Logger
 {
    public:
-    Logger(const std::string& file, RunMode mode) : mode_(mode)
-    {
-        if (!file.empty())
-        {
-            fout_.open(file, std::ios::out | std::ios::app);
-        }
-    }
+    explicit Logger(const std::string& file = "");
 
     template <typename... Args>
     void log(Args&&... args)
     {
-        std::ostringstream oss;
-        (oss << ... << args);  // C++17 fold expression
+        write(format(std::forward<Args>(args)...), std::cout);
+    }
 
-        std::string msg = oss.str();
-        if (fout_.is_open())
-        {
-            fout_ << msg << std::endl;
-        }
-        std::cout << msg << std::endl;
+    template <typename... Args>
+    void error(Args&&... args)
+    {
+        write(format(std::forward<Args>(args)...), std::cerr);
     }
 
    private:
-    RunMode mode_;
+    template <typename... Args>
+    static std::string format(Args&&... args)
+    {
+        std::ostringstream stream;
+        (stream << ... << args);
+        return stream.str();
+    }
+
+    void write(const std::string& message, std::ostream& console);
     std::ofstream fout_;
 };

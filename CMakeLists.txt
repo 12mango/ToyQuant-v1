@@ -36,6 +36,7 @@ set(COMMON_SOURCES
     src/market/tick_csv_parser.cpp
     src/orderbook/orderbook.cpp
     src/exchange/matching_engine.cpp
+    src/utils/logger.cpp
 )
 
 # Cross-platform threading library.

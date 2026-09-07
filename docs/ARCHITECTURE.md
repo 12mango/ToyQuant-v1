@@ -38,10 +38,11 @@ The source map is:
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
 | Strategy | `src/strategy/strategy.h`, `market_maker.h` | `Strategy`, two market makers |
 | Analysis | `src/backtest/backtest_driver.*` | `BacktestDriver::run`, `print_report` |
+| Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
 ## 2. Shared Types and Input Boundary
 
-### Files: `src/common/types.h`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
+**Files:** `src/common/types.h`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
 
 Every feed produces the same `Tick`, so downstream modules are independent of the transport:
 
@@ -125,20 +126,22 @@ The `[this]` lambda is a C++11 closure. `Pipeline` stores references to its coll
 auto output_files = open_output_files();
 OrderBook order_book;
 auto strategy = make_strategy(cfg.strategy_name);
-MatchingEngine engine;
-Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
+Logger logger(to_abs_path("logs/toy_quant.log"));
+MatchingEngine engine(&logger);
+Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine, logger);
 ```
 
 The constructor receives the domain collaborators through their interfaces and stores references to them:
 
 ```cpp
 Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-         Strategy& strategy, IMatchingEngine& engine)
+                 Strategy& strategy, IMatchingEngine& engine, Logger& logger)
     : orders_out_(orders_out),
       trades_out_(trades_out),
       order_book_(order_book),
       strategy_(strategy),
-      engine_(engine)
+            engine_(engine),
+            logger_(logger)
 {
     // Install the report boundary after the collaborators are available.
 }
@@ -167,9 +170,11 @@ The application uses RAII, or Resource Acquisition Is Initialization, to bind cl
 auto output_files = open_output_files();
 OrderBook order_book;
 auto strategy = make_strategy(cfg.strategy_name);
-MatchingEngine engine;
-Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine);
-CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay);
+Logger logger(to_abs_path("logs/toy_quant.log"));
+MatchingEngine engine(&logger);
+Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine, logger);
+CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay,
+             &logger);
 feed.run();
 ```
 
@@ -187,9 +192,39 @@ TopOfBook OrderBook::top(const std::string& symbol)
 
 Constructing `lock` acquires `mtx_`; leaving the function releases it automatically, including early returns such as an unknown symbol. The same pattern protects `on_tick`, `add_order`, `cancel_order`, and fill updates. RAII therefore handles both external resources such as files and internal resources such as mutex ownership, making exceptional and multi-return control flow less error-prone. `std::unique_ptr<Strategy>` is another ownership example: it destroys the selected concrete strategy through the virtual destructor when its scope ends.
 
+### 3.3 Unified runtime logging
+
+**Files:** `src/utils/logger.h`, `src/utils/logger.cpp`
+
+`Logger` owns the optional text log file and mirrors each message to the appropriate console stream. `log(...)` writes to `stdout`; `error(...)` writes to `stderr`. When an application supplies a file path, the constructor creates its parent directory, opens the file in truncate mode for the current run, and `write` copies every message to that file. An empty path preserves console output without opening a file.
+
+The application entry points own the `Logger`: CSV and UDP runs use `logs/toy_quant.log`, while `backtest_main` uses its configurable backtest log path. They pass it to the components that emit runtime events. `Pipeline` and `BacktestDriver` require `Logger&`, because their lifetime is always within the entry point's logging scope. `CsvFeed` and `MatchingEngine` accept an optional `Logger*`, preserving standalone construction for narrow tests and other callers:
+
+```cpp
+Logger logger(to_abs_path("logs/toy_quant.log"));
+MatchingEngine engine(&logger);
+CsvFeed feed(path, callback, delay, &logger);
+```
+
+This is dependency injection rather than a global logger. Market data, matching, and backtesting describe events but do not decide file locations, create directories, or manage file streams. `orders.csv` and `trades.csv` remain separate: they are structured business records consumed by the backtest, not human-readable runtime logs.
+
+`Logger` uses a variadic template so callers can stream several values without manually constructing a temporary string:
+
+```cpp
+template <typename... Args>
+void log(Args&&... args)
+{
+    write(format(std::forward<Args>(args)...), std::cout);
+}
+```
+
+`typename... Args` declares a template parameter pack: at each call, the compiler deduces zero or more argument types. For example, `logger.log("order=", id, " qty=", quantity)` deduces types for the string literals and numeric values. `Args&&...` is a forwarding-reference parameter pack, and `std::forward<Args>(args)...` preserves whether each argument was an lvalue or rvalue when passing it to `format`.
+
+Inside `format`, the fold expression `(stream << ... << args)` expands the pack into chained stream insertions. The example above is conceptually `stream << "order=" << id << " qty=" << quantity`. The resulting `std::string` lets the non-template `write` method implement the destination policy only once. The template definitions remain in the header because the compiler must see their bodies when it instantiates them for each argument combination.
+
 ## 4. OrderBook: Market View and Local Order State
 
-### Files: `src/orderbook/orderbook.h`, `src/orderbook/orderbook.cpp`
+**Files:** `src/orderbook/orderbook.h`, `src/orderbook/orderbook.cpp`
 
 `OrderBook` combines two pieces of state:
 
@@ -281,7 +316,7 @@ Then comparisons and ordering remain exact, and the rest of the order book can k
 
 ## 5. MatchingEngine: Orders, Queues, and Reports
 
-### Files: `src/exchange/order.h`, `execution_report.h`, `matching_engine.*`
+**Files:** `src/exchange/order.h`, `execution_report.h`, `matching_engine.*`
 
 The exchange namespace defines the order vocabulary. `Order` carries identity, symbol, side, limit or market type, original quantity, remaining quantity, timestamp, and owner. `ExecutionReport` adds the event type and reports either a fill or a lifecycle transition.
 
@@ -339,7 +374,7 @@ Owner normalization removes whitespace and lowercases characters. It prevents `M
 
 ## 6. Strategy: The Main Decision Module
 
-### Files: `src/strategy/strategy.h`, `src/strategy/market_maker.h`
+**Files:** `src/strategy/strategy.h`, `src/strategy/market_maker.h`
 
 The strategy is the decision layer, not the matching layer. It sees `TopOfBook`, keeps its own working-order and position state, and returns candidate `StrategyOrder` values. The pipeline later assigns IDs and converts them to `exchange::Order`.
 
@@ -429,7 +464,7 @@ The table shows the core difference: `naive` is more aggressive and leaves more 
 
 ## 7. Backtest: Replay, PnL, and Limits
 
-### Files: `src/backtest/backtest_driver.h`, `backtest_driver.cpp`
+**Files:** `src/backtest/backtest_driver.h`, `backtest_driver.cpp`
 
 `BacktestDriver` is an offline analysis component. It reads ticks to establish the final mark price, reads the recorded trade CSV, applies slippage and fees, updates per-symbol positions, and writes a report. It does not participate in live order matching.
 

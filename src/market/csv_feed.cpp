@@ -6,9 +6,10 @@
 #include <thread>
 
 #include "market/tick_csv_parser.h"
+#include "utils/logger.h"
 
-CsvFeed::CsvFeed(const std::string& path, TickCallback cb, int ms_delay)
-    : path_(path), cb_(cb), ms_delay_(ms_delay)
+CsvFeed::CsvFeed(const std::string& path, TickCallback cb, int ms_delay, Logger* logger)
+    : path_(path), cb_(cb), ms_delay_(ms_delay), logger_(logger)
 {
 }
 
@@ -17,7 +18,10 @@ void CsvFeed::run()
     std::ifstream ifs(path_);
     if (!ifs.is_open())
     {
-        std::cerr << "CsvFeed: failed to open file " << path_ << std::endl;
+        if (logger_)
+            logger_->error("CsvFeed: failed to open file ", path_);
+        else
+            std::cerr << "CsvFeed: failed to open file " << path_ << std::endl;
         return;
     }
 
@@ -47,8 +51,11 @@ void CsvFeed::run()
         }
         catch (const std::exception& e)
         {
-            std::cerr << "CsvFeed parse error on line: " << line << " , exception: " << e.what()
-                      << std::endl;
+            if (logger_)
+                logger_->error("CsvFeed parse error on line: ", line, " , exception: ", e.what());
+            else
+                std::cerr << "CsvFeed parse error on line: " << line << " , exception: " << e.what()
+                          << std::endl;
             continue;  // Skip malformed rows.
         }
     }

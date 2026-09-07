@@ -5,6 +5,7 @@
 #include <string>
 
 #include "backtest/backtest_driver.h"
+#include "utils/logger.h"
 
 #ifndef PROJECT_ROOT_DIR
 #define PROJECT_ROOT_DIR "."
@@ -54,43 +55,29 @@ int main(int argc, char** argv)
     trades_file = to_abs_path(trades_file);
     log_file = to_abs_path(log_file);
 
-    if (!std::filesystem::is_regular_file(tick_file))
-    {
-        std::cerr << "Error: tick file does not exist: " << tick_file << std::endl;
-        return 1;
-    }
-    if (!std::filesystem::is_regular_file(trades_file))
-    {
-        std::cerr << "Error: trades file does not exist: " << trades_file << std::endl;
-        return 1;
-    }
-
-    const auto log_parent = std::filesystem::path(log_file).parent_path();
-    std::error_code ec;
-    std::filesystem::create_directories(log_parent, ec);
-    if (ec)
-    {
-        std::cerr << "Error: failed to create log directory '" << log_parent.string()
-                  << "': " << ec.message() << std::endl;
-        return 1;
-    }
-
-    // 3. Print the startup configuration.
-    std::cout << "[Runtime CWD]: " << std::filesystem::current_path() << "\n"
-              << "[Project Root]:" << PROJECT_ROOT_DIR << "\n"
-              << "Tick file:     " << tick_file << "\n"
-              << "Orders file:   " << orders_file << "\n"
-              << "Trades file:   " << trades_file << "\n"
-              << "Slippage:      " << slippage << "\n"
-              << "Fee rate:      " << fee_rate << "\n"
-              << "Mode:          " << (mode == RunMode::Realtime ? "Realtime" : "Backtest") << "\n"
-              << "Log file:      " << log_file << std::endl;
-
-    // 4. Run the backtest driver.
     try
     {
+        Logger logger(log_file);
+        if (!std::filesystem::is_regular_file(tick_file))
+        {
+            logger.error("Error: tick file does not exist: ", tick_file);
+            return 1;
+        }
+        if (!std::filesystem::is_regular_file(trades_file))
+        {
+            logger.error("Error: trades file does not exist: ", trades_file);
+            return 1;
+        }
+
+        logger.log("[Runtime CWD]: ", std::filesystem::current_path(), "\n",
+                   "[Project Root]:", PROJECT_ROOT_DIR, "\n", "Tick file:     ", tick_file, "\n",
+                   "Orders file:   ", orders_file, "\n", "Trades file:   ", trades_file, "\n",
+                   "Slippage:      ", slippage, "\n", "Fee rate:      ", fee_rate, "\n",
+                   "Mode:          ", (mode == RunMode::Realtime ? "Realtime" : "Backtest"), "\n",
+                   "Log file:      ", log_file);
+
         BacktestDriver driver(tick_file, orders_file, trades_file, slippage, fee_rate, mode,
-                              log_file);
+                              logger);
         driver.run();
     }
     catch (const std::exception& ex)

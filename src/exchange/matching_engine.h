@@ -11,6 +11,8 @@
 #include "order.h"
 #include "orderbook/orderbook.h"
 
+class Logger;
+
 struct PriceLevel
 {
     std::list<exchange::Order> orders;
@@ -38,6 +40,8 @@ class MatchingEngine : public IMatchingEngine
 {
    public:
     using ReportCallback = std::function<void(const ExecutionReport&)>;
+
+    explicit MatchingEngine(Logger* logger = nullptr) : logger_(logger) {}
 
     void send_order(const exchange::Order& order) override;
     void process_market_tick(const Tick& tick) override;
@@ -76,4 +80,5 @@ class MatchingEngine : public IMatchingEngine
     std::unordered_map<uint64_t, exchange::Order*> order_index_;
     OrderBook private_order_book_;
     ReportCallback report_cb_;
+    Logger* logger_;
 };
