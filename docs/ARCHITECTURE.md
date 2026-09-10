@@ -306,19 +306,25 @@ Here the goal is not ordering but constant-time average lookup: `unordered_map` 
 
 ### 4.2 Price representation
 
-The book currently uses `double` for readability. A production-oriented implementation would
-convert prices to integer ticks at the boundary:
+External inputs, strategy calculations, CSV records, and reports use `double` for readability.
+Before a price is used as an order-book key or in matching comparisons, the implementation converts
+it to an integer tick:
 
 ```cpp
-std::map<double, uint64_t, std::greater<double>> bids_qty;
+using PriceTick = int64_t;
+std::map<PriceTick, uint64_t, std::greater<PriceTick>> bids_qty;
 ```
 
 ```cpp
-long long tick_price = static_cast<long long>(std::llround(raw_price / tick_size));
+inline PriceTick to_price_tick(double price)
+{
+    return static_cast<PriceTick>(std::llround(price / PRICE_TICK_SIZE));
+}
 ```
 
-Integer ticks make comparison and ordering deterministic. This project keeps `double` to keep the
-teaching path short.
+The matching engine uses the same `PriceTick` keys for price-time priority and cancellation.
+`to_price()` converts ticks back to `double` only at output boundaries. Integer ticks make level
+identity, comparison, and ordering deterministic while retaining readable public records.
 
 ## 5. MatchingEngine: Orders, Queues, and Reports
 

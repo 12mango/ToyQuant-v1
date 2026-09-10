@@ -20,8 +20,8 @@ struct PriceLevel
 
 struct MEOrderBook
 {
-    std::map<double, PriceLevel, std::greater<double>> bids;  // Highest price first.
-    std::map<double, PriceLevel> asks;                        // Lowest price first.
+    std::map<PriceTick, PriceLevel, std::greater<PriceTick>> bids;  // Highest price first.
+    std::map<PriceTick, PriceLevel> asks;                           // Lowest price first.
 };
 
 class IMatchingEngine

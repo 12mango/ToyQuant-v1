@@ -54,10 +54,10 @@ class OrderBook : public IOrderBook
     mutable std::mutex mtx_;
     struct SideBook
     {
-        std::map<double, uint64_t, std::greater<double>> bids_qty;
-        std::map<double, uint64_t> asks_qty;
-        std::map<double, std::list<OrderNode>, std::greater<double>> bids_orders;
-        std::map<double, std::list<OrderNode>> asks_orders;
+        std::map<PriceTick, uint64_t, std::greater<PriceTick>> bids_qty;
+        std::map<PriceTick, uint64_t> asks_qty;
+        std::map<PriceTick, std::list<OrderNode>, std::greater<PriceTick>> bids_orders;
+        std::map<PriceTick, std::list<OrderNode>> asks_orders;
     };
     std::map<std::string, SideBook> books_;
     std::unordered_map<uint64_t, OrderNode*> order_index_;

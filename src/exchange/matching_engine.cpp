@@ -51,7 +51,7 @@ void MatchingEngine::cancel_order(uint64_t order_id)
 
     if (cancelled_order.side == exchange::Side::Buy)
     {
-        auto pit = book.bids.find(cancelled_order.price);
+        auto pit = book.bids.find(to_price_tick(cancelled_order.price));
         if (pit != book.bids.end())
         {
             pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
@@ -60,7 +60,7 @@ void MatchingEngine::cancel_order(uint64_t order_id)
     }
     else
     {
-        auto pit = book.asks.find(cancelled_order.price);
+        auto pit = book.asks.find(to_price_tick(cancelled_order.price));
         if (pit != book.asks.end())
         {
             pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
@@ -90,6 +90,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
     Order new_order = incoming;  // Copy because matching updates remaining quantity.
     uint64_t& qty = new_order.remaining;
     qty = new_order.qty;
+    const PriceTick incoming_price = to_price_tick(new_order.price);
 
     // ==================== Buy-Side Matching ====================
     if (incoming.side == exchange::Side::Buy)
@@ -100,9 +101,9 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
             // 1) choose the best price level first (lowest ask for a buy order)
             // 2) within the same price level, match the earliest resting order first
             auto best_ask_it = book.asks.begin();
-            double best_price = best_ask_it->first;
+            PriceTick best_price = best_ask_it->first;
 
-            if (new_order.price < best_price) break;
+            if (incoming_price < best_price) break;
 
             auto& ask_queue = best_ask_it->second.orders;
             while (qty > 0 && !ask_queue.empty())
@@ -127,7 +128,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = new_order.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = new_order.symbol,
-                                       .price = best_price,
+                                       .price = to_price(best_price),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = new_order.owner});
@@ -136,7 +137,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = resting.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = resting.symbol,
-                                       .price = best_price,
+                                       .price = to_price(best_price),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = resting.owner});
@@ -150,7 +151,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                     .side = resting.side,
                     .exec_type = resting.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
                     .symbol = resting.symbol,
-                    .price = best_price,
+                    .price = to_price(best_price),
                     .quantity = resting.remaining,
                     .ts = new_order.ts,
                     .owner = resting.owner});
@@ -179,8 +180,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
         // Rest any unfilled quantity in the bid book.
         if (qty > 0 && rest_incoming)
         {
-            book.bids[new_order.price].orders.push_back(new_order);
-            order_index_[new_order.id] = &book.bids[new_order.price].orders.back();
+            book.bids[incoming_price].orders.push_back(new_order);
+            order_index_[new_order.id] = &book.bids[incoming_price].orders.back();
             private_order_book_.add_order(new_order);
 
             report(ExecutionReport{.order_id = new_order.id,
@@ -210,9 +211,9 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
             // 1) choose the best price level first (highest bid for a sell order)
             // 2) within the same price level, match the earliest resting order first
             auto best_bid_it = book.bids.begin();
-            double best_price = best_bid_it->first;
+            PriceTick best_price = best_bid_it->first;
 
-            if (new_order.price > best_price) break;
+            if (incoming_price > best_price) break;
 
             auto& bid_queue = best_bid_it->second.orders;
             while (qty > 0 && !bid_queue.empty())
@@ -237,7 +238,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = new_order.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = new_order.symbol,
-                                       .price = best_price,
+                                       .price = to_price(best_price),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = new_order.owner});
@@ -246,7 +247,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = resting.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = resting.symbol,
-                                       .price = best_price,
+                                       .price = to_price(best_price),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = resting.owner});
@@ -260,7 +261,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                     .side = resting.side,
                     .exec_type = resting.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
                     .symbol = resting.symbol,
-                    .price = best_price,
+                    .price = to_price(best_price),
                     .quantity = resting.remaining,
                     .ts = new_order.ts,
                     .owner = resting.owner});
@@ -289,8 +290,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
         // Rest any unfilled quantity in the ask book.
         if (qty > 0 && rest_incoming)
         {
-            book.asks[new_order.price].orders.push_back(new_order);
-            order_index_[new_order.id] = &book.asks[new_order.price].orders.back();
+            book.asks[incoming_price].orders.push_back(new_order);
+            order_index_[new_order.id] = &book.asks[incoming_price].orders.back();
             private_order_book_.add_order(new_order);
 
             report(ExecutionReport{.order_id = new_order.id,

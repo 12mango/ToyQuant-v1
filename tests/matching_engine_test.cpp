@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <vector>
 
 bool has_report(const std::vector<ExecutionReport>& reports, uint64_t order_id, ExecType exec_type,
@@ -107,9 +108,24 @@ int main()
     {
         if (report.order_id == 23 && report.exec_type == ExecType::Trade)
         {
-            got_best_bid = report.price == 1.10100;
+            got_best_bid = std::abs(report.price - 1.10100) < 1e-12;
             break;
         }
     }
     assert(got_best_bid);
+
+    // Equivalent floating-point expressions must select the same integer price level.
+    MatchingEngine tick_engine;
+    std::vector<ExecutionReport> tick_reports;
+    tick_engine.set_report_callback([&tick_reports](const ExecutionReport& report)
+                                    { tick_reports.push_back(report); });
+    tick_engine.send_order({40, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 0.1 + 0.2,
+                            10, 10, 1, "LiquidityProvider"});
+    tick_engine.process_market_tick({2, "TEST", 0.3, 10, Side::Sell});
+    assert(std::any_of(tick_reports.begin(), tick_reports.end(),
+                       [](const ExecutionReport& report)
+                       {
+                           return report.order_id == 40 && report.exec_type == ExecType::Trade &&
+                                  report.quantity == 10;
+                       }));
 }

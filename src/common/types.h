@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -26,6 +27,20 @@ enum class ExecType : uint8_t
     Cancelled,
     Resting
 };
+
+using PriceTick = int64_t;
+
+inline constexpr double PRICE_TICK_SIZE = 0.00001;
+
+inline PriceTick to_price_tick(double price)
+{
+    return static_cast<PriceTick>(std::llround(price / PRICE_TICK_SIZE));
+}
+
+inline double to_price(PriceTick tick)
+{
+    return static_cast<double>(tick) * PRICE_TICK_SIZE;
+}
 
 struct Tick
 {
