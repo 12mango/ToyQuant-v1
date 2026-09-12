@@ -8,7 +8,12 @@ ToyQuant is a small event-driven market-making simulator. It connects market-dat
 flowchart LR
     CSV[CsvFeed\nCSV rows] --> T[Tick]
     UDP[UdpFeed\nUDP packets] --> T
+    BA[Market data adapter\nBinance or future formats] --> RF[ReplayFeed\ntime merge]
+    RF --> MEV[MarketEvent\nTrade or BBO]
     T --> P[Pipeline::process_tick]
+    MEV --> PE[Pipeline::process_event]
+    PE --> OB
+    PE --> ME
     P --> OB[OrderBook\non_tick / top]
     P --> ME[MatchingEngine\nmarket tick]
     OB --> S[Strategy]
@@ -33,6 +38,7 @@ The source map is:
 |---|---|---|
 | Shared data | `src/common/types.h` | `Tick`, `Side`, `ExecType`, `TickCallback` |
 | Input | `src/market/csv_feed.*`, `udp_feed.*` | `CsvFeed::run`, `UdpFeed::loop` |
+| Market replay | `src/market/market_data_adapter.*`, `replay_feed.*` | `IMarketEventReader`, `ReplayFeed::run` |
 | Coordination | `src/main.cpp` | `Pipeline::process_tick`, output callbacks |
 | Local state | `src/orderbook/orderbook.*` | `TopOfBook`, `OrderBook`, `OrderState` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
@@ -58,6 +64,21 @@ struct Tick
 
 using TickCallback = std::function<void(const Tick&)>;
 ```
+
+The legacy CSV and UDP paths retain this contract. Trades+BBO replay uses a richer boundary:
+
+```cpp
+using MarketEvent = std::variant<MarketTrade, BboQuote>;
+```
+
+`IMarketEventReader` isolates vendor schemas from replay. The Binance readers map aggregate trades
+and book ticker rows into these domain events; `ReplayFeed` only performs streaming timestamp
+merge. To support another vendor, implement readers for its files and add a factory branch in
+`make_market_data_readers` without changing `Pipeline`, the strategy, or matching code.
+
+BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
+and drive matching. The external BBO is stored separately from local strategy orders, so replacing
+a quote cannot delete a local order at the same price.
 
 `CsvFeed::run` reads rows, converts them into `Tick`, and invokes `cb_(t)`. Malformed rows are
 reported and skipped. The callback keeps the feed independent from `Pipeline`.

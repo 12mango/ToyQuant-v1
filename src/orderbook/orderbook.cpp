@@ -198,6 +198,15 @@ void OrderBook::on_tick(const Tick& t)
     }
 }
 
+void OrderBook::on_bbo(const BboQuote& quote)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto& book = books_[quote.symbol];
+    book.external_bbo = quote;
+    book.has_external_bbo =
+        quote.bid_price > 0.0 && quote.ask_price > 0.0 && quote.bid_price <= quote.ask_price;
+}
+
 TopOfBook OrderBook::top(const std::string& symbol)
 {
     std::lock_guard<std::mutex> lk(mtx_);
@@ -218,6 +227,28 @@ TopOfBook OrderBook::top(const std::string& symbol)
     {
         out.ask_price = to_price(b.asks_qty.begin()->first);
         out.ask_size = b.asks_qty.begin()->second;
+    }
+    if (b.has_external_bbo)
+    {
+        if (out.bid_price == 0.0 || b.external_bbo.bid_price > out.bid_price)
+        {
+            out.bid_price = b.external_bbo.bid_price;
+            out.bid_size = b.external_bbo.bid_quantity;
+        }
+        else if (to_price_tick(out.bid_price) == to_price_tick(b.external_bbo.bid_price))
+        {
+            out.bid_size += b.external_bbo.bid_quantity;
+        }
+
+        if (out.ask_price == 0.0 || b.external_bbo.ask_price < out.ask_price)
+        {
+            out.ask_price = b.external_bbo.ask_price;
+            out.ask_size = b.external_bbo.ask_quantity;
+        }
+        else if (to_price_tick(out.ask_price) == to_price_tick(b.external_bbo.ask_price))
+        {
+            out.ask_size += b.external_bbo.ask_quantity;
+        }
     }
     return out;
 }

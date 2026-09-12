@@ -1,0 +1,27 @@
+#pragma once
+
+#include <cstdint>
+#include <fstream>
+#include <memory>
+#include <string>
+
+#include "market/market_event.h"
+
+class IMarketEventReader
+{
+   public:
+    virtual ~IMarketEventReader() = default;
+    virtual bool next(MarketEvent& event) = 0;
+};
+
+struct MarketDataReaders
+{
+    std::unique_ptr<IMarketEventReader> trades;
+    std::unique_ptr<IMarketEventReader> quotes;
+};
+
+MarketDataReaders make_market_data_readers(const std::string& format,
+                                           const std::string& trades_path,
+                                           const std::string& quotes_path,
+                                           const std::string& symbol,
+                                           uint64_t quantity_scale = 1000000);

@@ -25,6 +25,23 @@ ts,symbol,price,size,side
 The parser requires the first four fields, accepts an optional `side` field, and ignores extra
 columns so the input can be extended without changing the core fields.
 
+## Trades and BBO Input
+
+`v2/` contains a Binance aggregate-trade file and a book-ticker BBO file. Replay mode consumes the
+files together rather than converting them into the legacy Tick format:
+
+```text
+toy_quant replay <aggTrades.csv> <bookTicker.csv> <symbol> [delay_ms] [strategy] [quantity_scale]
+```
+
+The Binance aggregate-trade columns are aggregate trade ID, price, quantity, first trade ID, last
+trade ID, transaction time, buyer-is-maker, and best-match. A file may optionally have an
+`agg_trade_id` or `aggregate_trade_id` header. Book ticker uses its named header with update ID,
+best bid price/quantity, best ask price/quantity, transaction time, and event time.
+
+Transaction time controls cross-file ordering. Quantities are multiplied by `quantity_scale`
+(default `1000000`) and rounded to unsigned integer engine units.
+
 ## Generate Scenarios
 
 Run this command from the project root:
@@ -51,7 +68,8 @@ The application writes strategy orders and trades to:
 - data/runtime/orders.csv
 - data/runtime/trades.csv
 
-Both output files begin with a `# source_ticks=...` metadata line and then use this format:
+Legacy CSV runs begin with `# source_ticks=...`; Trades+BBO replay runs begin with
+`# source_market_data=...`. Both then use this format:
 
 ```csv
 ts,symbol,side,price,quantity,order_id

@@ -10,11 +10,13 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <type_traits>
 
 #include "backtest/backtest_driver.h"
 #include "backtest/performance.h"
 #include "exchange/matching_engine.h"
 #include "market/csv_feed.h"
+#include "market/replay_feed.h"
 #include "market/udp_feed.h"
 #include "orderbook/orderbook.h"
 #include "strategy/market_maker.h"
@@ -30,8 +32,11 @@ struct AppConfig
 {
     std::string mode = "csv";
     std::string path_or_port = "data/scenarios/synthetic_ticks.csv";
+    std::string quotes_path;
+    std::string symbol;
     int delay = 0;
     std::string strategy_name = "optimized";
+    uint64_t quantity_scale = 1000000;
 };
 
 std::string to_abs_path(const std::string& input_path)
@@ -52,30 +57,72 @@ bool parse_integer(const std::string& value, int& result)
     return parsed.ec == std::errc{} && parsed.ptr == end;
 }
 
+bool parse_unsigned(const std::string& value, uint64_t& result)
+{
+    if (value.empty()) return false;
+
+    const char* begin = value.data();
+    const char* end = begin + value.size();
+    const auto parsed = std::from_chars(begin, end, result);
+    return parsed.ec == std::errc{} && parsed.ptr == end;
+}
+
 void print_usage(const char* executable)
 {
     std::cerr << "Usage: " << executable << " csv [path_to_csv] [ms_delay] [strategy]\n";
     std::cerr << "   or: " << executable << " udp <port> [strategy]\n";
+    std::cerr << "   or: " << executable
+              << " replay <agg_trades_csv> <bbo_csv> <symbol> [ms_delay] [strategy] "
+                 "[quantity_scale]\n";
     std::cerr << "   strategy: optimized (default) | naive\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
 {
     if (argc == 2 && std::string(argv[1]) == "--help") return false;
-    if (argc > 5 || (argc > 1 && std::string(argv[1]) == "udp" && argc > 4))
+
+    if (argc >= 2) cfg.mode = argv[1];
+    if (cfg.mode != "csv" && cfg.mode != "udp" && cfg.mode != "replay")
+    {
+        error = "mode must be 'csv', 'udp', or 'replay'";
+        return false;
+    }
+
+    if (cfg.mode == "replay")
+    {
+        if (argc < 5 || argc > 8)
+        {
+            error = "replay requires trade file, BBO file, and symbol";
+            return false;
+        }
+        cfg.path_or_port = argv[2];
+        cfg.quotes_path = argv[3];
+        cfg.symbol = argv[4];
+        if (!std::filesystem::is_regular_file(to_abs_path(cfg.path_or_port)) ||
+            !std::filesystem::is_regular_file(to_abs_path(cfg.quotes_path)))
+        {
+            error = "replay input file does not exist";
+            return false;
+        }
+        if (argc >= 6 && (!parse_integer(argv[5], cfg.delay) || cfg.delay < 0))
+        {
+            error = "delay must be a non-negative integer";
+            return false;
+        }
+        if (argc >= 7) cfg.strategy_name = argv[6];
+        if (argc >= 8 && (!parse_unsigned(argv[7], cfg.quantity_scale) || cfg.quantity_scale == 0))
+        {
+            error = "quantity scale must be a positive integer";
+            return false;
+        }
+    }
+    else if (argc > 5 || (cfg.mode == "udp" && argc > 4))
     {
         error = "too many arguments";
         return false;
     }
 
-    if (argc >= 2) cfg.mode = argv[1];
-    if (cfg.mode != "csv" && cfg.mode != "udp")
-    {
-        error = "mode must be 'csv' or 'udp'";
-        return false;
-    }
-
-    if (argc >= 3) cfg.path_or_port = argv[2];
+    if (cfg.mode != "replay" && argc >= 3) cfg.path_or_port = argv[2];
     if (cfg.mode == "csv" && cfg.path_or_port.empty())
     {
         error = "CSV path cannot be empty";
@@ -87,7 +134,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         return false;
     }
 
-    if (argc >= 4)
+    if (cfg.mode != "replay" && argc >= 4)
     {
         if (cfg.mode == "udp")
         {
@@ -99,7 +146,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             return false;
         }
     }
-    if (argc >= 5) cfg.strategy_name = argv[4];
+    if (cfg.mode != "replay" && argc >= 5) cfg.strategy_name = argv[4];
 
     if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive")
     {
@@ -206,24 +253,34 @@ class Pipeline
         auto top = order_book_.top(tick.symbol);
         if (enable_print) print_tick(logger_, tick, top);
 
-        auto orders = strategy_.on_top_of_book(tick.symbol, top);
+        submit_strategy_actions(tick.symbol, tick.ts, top);
+    }
 
-        for (uint64_t order_id : strategy_.cancel_requests())
-        {
-            ++cancel_requests_;
-            engine_.cancel_order(order_id);
-        }
-
-        for (auto& order : orders)
-        {
-            order.order_id = next_order_id_++;
-            auto ex_order = to_exchange_order(order, tick.ts, "MarketMaker");
-            ++submitted_orders_;
-            submitted_quantity_ += order.quantity;
-            write_order_csv_row(orders_out_, tick.ts, order);
-            strategy_.on_order_submitted(order);
-            engine_.send_order(ex_order);
-        }
+    void process_event(const MarketEvent& event, bool enable_print = false)
+    {
+        std::visit(
+            [this, enable_print](const auto& value)
+            {
+                using Event = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<Event, MarketTrade>)
+                {
+                    engine_.process_market_tick({value.ts, value.symbol, value.price,
+                                                 value.quantity, value.aggressor_side});
+                }
+                else
+                {
+                    order_book_.on_bbo(value);
+                    const auto top = order_book_.top(value.symbol);
+                    if (enable_print)
+                    {
+                        logger_.log("[BBO] ", value.symbol, " ts:", value.ts,
+                                    " bid:", value.bid_price, "@", value.bid_quantity,
+                                    " ask:", value.ask_price, "@", value.ask_quantity);
+                    }
+                    submit_strategy_actions(value.symbol, value.ts, top);
+                }
+            },
+            event);
     }
 
     void print_summary() const
@@ -244,6 +301,27 @@ class Pipeline
     }
 
    private:
+    void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top)
+    {
+        auto orders = strategy_.on_top_of_book(symbol, top);
+
+        for (uint64_t order_id : strategy_.cancel_requests())
+        {
+            ++cancel_requests_;
+            engine_.cancel_order(order_id);
+        }
+
+        for (auto& order : orders)
+        {
+            order.order_id = next_order_id_++;
+            auto ex_order = to_exchange_order(order, ts, "MarketMaker");
+            ++submitted_orders_;
+            submitted_quantity_ += order.quantity;
+            write_order_csv_row(orders_out_, ts, order);
+            strategy_.on_order_submitted(order);
+            engine_.send_order(ex_order);
+        }
+    }
     std::ofstream& orders_out_;
     std::ofstream& trades_out_;
     IOrderBook& order_book_;
@@ -264,7 +342,8 @@ struct OutputFiles
     std::ofstream trades;
 };
 
-OutputFiles open_output_files(const std::string& source_ticks)
+OutputFiles open_output_files(const std::string& source,
+                              const std::string& source_type = "source_ticks")
 {
     const std::string orders_file = to_abs_path("data/runtime/orders.csv");
     const std::string trades_file = to_abs_path("data/runtime/trades.csv");
@@ -283,8 +362,8 @@ OutputFiles open_output_files(const std::string& source_ticks)
         throw std::runtime_error("failed to open runtime output files in '" + output_dir.string() +
                                  "'");
     }
-    files.orders << "# source_ticks=" << source_ticks << "\n";
-    files.trades << "# source_ticks=" << source_ticks << "\n";
+    files.orders << "# " << source_type << "=" << source << "\n";
+    files.trades << "# " << source_type << "=" << source << "\n";
     files.orders << "ts,symbol,side,price,quantity,order_id\n";
     files.trades << "ts,symbol,side,price,quantity,order_id\n";
     return files;
@@ -305,6 +384,32 @@ void run_csv_mode(const AppConfig& cfg)
                       logger);
     CsvFeed feed(
         csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay, &logger);
+    feed.run();
+    pipeline.print_summary();
+}
+
+void run_replay_mode(const AppConfig& cfg)
+{
+    const std::string trades_file = to_abs_path(cfg.path_or_port);
+    const std::string quotes_file = to_abs_path(cfg.quotes_path);
+    Logger logger(to_abs_path("logs/toy_quant.log"));
+    logger.log("[Mode: Replay] trades=", trades_file, " quotes=", quotes_file,
+               " symbol=", cfg.symbol, " quantity_scale=", cfg.quantity_scale,
+               " strategy=", cfg.strategy_name);
+
+    const std::string source = "binance;trades=" + trades_file + ";quotes=" + quotes_file +
+                               ";symbol=" + cfg.symbol +
+                               ";quantity_scale=" + std::to_string(cfg.quantity_scale);
+    auto output_files = open_output_files(source, "source_market_data");
+    OrderBook order_book;
+    auto strategy = make_strategy(cfg.strategy_name);
+    MatchingEngine engine(&logger);
+    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
+                      logger);
+    ReplayFeed feed(
+        make_market_data_readers("binance", trades_file, quotes_file, cfg.symbol,
+                                 cfg.quantity_scale),
+        [&](const MarketEvent& event) { pipeline.process_event(event); }, cfg.delay);
     feed.run();
     pipeline.print_summary();
 }
@@ -362,6 +467,11 @@ int main(int argc, char** argv)
         if (cfg.mode == "udp")
         {
             run_udp_mode(cfg);
+            return 0;
+        }
+        if (cfg.mode == "replay")
+        {
+            run_replay_mode(cfg);
             return 0;
         }
     }

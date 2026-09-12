@@ -51,6 +51,31 @@ python3 tools/udp_sender.py 127.0.0.1 9000 data/scenarios/sample_ticks.csv 0
 
 CSV mode is easier for repeatable experiments; UDP mode is useful for observing a streaming feed.
 
+## Replay Trades and BBO
+
+Replay the Binance samples in `data/v2` with:
+
+```bash
+./out/build/linux-debug/toy_quant replay \
+  data/v2/test_aggTrades_5k.csv \
+  data/v2/test_bookTicker_5k.csv \
+  BTCUSDT 0 optimized 1000000
+```
+
+The command format is:
+
+```text
+toy_quant replay <trades_csv> <bbo_csv> <symbol> [delay_ms] [strategy] [quantity_scale]
+```
+
+The replay feed streams and merges both files by transaction timestamp. BBO events replace the
+external best bid and ask and trigger strategy decisions. Aggregate trades drive fills; Binance's
+`is_buyer_maker=true` means that the seller was the aggressor.
+
+`quantity_scale` converts decimal exchange quantities to the engine's integer units. The default
+is `1000000`, so `0.001 BTC` becomes `1000` internal units. Strategy order sizes and generated
+runtime quantities use those same units. The existing `csv` and `udp` modes are unchanged.
+
 ## Scenarios
 
 Scenarios are CSV files containing synthetic market ticks. They make it easy to run the same
@@ -126,6 +151,9 @@ The terminal shows tick and summary information. Backtest reports are written un
   data/runtime/trades.csv \
   0 0 backtest logs/backtest.log
 ```
+
+`backtest_main` currently expects the legacy Tick file for mark prices. Replay mode records
+`source_market_data` metadata, but full BBO-based portfolio marking is a separate future step.
 
 ## Troubleshooting
 

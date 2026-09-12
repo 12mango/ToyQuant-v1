@@ -33,6 +33,8 @@ set(COMMON_INCLUDE_DIRS
 # Sources shared by application targets.
 set(COMMON_SOURCES
     src/market/csv_feed.cpp
+    src/market/market_data_adapter.cpp
+    src/market/replay_feed.cpp
     src/market/tick_csv_parser.cpp
     src/backtest/performance.cpp
     src/orderbook/orderbook.cpp
@@ -72,6 +74,11 @@ add_test(NAME matching_engine_test COMMAND matching_engine_test)
 add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp src/market/tick_csv_parser.cpp)
 target_include_directories(tick_csv_parser_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME tick_csv_parser_test COMMAND tick_csv_parser_test)
+
+add_executable(market_data_adapter_test tests/market_data_adapter_test.cpp
+    src/market/market_data_adapter.cpp src/market/replay_feed.cpp)
+target_include_directories(market_data_adapter_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME market_data_adapter_test COMMAND market_data_adapter_test)
 
 add_executable(performance_test tests/performance_test.cpp src/backtest/performance.cpp)
 target_include_directories(performance_test PRIVATE ${COMMON_INCLUDE_DIRS})

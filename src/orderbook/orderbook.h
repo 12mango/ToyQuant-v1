@@ -6,6 +6,7 @@
 
 #include "common/types.h"
 #include "exchange/order.h"
+#include "market/market_event.h"
 
 struct TopOfBook
 {
@@ -30,6 +31,7 @@ class IOrderBook
    public:
     virtual ~IOrderBook() = default;
     virtual void on_tick(const Tick& t) = 0;
+    virtual void on_bbo(const BboQuote& quote) = 0;
     virtual TopOfBook top(const std::string& symbol) = 0;
 };
 
@@ -48,6 +50,7 @@ class OrderBook : public IOrderBook
     bool apply_partial_fill(uint64_t order_id, uint64_t filled_qty);
     OrderState state_for_order(uint64_t order_id) const;
     void on_tick(const Tick& t) override;
+    void on_bbo(const BboQuote& quote) override;
     TopOfBook top(const std::string& symbol) override;
 
    private:
@@ -58,6 +61,8 @@ class OrderBook : public IOrderBook
         std::map<PriceTick, uint64_t> asks_qty;
         std::map<PriceTick, std::list<OrderNode>, std::greater<PriceTick>> bids_orders;
         std::map<PriceTick, std::list<OrderNode>> asks_orders;
+        BboQuote external_bbo;
+        bool has_external_bbo{false};
     };
     std::map<std::string, SideBook> books_;
     std::unordered_map<uint64_t, OrderNode*> order_index_;
