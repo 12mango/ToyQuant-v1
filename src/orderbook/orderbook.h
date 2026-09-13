@@ -32,7 +32,7 @@ class IOrderBook
     virtual ~IOrderBook() = default;
     virtual void on_tick(const Tick& t) = 0;
     virtual void on_bbo(const BboQuote& quote) = 0;
-    virtual TopOfBook top(const std::string& symbol) = 0;
+    virtual TopOfBook market_top(const std::string& symbol) = 0;
 };
 
 class OrderBook : public IOrderBook
@@ -53,7 +53,8 @@ class OrderBook : public IOrderBook
     OrderState state_for_order(uint64_t order_id) const;
     void on_tick(const Tick& t) override;
     void on_bbo(const BboQuote& quote) override;
-    TopOfBook top(const std::string& symbol) override;
+    TopOfBook market_top(const std::string& symbol) override;
+    TopOfBook local_top(const std::string& symbol);
 
    private:
     mutable std::mutex mtx_;
@@ -63,6 +64,8 @@ class OrderBook : public IOrderBook
         std::map<PriceTick, uint64_t> asks_qty;
         std::map<PriceTick, std::list<OrderNode>, std::greater<PriceTick>> bids_orders;
         std::map<PriceTick, std::list<OrderNode>> asks_orders;
+        std::map<PriceTick, uint64_t, std::greater<PriceTick>> external_bids_qty;
+        std::map<PriceTick, uint64_t> external_asks_qty;
         BboQuote external_bbo;
         bool has_external_bbo{false};
     };

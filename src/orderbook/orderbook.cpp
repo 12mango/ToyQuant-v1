@@ -186,15 +186,15 @@ void OrderBook::on_tick(const Tick& t)
     const PriceTick price = to_price_tick(t.price, tick_size_);
     if (t.side == Side::Buy)
     {
-        b.bids_qty[price] = t.size;
+        b.external_bids_qty[price] = t.size;
     }
     else if (t.side == Side::Sell)
     {
-        b.asks_qty[price] = t.size;
+        b.external_asks_qty[price] = t.size;
     }
     else if (t.price > 0)
     {
-        b.bids_qty[price] = t.size;
+        b.external_bids_qty[price] = t.size;
     }
 }
 
@@ -207,50 +207,49 @@ void OrderBook::on_bbo(const BboQuote& quote)
         quote.bid_price > 0.0 && quote.ask_price > 0.0 && quote.bid_price <= quote.ask_price;
 }
 
-TopOfBook OrderBook::top(const std::string& symbol)
+TopOfBook OrderBook::market_top(const std::string& symbol)
 {
-    std::lock_guard<std::mutex> lk(mtx_);
+    std::lock_guard<std::mutex> lock(mtx_);
     TopOfBook out;
-    auto it = books_.find(symbol);
-    if (it == books_.end())
-    {
-        return out;
-    }
+    const auto it = books_.find(symbol);
+    if (it == books_.end()) return out;
 
-    auto& b = it->second;
-    if (!b.bids_qty.empty())
+    const auto& book = it->second;
+    if (book.has_external_bbo)
     {
-        out.bid_price = to_price(b.bids_qty.begin()->first, tick_size_);
-        out.bid_size = b.bids_qty.begin()->second;
+        return TopOfBook{book.external_bbo.bid_price, book.external_bbo.bid_quantity,
+                         book.external_bbo.ask_price, book.external_bbo.ask_quantity};
     }
-    if (!b.asks_qty.empty())
+    if (!book.external_bids_qty.empty())
     {
-        out.ask_price = to_price(b.asks_qty.begin()->first, tick_size_);
-        out.ask_size = b.asks_qty.begin()->second;
+        out.bid_price = to_price(book.external_bids_qty.begin()->first, tick_size_);
+        out.bid_size = book.external_bids_qty.begin()->second;
     }
-    if (b.has_external_bbo)
+    if (!book.external_asks_qty.empty())
     {
-        if (out.bid_price == 0.0 || b.external_bbo.bid_price > out.bid_price)
-        {
-            out.bid_price = b.external_bbo.bid_price;
-            out.bid_size = b.external_bbo.bid_quantity;
-        }
-        else if (to_price_tick(out.bid_price, tick_size_) ==
-                 to_price_tick(b.external_bbo.bid_price, tick_size_))
-        {
-            out.bid_size += b.external_bbo.bid_quantity;
-        }
+        out.ask_price = to_price(book.external_asks_qty.begin()->first, tick_size_);
+        out.ask_size = book.external_asks_qty.begin()->second;
+    }
+    return out;
+}
 
-        if (out.ask_price == 0.0 || b.external_bbo.ask_price < out.ask_price)
-        {
-            out.ask_price = b.external_bbo.ask_price;
-            out.ask_size = b.external_bbo.ask_quantity;
-        }
-        else if (to_price_tick(out.ask_price, tick_size_) ==
-                 to_price_tick(b.external_bbo.ask_price, tick_size_))
-        {
-            out.ask_size += b.external_bbo.ask_quantity;
-        }
+TopOfBook OrderBook::local_top(const std::string& symbol)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    TopOfBook out;
+    const auto it = books_.find(symbol);
+    if (it == books_.end()) return out;
+
+    const auto& book = it->second;
+    if (!book.bids_qty.empty())
+    {
+        out.bid_price = to_price(book.bids_qty.begin()->first, tick_size_);
+        out.bid_size = book.bids_qty.begin()->second;
+    }
+    if (!book.asks_qty.empty())
+    {
+        out.ask_price = to_price(book.asks_qty.begin()->first, tick_size_);
+        out.ask_size = book.asks_qty.begin()->second;
     }
     return out;
 }

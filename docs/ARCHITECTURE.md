@@ -84,8 +84,10 @@ limit. Fee rates are carried in the specification for portfolio accounting, whic
 of the L1 replay.
 
 BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
-and drive matching. The external BBO is stored separately from local strategy orders, so replacing
-a quote cannot delete a local order at the same price.
+and drive matching. External Tick/BBO state is stored separately from local strategy orders.
+`market_top()` exposes only venue prices through `IOrderBook`. The concrete `OrderBook::local_top()`
+exposes working strategy orders for tests and diagnostics. There is intentionally no combined view,
+so strategy code cannot accidentally include its own orders in the market reference.
 
 `CsvFeed::run` reads rows, converts them into `Tick`, and invokes `cb_(t)`. Malformed rows are
 reported and skipped. The callback keeps the feed independent from `Pipeline`.

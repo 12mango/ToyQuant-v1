@@ -260,7 +260,7 @@ class Pipeline
     {
         order_book_.on_tick(tick);
         engine_.process_market_tick(tick);
-        auto top = order_book_.top(tick.symbol);
+        auto top = order_book_.market_top(tick.symbol);
         if (enable_print) print_tick(logger_, tick, top);
 
         submit_strategy_actions(tick.symbol, tick.ts, top);
@@ -280,7 +280,7 @@ class Pipeline
                 else
                 {
                     order_book_.on_bbo(value);
-                    const auto top = order_book_.top(value.symbol);
+                    const auto top = order_book_.market_top(value.symbol);
                     if (enable_print)
                     {
                         logger_.log("[BBO] ", value.symbol, " ts:", value.ts,
