@@ -31,6 +31,7 @@ class IMatchingEngine
     virtual ~IMatchingEngine() = default;
 
     virtual void send_order(const exchange::Order& order) = 0;
+    virtual void process_bbo(const BboQuote& quote) = 0;
     virtual void process_market_tick(const Tick& tick) = 0;
     virtual void cancel_order(uint64_t order_id) = 0;
     virtual void set_report_callback(ReportCallback cb) = 0;
@@ -47,6 +48,7 @@ class MatchingEngine : public IMatchingEngine
     }
 
     void send_order(const exchange::Order& order) override;
+    void process_bbo(const BboQuote& quote) override;
     void process_market_tick(const Tick& tick) override;
     void cancel_order(uint64_t order_id) override;
 
@@ -73,6 +75,7 @@ class MatchingEngine : public IMatchingEngine
         return normalize_owner(resting.owner) == normalize_owner(incoming.owner);
     }
 
+    void match_external_bbo(exchange::Order& order);
     void match(MEOrderBook& book, const exchange::Order& incoming, bool rest_incoming);
     void report(const ExecutionReport& rpt)
     {
@@ -80,6 +83,7 @@ class MatchingEngine : public IMatchingEngine
     }
 
     std::unordered_map<std::string, MEOrderBook> books_;
+    std::unordered_map<std::string, BboQuote> external_bbo_;
     std::unordered_map<uint64_t, exchange::Order*> order_index_;
     OrderBook private_order_book_;
     ReportCallback report_cb_;

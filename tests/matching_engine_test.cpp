@@ -128,4 +128,26 @@ int main()
                            return report.order_id == 40 && report.exec_type == ExecType::Trade &&
                                   report.quantity == 10;
                        }));
+
+    MatchingEngine bbo_engine(nullptr, 0.1);
+    std::vector<ExecutionReport> bbo_reports;
+    bbo_engine.set_report_callback([&bbo_reports](const ExecutionReport& report)
+                                   { bbo_reports.push_back(report); });
+    bbo_engine.process_bbo({10, "BTCUSDT", 100.0, 50, 100.1, 40, 1});
+    bbo_engine.send_order({50, "BTCUSDT", exchange::Side::Buy, exchange::OrderType::Limit, 100.2,
+                           70, 70, 11, "MarketMaker"});
+    assert(has_report(bbo_reports, 50, ExecType::Trade, 40));
+    assert(has_report(bbo_reports, 50, ExecType::PartialFill, 30));
+    assert(has_report(bbo_reports, 50, ExecType::Resting, 30));
+
+    bbo_reports.clear();
+    bbo_engine.send_order({51, "BTCUSDT", exchange::Side::Buy, exchange::OrderType::Limit, 100.2,
+                           10, 10, 12, "OtherParticipant"});
+    assert(std::none_of(bbo_reports.begin(), bbo_reports.end(), [](const ExecutionReport& report)
+                        { return report.exec_type == ExecType::Trade; }));
+
+    bbo_reports.clear();
+    bbo_engine.process_market_tick({13, "BTCUSDT", 100.2, 30, Side::Sell});
+    assert(has_report(bbo_reports, 50, ExecType::Trade, 30));
+    assert(has_report(bbo_reports, 50, ExecType::Filled, 0));
 }

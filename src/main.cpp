@@ -280,6 +280,7 @@ class Pipeline
                 else
                 {
                     order_book_.on_bbo(value);
+                    engine_.process_bbo(value);
                     const auto top = order_book_.market_top(value.symbol);
                     if (enable_print)
                     {

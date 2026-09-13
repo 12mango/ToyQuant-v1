@@ -89,6 +89,11 @@ and drive matching. External Tick/BBO state is stored separately from local stra
 exposes working strategy orders for tests and diagnostics. There is intentionally no combined view,
 so strategy code cannot accidentally include its own orders in the market reference.
 
+The matching engine also retains the latest BBO liquidity for aggressive strategy orders. A buy
+limit at or above the best ask executes at the ask; a sell limit at or below the best bid executes
+at the bid. Execution is capped by the displayed BBO quantity, which is consumed across subsequent
+orders until the next BBO update. Any unfilled remainder enters the existing local limit-order book.
+
 `CsvFeed::run` reads rows, converts them into `Tick`, and invokes `cb_(t)`. Malformed rows are
 reported and skipped. The callback keeps the feed independent from `Pipeline`.
 

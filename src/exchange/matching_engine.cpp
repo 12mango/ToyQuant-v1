@@ -17,8 +17,68 @@ void MatchingEngine::send_order(const exchange::Order& order)
         return;
     }
 
-    auto& book = books_[order.symbol];
-    match(book, order, true);
+    Order remaining_order = order;
+    match_external_bbo(remaining_order);
+    if (remaining_order.remaining == 0) return;
+
+    auto& book = books_[remaining_order.symbol];
+    match(book, remaining_order, true);
+}
+
+void MatchingEngine::process_bbo(const BboQuote& quote)
+{
+    if (quote.symbol.empty() || quote.bid_price <= 0.0 || quote.ask_price <= 0.0 ||
+        quote.bid_price > quote.ask_price)
+    {
+        external_bbo_.erase(quote.symbol);
+        return;
+    }
+    external_bbo_[quote.symbol] = quote;
+}
+
+void MatchingEngine::match_external_bbo(Order& order)
+{
+    const auto quote_it = external_bbo_.find(order.symbol);
+    if (quote_it == external_bbo_.end() || order.type != exchange::OrderType::Limit) return;
+
+    BboQuote& quote = quote_it->second;
+    double execution_price = 0.0;
+    uint64_t* available_quantity = nullptr;
+    if (order.side == exchange::Side::Buy && quote.ask_quantity > 0 &&
+        to_price_tick(order.price, tick_size_) >= to_price_tick(quote.ask_price, tick_size_))
+    {
+        execution_price = quote.ask_price;
+        available_quantity = &quote.ask_quantity;
+    }
+    else if (order.side == exchange::Side::Sell && quote.bid_quantity > 0 &&
+             to_price_tick(order.price, tick_size_) <= to_price_tick(quote.bid_price, tick_size_))
+    {
+        execution_price = quote.bid_price;
+        available_quantity = &quote.bid_quantity;
+    }
+
+    if (!available_quantity) return;
+
+    const uint64_t traded = std::min(order.remaining, *available_quantity);
+    order.remaining -= traded;
+    *available_quantity -= traded;
+    report(ExecutionReport{.order_id = order.id,
+                           .side = order.side,
+                           .exec_type = ExecType::Trade,
+                           .symbol = order.symbol,
+                           .price = execution_price,
+                           .quantity = traded,
+                           .ts = order.ts,
+                           .owner = order.owner});
+    report(ExecutionReport{
+        .order_id = order.id,
+        .side = order.side,
+        .exec_type = order.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
+        .symbol = order.symbol,
+        .price = order.price,
+        .quantity = order.remaining,
+        .ts = order.ts,
+        .owner = order.owner});
 }
 
 void MatchingEngine::process_market_tick(const Tick& tick)
@@ -89,7 +149,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
 {
     Order new_order = incoming;  // Copy because matching updates remaining quantity.
     uint64_t& qty = new_order.remaining;
-    qty = new_order.qty;
+    const uint64_t starting_qty = qty;
     const PriceTick incoming_price = to_price_tick(new_order.price, tick_size_);
 
     // ==================== Buy-Side Matching ====================
@@ -165,7 +225,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
             if (ask_queue.empty()) book.asks.erase(best_ask_it);
         }
 
-        if (incoming.qty > qty)
+        if (starting_qty > qty)
         {
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,
@@ -275,7 +335,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
             if (bid_queue.empty()) book.bids.erase(best_bid_it);
         }
 
-        if (incoming.qty > qty)
+        if (starting_qty > qty)
         {
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,
