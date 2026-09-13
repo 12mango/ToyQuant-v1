@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "common/instrument_spec.h"
 #include "market/market_event.h"
 
 class IMarketEventReader
@@ -23,5 +24,4 @@ struct MarketDataReaders
 MarketDataReaders make_market_data_readers(const std::string& format,
                                            const std::string& trades_path,
                                            const std::string& quotes_path,
-                                           const std::string& symbol,
-                                           uint64_t quantity_scale = 1000000);
+                                           const InstrumentSpec& instrument);

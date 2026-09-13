@@ -1,5 +1,6 @@
 #include <immintrin.h>
 
+#include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <chrono>
@@ -14,6 +15,7 @@
 
 #include "backtest/backtest_driver.h"
 #include "backtest/performance.h"
+#include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
 #include "market/csv_feed.h"
 #include "market/replay_feed.h"
@@ -167,13 +169,21 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
     return true;
 }
 
-std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
+std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
+                                        const InstrumentSpec* instrument = nullptr)
 {
+    const uint64_t order_size =
+        instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
+                   : 100;
+    const double tick_size = instrument ? instrument->tick_size : PRICE_TICK_SIZE;
+    const double spread = instrument ? 2.0 * instrument->tick_size : 0.000003;
     if (strategy_name == "naive")
     {
-        return std::make_unique<NaiveMarketMaker>(100, 0.00001);
+        return std::make_unique<NaiveMarketMaker>(order_size, spread, tick_size);
     }
-    return std::make_unique<OptimizedMarketMaker>(100, 0.000003);
+    const int64_t inventory_limit =
+        instrument ? static_cast<int64_t>(instrument->quantity_scale / 10) : 1000;
+    return std::make_unique<OptimizedMarketMaker>(order_size, spread, inventory_limit, tick_size);
 }
 
 std::string side_to_csv(Side side)
@@ -390,6 +400,9 @@ void run_csv_mode(const AppConfig& cfg)
 
 void run_replay_mode(const AppConfig& cfg)
 {
+    if (cfg.symbol != "BTCUSDT")
+        throw std::invalid_argument("no instrument specification for replay symbol: " + cfg.symbol);
+    const InstrumentSpec instrument = btc_usdt_spec(cfg.quantity_scale);
     const std::string trades_file = to_abs_path(cfg.path_or_port);
     const std::string quotes_file = to_abs_path(cfg.quotes_path);
     Logger logger(to_abs_path("logs/toy_quant.log"));
@@ -399,16 +412,18 @@ void run_replay_mode(const AppConfig& cfg)
 
     const std::string source = "binance;trades=" + trades_file + ";quotes=" + quotes_file +
                                ";symbol=" + cfg.symbol +
-                               ";quantity_scale=" + std::to_string(cfg.quantity_scale);
+                               ";tick_size=" + std::to_string(instrument.tick_size) +
+                               ";quantity_scale=" + std::to_string(instrument.quantity_scale) +
+                               ";maker_fee=" + std::to_string(instrument.maker_fee_rate) +
+                               ";taker_fee=" + std::to_string(instrument.taker_fee_rate);
     auto output_files = open_output_files(source, "source_market_data");
-    OrderBook order_book;
-    auto strategy = make_strategy(cfg.strategy_name);
-    MatchingEngine engine(&logger);
+    OrderBook order_book(instrument.tick_size);
+    auto strategy = make_strategy(cfg.strategy_name, &instrument);
+    MatchingEngine engine(&logger, instrument.tick_size);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       logger);
     ReplayFeed feed(
-        make_market_data_readers("binance", trades_file, quotes_file, cfg.symbol,
-                                 cfg.quantity_scale),
+        make_market_data_readers("binance", trades_file, quotes_file, instrument),
         [&](const MarketEvent& event) { pipeline.process_event(event); }, cfg.delay);
     feed.run();
     pipeline.print_summary();

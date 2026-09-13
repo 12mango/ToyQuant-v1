@@ -51,7 +51,7 @@ void MatchingEngine::cancel_order(uint64_t order_id)
 
     if (cancelled_order.side == exchange::Side::Buy)
     {
-        auto pit = book.bids.find(to_price_tick(cancelled_order.price));
+        auto pit = book.bids.find(to_price_tick(cancelled_order.price, tick_size_));
         if (pit != book.bids.end())
         {
             pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
@@ -60,7 +60,7 @@ void MatchingEngine::cancel_order(uint64_t order_id)
     }
     else
     {
-        auto pit = book.asks.find(to_price_tick(cancelled_order.price));
+        auto pit = book.asks.find(to_price_tick(cancelled_order.price, tick_size_));
         if (pit != book.asks.end())
         {
             pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
@@ -90,7 +90,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
     Order new_order = incoming;  // Copy because matching updates remaining quantity.
     uint64_t& qty = new_order.remaining;
     qty = new_order.qty;
-    const PriceTick incoming_price = to_price_tick(new_order.price);
+    const PriceTick incoming_price = to_price_tick(new_order.price, tick_size_);
 
     // ==================== Buy-Side Matching ====================
     if (incoming.side == exchange::Side::Buy)
@@ -128,7 +128,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = new_order.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = new_order.symbol,
-                                       .price = to_price(best_price),
+                                       .price = to_price(best_price, tick_size_),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = new_order.owner});
@@ -137,7 +137,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = resting.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = resting.symbol,
-                                       .price = to_price(best_price),
+                                       .price = to_price(best_price, tick_size_),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = resting.owner});
@@ -151,7 +151,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                     .side = resting.side,
                     .exec_type = resting.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
                     .symbol = resting.symbol,
-                    .price = to_price(best_price),
+                    .price = to_price(best_price, tick_size_),
                     .quantity = resting.remaining,
                     .ts = new_order.ts,
                     .owner = resting.owner});
@@ -238,7 +238,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = new_order.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = new_order.symbol,
-                                       .price = to_price(best_price),
+                                       .price = to_price(best_price, tick_size_),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = new_order.owner});
@@ -247,7 +247,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                        .side = resting.side,
                                        .exec_type = ExecType::Trade,
                                        .symbol = resting.symbol,
-                                       .price = to_price(best_price),
+                                       .price = to_price(best_price, tick_size_),
                                        .quantity = traded,
                                        .ts = new_order.ts,
                                        .owner = resting.owner});
@@ -261,7 +261,7 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                     .side = resting.side,
                     .exec_type = resting.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
                     .symbol = resting.symbol,
-                    .price = to_price(best_price),
+                    .price = to_price(best_price, tick_size_),
                     .quantity = resting.remaining,
                     .ts = new_order.ts,
                     .owner = resting.owner});

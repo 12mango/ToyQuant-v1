@@ -32,14 +32,14 @@ using PriceTick = int64_t;
 
 inline constexpr double PRICE_TICK_SIZE = 0.00001;
 
-inline PriceTick to_price_tick(double price)
+inline PriceTick to_price_tick(double price, double tick_size = PRICE_TICK_SIZE)
 {
-    return static_cast<PriceTick>(std::llround(price / PRICE_TICK_SIZE));
+    return static_cast<PriceTick>(std::llround(price / tick_size));
 }
 
-inline double to_price(PriceTick tick)
+inline double to_price(PriceTick tick, double tick_size = PRICE_TICK_SIZE)
 {
-    return static_cast<double>(tick) * PRICE_TICK_SIZE;
+    return static_cast<double>(tick) * tick_size;
 }
 
 struct Tick

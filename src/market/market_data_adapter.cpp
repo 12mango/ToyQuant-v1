@@ -104,14 +104,17 @@ class BinanceBookTickerReader final : public IMarketEventReader
 MarketDataReaders make_market_data_readers(const std::string& format,
                                            const std::string& trades_path,
                                            const std::string& quotes_path,
-                                           const std::string& symbol, uint64_t quantity_scale)
+                                           const InstrumentSpec& instrument)
 {
     if (format != "binance")
         throw std::invalid_argument("unsupported market data format: " + format);
-    if (symbol.empty()) throw std::invalid_argument("market data symbol cannot be empty");
-    if (quantity_scale == 0) throw std::invalid_argument("quantity scale must be positive");
+    if (instrument.symbol.empty())
+        throw std::invalid_argument("market data symbol cannot be empty");
+    if (instrument.quantity_scale == 0)
+        throw std::invalid_argument("quantity scale must be positive");
 
-    return MarketDataReaders{
-        std::make_unique<BinanceAggTradeReader>(trades_path, symbol, quantity_scale),
-        std::make_unique<BinanceBookTickerReader>(quotes_path, symbol, quantity_scale)};
+    return MarketDataReaders{std::make_unique<BinanceAggTradeReader>(trades_path, instrument.symbol,
+                                                                     instrument.quantity_scale),
+                             std::make_unique<BinanceBookTickerReader>(
+                                 quotes_path, instrument.symbol, instrument.quantity_scale)};
 }

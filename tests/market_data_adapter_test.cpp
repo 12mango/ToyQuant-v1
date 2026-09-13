@@ -17,7 +17,8 @@ int main()
     const auto trades = (root / "data/v2/test_aggTrades_5k.csv").string();
     const auto quotes = (root / "data/v2/test_bookTicker_5k.csv").string();
 
-    auto readers = make_market_data_readers("binance", trades, quotes, "BTCUSDT", 1000000);
+    const InstrumentSpec instrument = btc_usdt_spec();
+    auto readers = make_market_data_readers("binance", trades, quotes, instrument);
     MarketEvent event;
     assert(readers.trades->next(event));
     const auto& trade = std::get<MarketTrade>(event);
@@ -37,7 +38,7 @@ int main()
 
     std::vector<uint64_t> timestamps;
     ReplayFeed feed(
-        make_market_data_readers("binance", trades, quotes, "BTCUSDT", 1000000),
+        make_market_data_readers("binance", trades, quotes, instrument),
         [&timestamps](const MarketEvent& value)
         { timestamps.push_back(std::visit([](const auto& item) { return item.ts; }, value)); });
     feed.run();

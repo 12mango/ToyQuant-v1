@@ -37,6 +37,7 @@ The source map is:
 | Responsibility | Main files | Key types or functions |
 |---|---|---|
 | Shared data | `src/common/types.h` | `Tick`, `Side`, `ExecType`, `TickCallback` |
+| Instrument rules | `src/common/instrument_spec.h` | `InstrumentSpec`, `btc_usdt_spec` |
 | Input | `src/market/csv_feed.*`, `udp_feed.*` | `CsvFeed::run`, `UdpFeed::loop` |
 | Market replay | `src/market/market_data_adapter.*`, `replay_feed.*` | `IMarketEventReader`, `ReplayFeed::run` |
 | Coordination | `src/main.cpp` | `Pipeline::process_tick`, output callbacks |
@@ -75,6 +76,12 @@ using MarketEvent = std::variant<MarketTrade, BboQuote>;
 and book ticker rows into these domain events; `ReplayFeed` only performs streaming timestamp
 merge. To support another vendor, implement readers for its files and add a factory branch in
 `make_market_data_readers` without changing `Pipeline`, the strategy, or matching code.
+
+`InstrumentSpec` is shared by the market-data adapter, strategy, order book, and matching engine.
+For BTCUSDT it defines a `0.10` price tick and `1000000` integer quantity units per BTC. The replay
+strategy therefore uses `0.001 BTC` base orders, a two-tick base spread, and a `0.1 BTC` inventory
+limit. Fee rates are carried in the specification for portfolio accounting, which is not yet part
+of the L1 replay.
 
 BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
 and drive matching. The external BBO is stored separately from local strategy orders, so replacing

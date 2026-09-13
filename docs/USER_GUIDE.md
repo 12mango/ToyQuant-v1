@@ -74,7 +74,9 @@ external best bid and ask and trigger strategy decisions. Aggregate trades drive
 
 `quantity_scale` converts decimal exchange quantities to the engine's integer units. The default
 is `1000000`, so `0.001 BTC` becomes `1000` internal units. Strategy order sizes and generated
-runtime quantities use those same units. The existing `csv` and `udp` modes are unchanged.
+runtime quantities use those same units. BTCUSDT replay also uses its instrument specification for
+the `0.10` price tick, minimum quantity, fee metadata, strategy spread, and inventory units. The
+existing `csv` and `udp` modes retain their legacy defaults.
 
 ## Scenarios
 

@@ -22,7 +22,7 @@ void OrderBook::add_order(const exchange::Order& order)
     }
 
     auto& book = books_[order.symbol];
-    const PriceTick price = to_price_tick(order.price);
+    const PriceTick price = to_price_tick(order.price, tick_size_);
     if (order.side == exchange::Side::Buy)
     {
         auto& queue = book.bids_orders[price];
@@ -50,7 +50,7 @@ bool OrderBook::cancel_order(uint64_t order_id)
     OrderNode* node = it->second;
     const std::string symbol = node->order.symbol;
     const exchange::Side side = node->order.side;
-    const PriceTick price = to_price_tick(node->order.price);
+    const PriceTick price = to_price_tick(node->order.price, tick_size_);
     auto& book = books_[symbol];
 
     if (side == exchange::Side::Buy)
@@ -111,7 +111,7 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
     auto& book = books_[node->order.symbol];
     if (node->order.side == exchange::Side::Buy)
     {
-        const PriceTick price = to_price_tick(node->order.price);
+        const PriceTick price = to_price_tick(node->order.price, tick_size_);
         auto price_it = book.bids_orders.find(price);
         if (price_it != book.bids_orders.end())
         {
@@ -120,7 +120,7 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
     }
     else
     {
-        const PriceTick price = to_price_tick(node->order.price);
+        const PriceTick price = to_price_tick(node->order.price, tick_size_);
         auto price_it = book.asks_orders.find(price);
         if (price_it != book.asks_orders.end())
         {
@@ -133,7 +133,7 @@ bool OrderBook::apply_partial_fill(uint64_t order_id, uint64_t filled_qty)
         node->state = OrderState::Filled;
         state_index_[order_id] = OrderState::Filled;
         const exchange::Side side = node->order.side;
-        const PriceTick price = to_price_tick(node->order.price);
+        const PriceTick price = to_price_tick(node->order.price, tick_size_);
         if (side == exchange::Side::Buy)
         {
             auto price_it = book.bids_orders.find(price);
@@ -183,7 +183,7 @@ void OrderBook::on_tick(const Tick& t)
 {
     std::lock_guard<std::mutex> lk(mtx_);
     auto& b = books_[t.symbol];
-    const PriceTick price = to_price_tick(t.price);
+    const PriceTick price = to_price_tick(t.price, tick_size_);
     if (t.side == Side::Buy)
     {
         b.bids_qty[price] = t.size;
@@ -220,12 +220,12 @@ TopOfBook OrderBook::top(const std::string& symbol)
     auto& b = it->second;
     if (!b.bids_qty.empty())
     {
-        out.bid_price = to_price(b.bids_qty.begin()->first);
+        out.bid_price = to_price(b.bids_qty.begin()->first, tick_size_);
         out.bid_size = b.bids_qty.begin()->second;
     }
     if (!b.asks_qty.empty())
     {
-        out.ask_price = to_price(b.asks_qty.begin()->first);
+        out.ask_price = to_price(b.asks_qty.begin()->first, tick_size_);
         out.ask_size = b.asks_qty.begin()->second;
     }
     if (b.has_external_bbo)
@@ -235,7 +235,8 @@ TopOfBook OrderBook::top(const std::string& symbol)
             out.bid_price = b.external_bbo.bid_price;
             out.bid_size = b.external_bbo.bid_quantity;
         }
-        else if (to_price_tick(out.bid_price) == to_price_tick(b.external_bbo.bid_price))
+        else if (to_price_tick(out.bid_price, tick_size_) ==
+                 to_price_tick(b.external_bbo.bid_price, tick_size_))
         {
             out.bid_size += b.external_bbo.bid_quantity;
         }
@@ -245,7 +246,8 @@ TopOfBook OrderBook::top(const std::string& symbol)
             out.ask_price = b.external_bbo.ask_price;
             out.ask_size = b.external_bbo.ask_quantity;
         }
-        else if (to_price_tick(out.ask_price) == to_price_tick(b.external_bbo.ask_price))
+        else if (to_price_tick(out.ask_price, tick_size_) ==
+                 to_price_tick(b.external_bbo.ask_price, tick_size_))
         {
             out.ask_size += b.external_bbo.ask_quantity;
         }

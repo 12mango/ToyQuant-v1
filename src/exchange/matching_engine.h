@@ -41,7 +41,10 @@ class MatchingEngine : public IMatchingEngine
    public:
     using ReportCallback = std::function<void(const ExecutionReport&)>;
 
-    explicit MatchingEngine(Logger* logger = nullptr) : logger_(logger) {}
+    explicit MatchingEngine(Logger* logger = nullptr, double tick_size = PRICE_TICK_SIZE)
+        : private_order_book_(tick_size), logger_(logger), tick_size_(tick_size)
+    {
+    }
 
     void send_order(const exchange::Order& order) override;
     void process_market_tick(const Tick& tick) override;
@@ -81,4 +84,5 @@ class MatchingEngine : public IMatchingEngine
     OrderBook private_order_book_;
     ReportCallback report_cb_;
     Logger* logger_;
+    double tick_size_;
 };

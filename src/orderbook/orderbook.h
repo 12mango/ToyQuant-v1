@@ -38,6 +38,8 @@ class IOrderBook
 class OrderBook : public IOrderBook
 {
    public:
+    explicit OrderBook(double tick_size = PRICE_TICK_SIZE) : tick_size_(tick_size) {}
+
     struct OrderNode
     {
         exchange::Order order;
@@ -64,6 +66,7 @@ class OrderBook : public IOrderBook
         BboQuote external_bbo;
         bool has_external_bbo{false};
     };
+    double tick_size_;
     std::map<std::string, SideBook> books_;
     std::unordered_map<uint64_t, OrderNode*> order_index_;
     std::unordered_map<uint64_t, OrderState> state_index_;
