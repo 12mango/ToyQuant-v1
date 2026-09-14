@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cmath>
 #include <filesystem>
+#include <stdexcept>
 #include <vector>
 
 #include "market/replay_feed.h"
@@ -22,10 +23,10 @@ int main()
     MarketEvent event;
     assert(readers.trades->next(event));
     const auto& trade = std::get<MarketTrade>(event);
-    assert(trade.ts == 1711756800000);
+    assert(trade.ts == 1711756800002);
     assert(trade.symbol == "BTCUSDT");
     assert(std::abs(trade.price - 69850.53) < 1e-9);
-    assert(trade.quantity == 1000);
+    assert(trade.quantity == 620);
     assert(trade.aggressor_side == Side::Sell);
 
     assert(readers.quotes->next(event));
@@ -45,4 +46,38 @@ int main()
     assert(!timestamps.empty());
     for (std::size_t index = 1; index < timestamps.size(); ++index)
         assert(timestamps[index - 1] <= timestamps[index]);
+
+    const auto& summary = feed.validation_summary();
+    assert(summary.events == 40810);
+    assert(summary.trades == 5498);
+    assert(summary.quotes == 35312);
+    assert(summary.trades_without_bbo == 0);
+    assert(summary.stale_trades > 0);
+    assert(summary.dislocated_trades == 0);
+
+    MarketDataValidator validator;
+    validator.validate(BboQuote{1, "TEST", 100.0, 10, 100.1, 20, 1});
+    bool rejected_crossed_quote = false;
+    try
+    {
+        validator.validate(BboQuote{2, "TEST", 100.2, 10, 100.1, 20, 2});
+    }
+    catch (const std::invalid_argument&)
+    {
+        rejected_crossed_quote = true;
+    }
+    assert(rejected_crossed_quote);
+
+    MarketDataValidator sequence_validator;
+    sequence_validator.validate(MarketTrade{1, "TEST", 100.0, 1, Side::Buy, 10});
+    bool rejected_sequence_regression = false;
+    try
+    {
+        sequence_validator.validate(MarketTrade{2, "TEST", 100.0, 1, Side::Buy, 9});
+    }
+    catch (const std::invalid_argument&)
+    {
+        rejected_sequence_regression = true;
+    }
+    assert(rejected_sequence_regression);
 }

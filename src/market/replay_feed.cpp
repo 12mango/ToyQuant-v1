@@ -11,8 +11,12 @@ uint64_t event_timestamp(const MarketEvent& event)
 }
 }  // namespace
 
-ReplayFeed::ReplayFeed(MarketDataReaders readers, EventCallback callback, int ms_delay)
-    : readers_(std::move(readers)), callback_(std::move(callback)), ms_delay_(ms_delay)
+ReplayFeed::ReplayFeed(MarketDataReaders readers, EventCallback callback, int ms_delay,
+                       MarketDataValidationConfig validation_config)
+    : readers_(std::move(readers)),
+      callback_(std::move(callback)),
+      ms_delay_(ms_delay),
+      validator_(validation_config)
 {
 }
 
@@ -27,7 +31,9 @@ void ReplayFeed::run()
     {
         const bool use_quote =
             has_quote && (!has_trade || event_timestamp(quote) <= event_timestamp(trade));
-        callback_(use_quote ? quote : trade);
+        const MarketEvent& event = use_quote ? quote : trade;
+        validator_.validate(event);
+        callback_(event);
         if (use_quote)
             has_quote = readers_.quotes->next(quote);
         else

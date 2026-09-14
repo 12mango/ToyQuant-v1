@@ -8,8 +8,8 @@
 
 #include "common/types.h"
 #include "execution_report.h"
+#include "market/market_event.h"
 #include "order.h"
-#include "orderbook/orderbook.h"
 
 class Logger;
 
@@ -43,7 +43,7 @@ class MatchingEngine : public IMatchingEngine
     using ReportCallback = std::function<void(const ExecutionReport&)>;
 
     explicit MatchingEngine(Logger* logger = nullptr, double tick_size = PRICE_TICK_SIZE)
-        : private_order_book_(tick_size), logger_(logger), tick_size_(tick_size)
+        : logger_(logger), tick_size_(tick_size)
     {
     }
 
@@ -85,7 +85,6 @@ class MatchingEngine : public IMatchingEngine
     std::unordered_map<std::string, MEOrderBook> books_;
     std::unordered_map<std::string, BboQuote> external_bbo_;
     std::unordered_map<uint64_t, exchange::Order*> order_index_;
-    OrderBook private_order_book_;
     ReportCallback report_cb_;
     Logger* logger_;
     double tick_size_;

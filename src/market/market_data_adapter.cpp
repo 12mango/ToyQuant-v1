@@ -24,6 +24,13 @@ uint64_t scaled_quantity(const std::string& value, uint64_t scale)
     return static_cast<uint64_t>(std::llround(quantity * static_cast<double>(scale)));
 }
 
+bool parse_boolean(const std::string& value)
+{
+    if (value == "true" || value == "True" || value == "1") return true;
+    if (value == "false" || value == "False" || value == "0") return false;
+    throw std::invalid_argument("invalid boolean value: " + value);
+}
+
 class BinanceAggTradeReader final : public IMarketEventReader
 {
    public:
@@ -45,8 +52,7 @@ class BinanceAggTradeReader final : public IMarketEventReader
                 continue;
             if (fields.size() < 7) throw std::invalid_argument("invalid Binance aggTrades row");
 
-            const bool buyer_is_maker =
-                fields[6] == "true" || fields[6] == "True" || fields[6] == "1";
+            const bool buyer_is_maker = parse_boolean(fields[6]);
             event = MarketTrade{.ts = std::stoull(fields[5]),
                                 .symbol = symbol_,
                                 .price = std::stod(fields[1]),

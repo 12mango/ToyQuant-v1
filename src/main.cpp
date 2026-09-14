@@ -427,6 +427,13 @@ void run_replay_mode(const AppConfig& cfg)
         make_market_data_readers("binance", trades_file, quotes_file, instrument),
         [&](const MarketEvent& event) { pipeline.process_event(event); }, cfg.delay);
     feed.run();
+    const auto& validation = feed.validation_summary();
+    logger.log("[DATA] events=", validation.events, " trades=", validation.trades,
+               " quotes=", validation.quotes, " trades_without_bbo=", validation.trades_without_bbo,
+               " stale_trades=", validation.stale_trades,
+               " dislocated_trades=", validation.dislocated_trades,
+               " max_bbo_age_ms=", validation.max_bbo_age_ms,
+               " max_trade_deviation_bps=", validation.max_trade_deviation_bps);
     pipeline.print_summary();
 }
 

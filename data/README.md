@@ -42,6 +42,12 @@ best bid price/quantity, best ask price/quantity, transaction time, and event ti
 Transaction time controls cross-file ordering. Quantities are multiplied by `quantity_scale`
 (default `1000000`) and rounded to unsigned integer engine units.
 
+Replay validates each merged event before it reaches the strategy. Invalid prices or quantities,
+crossed BBO, timestamp regression, and non-increasing stream sequence numbers stop the run. The
+final `[DATA]` line reports softer cross-stream issues: trades without a prior BBO, trades whose
+latest BBO is older than one second, and trades more than 50 basis points from the BBO midpoint.
+These counters diagnose input alignment; they do not currently suppress strategy decisions.
+
 ## Generate Scenarios
 
 Run this command from the project root:

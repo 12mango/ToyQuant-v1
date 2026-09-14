@@ -128,7 +128,6 @@ void MatchingEngine::cancel_order(uint64_t order_id)
         }
     }
     order_index_.erase(it);
-    private_order_book_.cancel_order(order_id);
 
     report(ExecutionReport{.order_id = order_id,
                            .side = cancelled_order.side,
@@ -204,7 +203,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
 
                 qty -= traded;
                 resting.remaining -= traded;
-                private_order_book_.apply_partial_fill(resting.id, traded);
 
                 report(ExecutionReport{
                     .order_id = resting.id,
@@ -242,7 +240,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
         {
             book.bids[incoming_price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.bids[incoming_price].orders.back();
-            private_order_book_.add_order(new_order);
 
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,
@@ -314,7 +311,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
 
                 qty -= traded;
                 resting.remaining -= traded;
-                private_order_book_.apply_partial_fill(resting.id, traded);
 
                 report(ExecutionReport{
                     .order_id = resting.id,
@@ -352,7 +348,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
         {
             book.asks[incoming_price].orders.push_back(new_order);
             order_index_[new_order.id] = &book.asks[incoming_price].orders.back();
-            private_order_book_.add_order(new_order);
 
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,

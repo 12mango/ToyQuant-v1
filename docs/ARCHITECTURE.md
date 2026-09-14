@@ -41,7 +41,7 @@ The source map is:
 | Input | `src/market/csv_feed.*`, `udp_feed.*` | `CsvFeed::run`, `UdpFeed::loop` |
 | Market replay | `src/market/market_data_adapter.*`, `replay_feed.*` | `IMarketEventReader`, `ReplayFeed::run` |
 | Coordination | `src/main.cpp` | `Pipeline::process_tick`, output callbacks |
-| Local state | `src/orderbook/orderbook.*` | `TopOfBook`, `OrderBook`, `OrderState` |
+| Market view | `src/orderbook/orderbook.*` | `TopOfBook`, `OrderBook::market_top` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
 | Strategy | `src/strategy/strategy.h`, `market_maker.h` | `Strategy`, two market makers |
 | Analysis | `src/backtest/backtest_driver.*` | `BacktestDriver::run`, `print_report` |
@@ -77,6 +77,12 @@ and book ticker rows into these domain events; `ReplayFeed` only performs stream
 merge. To support another vendor, implement readers for its files and add a factory branch in
 `make_market_data_readers` without changing `Pipeline`, the strategy, or matching code.
 
+Before dispatch, `MarketDataValidator` rejects structural errors: non-positive or non-finite
+prices, zero quantities, unknown trade sides, crossed BBO, timestamp regression, and non-increasing
+per-stream sequence numbers. Cross-stream conditions are reported rather than rejected: trades
+without a prior BBO, trades using a BBO older than one second, and trades more than 50 basis points
+from the latest BBO midpoint. Replay prints these counters in a `[DATA]` summary.
+
 `InstrumentSpec` is shared by the market-data adapter, strategy, order book, and matching engine.
 For BTCUSDT it defines a `0.10` price tick and `1000000` integer quantity units per BTC. The replay
 strategy therefore uses `0.001 BTC` base orders, a two-tick base spread, and a `0.1 BTC` inventory
@@ -85,9 +91,9 @@ of the L1 replay.
 
 BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
 and drive matching. External Tick/BBO state is stored separately from local strategy orders.
-`market_top()` exposes only venue prices through `IOrderBook`. The concrete `OrderBook::local_top()`
-exposes working strategy orders for tests and diagnostics. There is intentionally no combined view,
-so strategy code cannot accidentally include its own orders in the market reference.
+`market_top()` exposes only venue prices through `IOrderBook`. Strategy orders are owned only by
+`MatchingEngine`; there is intentionally no local or combined view in `OrderBook`, so strategy code
+cannot accidentally include its own orders in the market reference.
 
 The matching engine also retains the latest BBO liquidity for aggressive strategy orders. A buy
 limit at or above the best ask executes at the ask; a sell limit at or below the best bid executes
@@ -265,79 +271,40 @@ void log(Args&&... args)
 
 Inside `format`, the fold expression `(stream << ... << args)` expands the pack into chained stream insertions. The example above is conceptually `stream << "order=" << id << " qty=" << quantity`. The resulting `std::string` lets the non-template `write` method implement the destination policy only once. The template definitions remain in the header because the compiler must see their bodies when it instantiates them for each argument combination.
 
-## 4. OrderBook: Market View and Local Order State
+## 4. OrderBook: External Market View
 
 **Files:** `src/orderbook/orderbook.h`, `src/orderbook/orderbook.cpp`
 
-`OrderBook` combines two pieces of state:
-
-1. `bids_qty` and `asks_qty` provide the simplified external top of book.
-2. `bids_orders` and `asks_orders` hold local strategy orders and their states.
+`OrderBook` contains external market data only. Legacy Tick input updates simplified bid or ask
+price maps, while Trades+BBO replay replaces the latest venue BBO snapshot.
 
 ```cpp
 struct SideBook
 {
-    std::map<double, uint64_t, std::greater<double>> bids_qty;
-    std::map<double, uint64_t> asks_qty;
-    std::map<double, std::list<OrderNode>, std::greater<double>> bids_orders;
-    std::map<double, std::list<OrderNode>> asks_orders;
+    std::map<PriceTick, uint64_t, std::greater<PriceTick>> external_bids_qty;
+    std::map<PriceTick, uint64_t> external_asks_qty;
+    BboQuote external_bbo;
+    bool has_external_bbo{false};
 };
 ```
 
-The comparator is the key rule: `bids_qty.begin()` is the highest bid, while `asks_qty.begin()` is the lowest ask. A `std::list` keeps queue-node addresses stable when other nodes are inserted, allowing `order_index_` to point at an active `OrderNode`. This is readable ordered price-level storage; production systems often use integer ticks instead of `double` prices.
+For legacy input, the comparators make the first bid the highest price and the first ask the lowest.
+For v2 replay, `market_top()` directly returns the latest valid `external_bbo`. The mutex protects
+market updates and snapshots. Local strategy orders do not enter this object.
 
-`on_tick` updates one price level from the incoming tick; `top` reads the first level on both sides. A tick does not rebuild complete depth or delete old external levels. The result is a top-of-book teaching abstraction, not a full exchange book.
+### 4.1 Single ownership of strategy orders
 
-```mermaid
-stateDiagram-v2
-    [*] --> New
-    New --> Active: add_order
-    Active --> PartialFilled: partial fill
-    PartialFilled --> PartialFilled: more partial fill
-    Active --> Filled: full fill
-    PartialFilled --> Filled: remaining filled
-    Active --> Cancelled: cancel_order
-    New --> Rejected: invalid input
-```
-
-`order_index_` contains active orders only. `state_index_` retains terminal states, so `state_for_order` can distinguish `Filled`, `Cancelled`, and unknown `Rejected`. `std::lock_guard<std::mutex>` protects mutations and queries with RAII: the mutex is released automatically on every return path.
-
-### 4.1 Why `map` and `unordered_map` are both present
-
-`OrderBook` mixes two access patterns:
+`MatchingEngine` is the single source of truth for working strategy orders:
 
 ```cpp
-std::map<std::string, SideBook> books_;
-std::unordered_map<uint64_t, OrderNode*> order_index_;
-std::unordered_map<uint64_t, OrderState> state_index_;
+std::unordered_map<std::string, MEOrderBook> books_;
+std::unordered_map<uint64_t, exchange::Order*> order_index_;
 ```
 
-The `map` versions are used when the code needs ordered iteration by price or symbol. `books_` is keyed by symbol, and each `SideBook` keeps price levels in sorted order:
-
-```cpp
-std::map<double, uint64_t, std::greater<double>> bids_qty;
-std::map<double, std::list<OrderNode>, std::greater<double>> bids_orders;
-```
-
-This makes `bids_qty.begin()` the best bid and `asks_qty.begin()` the best ask, which is exactly what `top()` wants. The downside is that `std::map` is $O(\log n)$ for lookup and iteration is ordered by key.
-
-`unordered_map` is used for order IDs and states, because the code mostly needs direct lookup and duplicate checks:
-
-```cpp
-auto it = order_index_.find(order_id);
-if (it == order_index_.end()) return false;
-```
-
-and
-
-```cpp
-if (state_index_.contains(order.id))
-{
-    return;
-}
-```
-
-Here the goal is not ordering but constant-time average lookup: `unordered_map` is $O(1)$ average, which is useful when a fill, cancel, or state transition needs to find one active order by ID. In other words, the project chooses `map` for “sorted market view” and `unordered_map` for “fast order identity lookup.”
+Each price level owns FIFO orders in a `std::list`, so pointers in `order_index_` remain stable until
+that order is erased. Submission, partial fills, fills, and cancellation mutate this one structure;
+execution reports notify the strategy of lifecycle changes. The former mirrored private
+`OrderBook` state was removed to eliminate synchronization drift.
 
 ### 4.2 Price representation
 
