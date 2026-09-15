@@ -76,7 +76,7 @@ void print_usage(const char* executable)
     std::cerr << "   or: " << executable
               << " replay <agg_trades_csv> <bbo_csv> <symbol> [ms_delay] [strategy] "
                  "[quantity_scale]\n";
-    std::cerr << "   strategy: optimized (default) | naive\n";
+    std::cerr << "   strategy: optimized (default) | naive | l1\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -150,9 +150,10 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
     }
     if (cfg.mode != "replay" && argc >= 5) cfg.strategy_name = argv[4];
 
-    if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive")
+    if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive" &&
+        cfg.strategy_name != "l1")
     {
-        error = "strategy must be 'optimized' or 'naive'";
+        error = "strategy must be 'optimized', 'naive', or 'l1'";
         return false;
     }
 
@@ -183,6 +184,10 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     }
     const int64_t inventory_limit =
         instrument ? static_cast<int64_t>(instrument->quantity_scale / 10) : 1000;
+    if (strategy_name == "l1")
+    {
+        return std::make_unique<L1MarketMaker>(order_size, spread, inventory_limit, tick_size);
+    }
     return std::make_unique<OptimizedMarketMaker>(order_size, spread, inventory_limit, tick_size);
 }
 
@@ -274,6 +279,7 @@ class Pipeline
                 using Event = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<Event, MarketTrade>)
                 {
+                    strategy_.on_market_trade(value);
                     engine_.process_market_tick({value.ts, value.symbol, value.price,
                                                  value.quantity, value.aggressor_side});
                 }

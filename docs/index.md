@@ -23,7 +23,7 @@ This documentation is organized into three layers:
 - **C++20 trading loop** for feed, order-book update, strategy decision, and matching.
 - **CSV and UDP market feeds** for reproduction and simulation.
 - **Order-book state and matching rules** with price-time priority and partial fills.
-- **Market-making strategies** such as `naive` and `optimized`.
+- **Market-making strategies** such as `naive`, `optimized`, and `l1`.
 - **Backtest-oriented reporting** covering execution summaries, equity, drawdown, and inventory exposure.
 - **CTest-based validation** for the behaviors that matter most to this project.
 

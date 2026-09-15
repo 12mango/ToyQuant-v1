@@ -15,6 +15,64 @@ uint64_t quantity_for_side(const std::vector<StrategyOrder>& orders, Side side)
 
 int main()
 {
+    L1MarketMaker l1_strategy(100, 0.0002, 1000, 0.0001);
+    const TopOfBook l1_top{100.0, 100, 100.1, 100};
+    auto l1_orders = l1_strategy.on_top_of_book("BTCUSDT", l1_top);
+    assert(quantity_for_side(l1_orders, Side::Buy) == 100);
+    assert(quantity_for_side(l1_orders, Side::Sell) == 100);
+    l1_orders[0].order_id = 1;
+    l1_strategy.on_order_submitted(l1_orders[0]);
+    assert(l1_strategy.on_top_of_book("BTCUSDT", l1_top).empty());
+    assert(l1_strategy.cancel_requests().empty());
+    l1_strategy.on_top_of_book("BTCUSDT", TopOfBook{100.1, 100, 100.2, 100});
+    assert(l1_strategy.cancel_requests().size() == 1);
+    l1_strategy.on_order_update(ExecutionReport{1, exchange::Side::Buy, ExecType::Cancelled,
+                                                "BTCUSDT", 99.9, 100, 2, "MarketMaker"});
+    l1_orders = l1_strategy.on_top_of_book("BTCUSDT", TopOfBook{100.1, 100, 100.2, 100});
+    assert(quantity_for_side(l1_orders, Side::Buy) == 100);
+    assert(quantity_for_side(l1_orders, Side::Sell) == 100);
+    l1_strategy.position = 1000;
+    l1_orders = l1_strategy.on_top_of_book("BTCUSDT", l1_top);
+    assert(quantity_for_side(l1_orders, Side::Buy) == 0);
+    assert(quantity_for_side(l1_orders, Side::Sell) == 100);
+    l1_orders[0].order_id = 2;
+    l1_strategy.on_order_submitted(l1_orders[0]);
+    l1_strategy.on_order_update(ExecutionReport{0, exchange::Side::Buy, ExecType::Trade, "BTCUSDT",
+                                                100.1, 500, 2, "Market"});
+    assert(l1_strategy.position == 1000);
+    l1_strategy.on_top_of_book("BTCUSDT", TopOfBook{100.0, 100, 0.0, 0});
+    assert(l1_strategy.cancel_requests().size() == 1);
+
+    L1MarketMaker neutral_strategy(100, 0.2, 1000, 0.1);
+    L1MarketMaker buy_pressure_strategy(100, 0.2, 1000, 0.1);
+    const TopOfBook pressure_top{100.0, 100, 100.1, 100};
+    const auto neutral_orders = neutral_strategy.on_top_of_book("BTCUSDT", pressure_top);
+    buy_pressure_strategy.on_market_trade(MarketTrade{1, "BTCUSDT", 100.2, 100, Side::Buy, 1});
+    buy_pressure_strategy.on_market_trade(MarketTrade{2, "BTCUSDT", 100.2, 100, Side::Buy, 2});
+    const auto pressure_orders = buy_pressure_strategy.on_top_of_book("BTCUSDT", pressure_top);
+    assert(pressure_orders.size() == 2);
+    assert(pressure_orders[0].price < neutral_orders[0].price);
+    assert(pressure_orders[1].price > neutral_orders[1].price);
+
+    L1MarketMaker dynamic_strategy(100, 0.2, 1000, 0.1);
+    const auto tight_orders =
+        dynamic_strategy.on_top_of_book("BTCUSDT", TopOfBook{100.0, 100, 100.1, 100});
+    dynamic_strategy.on_order_submitted(
+        StrategyOrder{Side::Buy, "BTCUSDT", tight_orders[0].price, tight_orders[0].quantity, 10});
+    const auto wide_orders =
+        dynamic_strategy.on_top_of_book("BTCUSDT", TopOfBook{99.0, 100, 101.0, 100});
+    assert(wide_orders.empty());
+    assert(dynamic_strategy.cancel_requests().size() == 1);
+
+    L1MarketMaker depth_strategy(100, 0.4, 1000, 0.1);
+    const auto balanced_orders =
+        depth_strategy.on_top_of_book("BTCUSDT", TopOfBook{99.0, 100, 101.0, 100});
+    L1MarketMaker bid_heavy_strategy(100, 0.4, 1000, 0.1);
+    const auto bid_heavy_orders =
+        bid_heavy_strategy.on_top_of_book("BTCUSDT", TopOfBook{99.0, 1000, 101.0, 100});
+    assert(bid_heavy_orders[0].price < balanced_orders[0].price);
+    assert(bid_heavy_orders[1].price > balanced_orders[1].price);
+
     OptimizedMarketMaker strategy;
 
     const StrategyOrder buy{Side::Buy, "EURUSD", 1.10000, 100, 1};

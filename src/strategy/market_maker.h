@@ -97,6 +97,246 @@ class NaiveMarketMaker : public Strategy
     }
 };
 
+class L1MarketMaker : public Strategy
+{
+   public:
+    uint64_t base_order_size;
+    double base_spread;
+    int64_t inventory_limit;
+    double tick_size;
+    std::unordered_map<uint64_t, StrategyOrder> open_orders;
+    int64_t position{0};
+    double last_quote_mid{0.0};
+    double last_bid_price{0.0};
+    double last_ask_price{0.0};
+    bool cancel_pending{false};
+    std::deque<uint64_t> recent_buy_volume;
+    std::deque<uint64_t> recent_sell_volume;
+    uint64_t buy_volume{0};
+    uint64_t sell_volume{0};
+    std::size_t trade_imbalance_window{32};
+    std::deque<double> recent_mids;
+    std::deque<double> recent_mid_changes;
+    std::size_t volatility_window{16};
+    uint64_t quote_age{0};
+    uint64_t max_quote_age{20};
+
+    L1MarketMaker(uint64_t size = 50, double spd = 0.00003, int64_t inv_limit = 1000,
+                  double ts = 0.00001)
+        : base_order_size(size), base_spread(spd), inventory_limit(inv_limit), tick_size(ts)
+    {
+    }
+
+    void on_market_trade(const MarketTrade& trade) override
+    {
+        if (trade.aggressor_side != Side::Buy && trade.aggressor_side != Side::Sell) return;
+
+        auto& volume = trade.aggressor_side == Side::Buy ? buy_volume : sell_volume;
+        auto& recent_volume =
+            trade.aggressor_side == Side::Buy ? recent_buy_volume : recent_sell_volume;
+        recent_volume.push_back(trade.quantity);
+        volume += trade.quantity;
+        while (recent_buy_volume.size() + recent_sell_volume.size() > trade_imbalance_window)
+        {
+            if (!recent_buy_volume.empty() &&
+                (recent_sell_volume.empty() ||
+                 recent_buy_volume.size() >= recent_sell_volume.size()))
+            {
+                buy_volume -= recent_buy_volume.front();
+                recent_buy_volume.pop_front();
+            }
+            else
+            {
+                sell_volume -= recent_sell_volume.front();
+                recent_sell_volume.pop_front();
+            }
+        }
+    }
+
+    std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
+                                              const TopOfBook& tob) override
+    {
+        std::vector<StrategyOrder> orders;
+        if (tob.bid_price <= 0.0 || tob.ask_price <= 0.0 || tob.bid_price > tob.ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        update_mid_history(mid);
+        if (!open_orders.empty()) ++quote_age;
+
+        const int64_t working_exposure = working_position();
+        const int64_t inventory = position + working_exposure;
+        const double inventory_ratio =
+            inventory_limit > 0
+                ? std::clamp(static_cast<double>(inventory) / static_cast<double>(inventory_limit),
+                             -1.0, 1.0)
+                : 0.0;
+        const double inventory_skew = std::tanh(inventory_ratio) * base_spread;
+        const double reservation_mid = mid - inventory_skew;
+        const double imbalance = trade_imbalance();
+        const double book_imbalance = tob_imbalance(tob);
+        const double adverse_shift = (std::abs(imbalance) * base_spread * 0.5) +
+                                     (std::abs(book_imbalance) * base_spread * 0.25);
+        const double effective_spread = dynamic_spread(tob);
+
+        const double raw_bid = reservation_mid - effective_spread / 2.0 - adverse_shift;
+        const double raw_ask = reservation_mid + effective_spread / 2.0 + adverse_shift;
+        const double bid_price = std::min(tob.bid_price, round_price(raw_bid));
+        const double ask_price = std::max(tob.ask_price, round_price(raw_ask));
+        if (bid_price >= ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        uint64_t buy_quantity = base_order_size;
+        uint64_t sell_quantity = base_order_size;
+        if (inventory > 0)
+            buy_quantity = scaled_quantity(inventory_limit - std::min(inventory, inventory_limit));
+        if (inventory < 0)
+            sell_quantity =
+                scaled_quantity(inventory_limit - std::min(-inventory, inventory_limit));
+
+        if (should_refresh(mid, bid_price, ask_price))
+        {
+            if (!open_orders.empty())
+            {
+                cancel_pending = true;
+                return orders;
+            }
+            if (buy_quantity > 0)
+                orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
+            if (sell_quantity > 0)
+                orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+            last_quote_mid = mid;
+            last_bid_price = bid_price;
+            last_ask_price = ask_price;
+        }
+        return orders;
+    }
+
+    void on_order_submitted(const StrategyOrder& order) override
+    {
+        open_orders[order.order_id] = order;
+        quote_age = 0;
+    }
+
+    std::vector<uint64_t> cancel_requests() override
+    {
+        if (!cancel_pending) return {};
+
+        std::vector<uint64_t> order_ids;
+        order_ids.reserve(open_orders.size());
+        for (const auto& entry : open_orders) order_ids.push_back(entry.first);
+        cancel_pending = false;
+        return order_ids;
+    }
+
+    int64_t net_position() const override
+    {
+        return position;
+    }
+
+    size_t working_order_count() const override
+    {
+        return open_orders.size();
+    }
+
+    void on_order_update(const ExecutionReport& report) override
+    {
+        if (report.exec_type == ExecType::Trade)
+        {
+            auto it = open_orders.find(report.order_id);
+            if (it != open_orders.end())
+            {
+                position += report.side == exchange::Side::Buy
+                                ? static_cast<int64_t>(report.quantity)
+                                : -static_cast<int64_t>(report.quantity);
+                it->second.quantity = it->second.quantity > report.quantity
+                                          ? it->second.quantity - report.quantity
+                                          : 0;
+                if (it->second.quantity == 0) open_orders.erase(it);
+            }
+        }
+        else if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        {
+            open_orders.erase(report.order_id);
+        }
+    }
+
+   private:
+    int64_t working_position() const
+    {
+        int64_t exposure = 0;
+        for (const auto& entry : open_orders)
+        {
+            exposure += entry.second.side == Side::Buy
+                            ? static_cast<int64_t>(entry.second.quantity)
+                            : -static_cast<int64_t>(entry.second.quantity);
+        }
+        return exposure;
+    }
+
+    void update_mid_history(double mid)
+    {
+        if (!recent_mids.empty())
+        {
+            recent_mid_changes.push_back(std::abs(mid - recent_mids.back()));
+            if (recent_mid_changes.size() > volatility_window) recent_mid_changes.pop_front();
+        }
+        recent_mids.push_back(mid);
+        if (recent_mids.size() > volatility_window + 1) recent_mids.pop_front();
+    }
+
+    double dynamic_spread(const TopOfBook& tob) const
+    {
+        const double market_spread = tob.ask_price - tob.bid_price;
+        double average_change = 0.0;
+        for (double change : recent_mid_changes) average_change += change;
+        if (!recent_mid_changes.empty()) average_change /= recent_mid_changes.size();
+        return std::max(base_spread, market_spread) + 2.0 * average_change;
+    }
+
+    double tob_imbalance(const TopOfBook& tob) const
+    {
+        const uint64_t total_size = tob.bid_size + tob.ask_size;
+        if (total_size == 0) return 0.0;
+        return (static_cast<double>(tob.bid_size) - static_cast<double>(tob.ask_size)) /
+               static_cast<double>(total_size);
+    }
+
+    uint64_t scaled_quantity(int64_t available_inventory) const
+    {
+        if (inventory_limit <= 0 || available_inventory <= 0) return 0;
+        const double scale =
+            static_cast<double>(available_inventory) / static_cast<double>(inventory_limit);
+        return static_cast<uint64_t>(std::floor(base_order_size * scale));
+    }
+
+    double round_price(double price) const
+    {
+        return std::round(price / tick_size) * tick_size;
+    }
+
+    double trade_imbalance() const
+    {
+        const uint64_t total_volume = buy_volume + sell_volume;
+        if (total_volume == 0) return 0.0;
+        return (static_cast<double>(buy_volume) - static_cast<double>(sell_volume)) /
+               static_cast<double>(total_volume);
+    }
+
+    bool should_refresh(double mid, double bid_price, double ask_price) const
+    {
+        return open_orders.empty() || last_quote_mid == 0.0 ||
+               std::abs(mid - last_quote_mid) >= tick_size || bid_price != last_bid_price ||
+               ask_price != last_ask_price || quote_age >= max_quote_age;
+    }
+};
+
 class OptimizedMarketMaker : public Strategy
 {
    public:

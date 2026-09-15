@@ -33,7 +33,7 @@ The command format is:
 ./out/build/linux-debug/toy_quant csv [tick_file] [delay_ms] [strategy]
 ```
 
-`delay_ms` is normally `0`; use a positive value to slow down the tick stream. The available strategies are `naive` and `optimized`, with `optimized` as the default.
+`delay_ms` is normally `0`; use a positive value to slow down the tick stream. The available strategies are `naive`, `optimized`, and `l1`, with `optimized` as the default.
 
 ## Run with UDP
 

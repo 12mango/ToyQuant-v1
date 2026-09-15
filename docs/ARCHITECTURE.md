@@ -476,7 +476,20 @@ The refresh policy separates “should quote now?” from “which old orders mu
 In short: observations create quotes, submitted IDs become working state, execution reports update
 quantities and position, and stale quotes are cancelled before replacement.
 
-### 6.3 Strategy comparison
+### 6.3 L1MarketMaker: BBO-aware quoting
+
+`L1MarketMaker` is the replay-oriented single-level strategy. It receives both BBO updates and
+venue trades through `on_market_trade()`. A rolling trade-volume imbalance widens quotes against
+the currently aggressive side. It also uses the current BBO spread, recent midpoint movement, and
+bid/ask size imbalance to adjust quote width. The final prices remain passive: buy prices are at or
+below the venue bid, and sell prices are at or above the venue ask.
+
+Inventory uses a bounded, smooth reservation-price skew rather than an unbounded linear shift. The
+strategy scales the risky side's quantity as inventory approaches its limit. A maximum quote age
+also forces cancellation, and new orders are submitted only after the previous cancellation has
+been confirmed through execution reports.
+
+### 6.4 Strategy comparison
 
 For the same `sample_ticks.csv` run, the two strategies diverge immediately:
 

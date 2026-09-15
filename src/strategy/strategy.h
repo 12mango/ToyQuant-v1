@@ -4,6 +4,7 @@
 
 #include "common/types.h"
 #include "exchange/execution_report.h"
+#include "market/market_event.h"
 #include "orderbook/orderbook.h"
 
 struct StrategyOrder
@@ -30,6 +31,12 @@ class Strategy
     // Called on a top-of-book update; returns orders to submit.
     virtual std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                                       const TopOfBook& tob) = 0;
+
+    // Called for venue trades before the next strategy decision.
+    virtual void on_market_trade(const MarketTrade& trade)
+    {
+        (void)trade;
+    }
 
     // Called after an order receives its final ID and before it is sent to the engine.
     virtual void on_order_submitted(const StrategyOrder& order) = 0;
