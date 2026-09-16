@@ -110,8 +110,12 @@ class L1MarketMaker : public Strategy
     double last_bid_price{0.0};
     double last_ask_price{0.0};
     bool cancel_pending{false};
-    std::deque<uint64_t> recent_buy_volume;
-    std::deque<uint64_t> recent_sell_volume;
+    struct TradeSample
+    {
+        Side side;
+        uint64_t quantity;
+    };
+    std::deque<TradeSample> recent_trades;
     uint64_t buy_volume{0};
     uint64_t sell_volume{0};
     std::size_t trade_imbalance_window{32};
@@ -120,6 +124,9 @@ class L1MarketMaker : public Strategy
     std::size_t volatility_window{16};
     uint64_t quote_age{0};
     uint64_t max_quote_age{20};
+    double max_book_spread_ratio{0.02};
+    double inventory_risk_threshold{0.75};
+    double severe_spread_multiplier{20.0};
 
     L1MarketMaker(uint64_t size = 50, double spd = 0.00003, int64_t inv_limit = 1000,
                   double ts = 0.00001)
@@ -131,24 +138,30 @@ class L1MarketMaker : public Strategy
     {
         if (trade.aggressor_side != Side::Buy && trade.aggressor_side != Side::Sell) return;
 
-        auto& volume = trade.aggressor_side == Side::Buy ? buy_volume : sell_volume;
-        auto& recent_volume =
-            trade.aggressor_side == Side::Buy ? recent_buy_volume : recent_sell_volume;
-        recent_volume.push_back(trade.quantity);
-        volume += trade.quantity;
-        while (recent_buy_volume.size() + recent_sell_volume.size() > trade_imbalance_window)
+        recent_trades.push_back({trade.aggressor_side, trade.quantity});
+        if (trade.aggressor_side == Side::Buy)
+            buy_volume += trade.quantity;
+        else
+            sell_volume += trade.quantity;
+
+        while (recent_trades.size() > trade_imbalance_window)
         {
-            if (!recent_buy_volume.empty() &&
-                (recent_sell_volume.empty() ||
-                 recent_buy_volume.size() >= recent_sell_volume.size()))
+            const auto stale_trade = recent_trades.front();
+            recent_trades.pop_front();
+
+            if (stale_trade.side == Side::Buy)
             {
-                buy_volume -= recent_buy_volume.front();
-                recent_buy_volume.pop_front();
+                if (buy_volume >= stale_trade.quantity)
+                    buy_volume -= stale_trade.quantity;
+                else
+                    buy_volume = 0;
             }
             else
             {
-                sell_volume -= recent_sell_volume.front();
-                recent_sell_volume.pop_front();
+                if (sell_volume >= stale_trade.quantity)
+                    sell_volume -= stale_trade.quantity;
+                else
+                    sell_volume = 0;
             }
         }
     }
@@ -164,6 +177,18 @@ class L1MarketMaker : public Strategy
         }
 
         const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        const double market_spread = tob.ask_price - tob.bid_price;
+        const double spread_ratio = market_spread / std::max(mid, 1.0);
+        const double severe_spread_threshold =
+            std::max(mid * max_book_spread_ratio * severe_spread_multiplier,
+                     base_spread * severe_spread_multiplier);
+        if (market_spread <= 0.0 || spread_ratio > max_book_spread_ratio ||
+            market_spread > severe_spread_threshold)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
         update_mid_history(mid);
         if (!open_orders.empty()) ++quote_age;
 
@@ -199,6 +224,20 @@ class L1MarketMaker : public Strategy
         if (inventory < 0)
             sell_quantity =
                 scaled_quantity(inventory_limit - std::min(-inventory, inventory_limit));
+
+        const double risk_threshold =
+            inventory_limit > 0 ? static_cast<double>(inventory_limit) * inventory_risk_threshold
+                                : 0.0;
+        if (inventory > risk_threshold)
+        {
+            buy_quantity = 0;
+            sell_quantity = std::max<uint64_t>(sell_quantity, 1);
+        }
+        else if (inventory < -risk_threshold)
+        {
+            sell_quantity = 0;
+            buy_quantity = std::max<uint64_t>(buy_quantity, 1);
+        }
 
         if (should_refresh(mid, bid_price, ask_price))
         {
@@ -294,10 +333,10 @@ class L1MarketMaker : public Strategy
     double dynamic_spread(const TopOfBook& tob) const
     {
         const double market_spread = tob.ask_price - tob.bid_price;
-        double average_change = 0.0;
-        for (double change : recent_mid_changes) average_change += change;
-        if (!recent_mid_changes.empty()) average_change /= recent_mid_changes.size();
-        return std::max(base_spread, market_spread) + 2.0 * average_change;
+        double average_mid_change = 0.0;
+        for (double change : recent_mid_changes) average_mid_change += change;
+        if (!recent_mid_changes.empty()) average_mid_change /= recent_mid_changes.size();
+        return std::max(base_spread, market_spread) + 2.0 * average_mid_change;
     }
 
     double tob_imbalance(const TopOfBook& tob) const
@@ -331,8 +370,15 @@ class L1MarketMaker : public Strategy
 
     bool should_refresh(double mid, double bid_price, double ask_price) const
     {
-        return open_orders.empty() || last_quote_mid == 0.0 ||
-               std::abs(mid - last_quote_mid) >= tick_size || bid_price != last_bid_price ||
+        if (open_orders.empty()) return true;
+        if (last_quote_mid == 0.0) return true;
+
+        const bool minor_movement = std::abs(mid - last_quote_mid) < 2.0 * tick_size &&
+                                    std::abs(bid_price - last_bid_price) < tick_size &&
+                                    std::abs(ask_price - last_ask_price) < tick_size;
+        if (minor_movement && quote_age < max_quote_age) return false;
+
+        return std::abs(mid - last_quote_mid) >= 2.0 * tick_size || bid_price != last_bid_price ||
                ask_price != last_ask_price || quote_age >= max_quote_age;
     }
 };

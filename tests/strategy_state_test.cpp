@@ -1,3 +1,4 @@
+#include <array>
 #include <cassert>
 #include <cstdint>
 
@@ -72,6 +73,23 @@ int main()
         bid_heavy_strategy.on_top_of_book("BTCUSDT", TopOfBook{99.0, 1000, 101.0, 100});
     assert(bid_heavy_orders[0].price < balanced_orders[0].price);
     assert(bid_heavy_orders[1].price > balanced_orders[1].price);
+
+    L1MarketMaker time_ordered_imbalance(100, 0.2, 1000, 0.1);
+    time_ordered_imbalance.trade_imbalance_window = 4;
+    const std::array<MarketTrade, 6> mixed_flow = {
+        MarketTrade{1, "BTCUSDT", 100.0, 100, Side::Buy, 4},
+        MarketTrade{2, "BTCUSDT", 100.0, 100, Side::Buy, 4},
+        MarketTrade{3, "BTCUSDT", 100.0, 100, Side::Sell, 1},
+        MarketTrade{4, "BTCUSDT", 100.0, 100, Side::Sell, 1},
+        MarketTrade{5, "BTCUSDT", 100.0, 100, Side::Sell, 1},
+        MarketTrade{6, "BTCUSDT", 100.0, 100, Side::Buy, 4},
+    };
+    for (const auto& trade : mixed_flow) time_ordered_imbalance.on_market_trade(trade);
+    const auto time_ordered_orders =
+        time_ordered_imbalance.on_top_of_book("BTCUSDT", TopOfBook{100.0, 100, 100.1, 100});
+    assert(time_ordered_orders.size() == 2);
+    assert(time_ordered_orders[0].price < 100.0);
+    assert(time_ordered_orders[1].price > 100.1);
 
     OptimizedMarketMaker strategy;
 
