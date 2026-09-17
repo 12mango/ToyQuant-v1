@@ -23,6 +23,24 @@ struct StrategyOrder
     }
 };
 
+struct StrategyMetrics
+{
+    uint64_t submitted_quantity{0};
+    uint64_t filled_quantity{0};
+    uint64_t fill_count{0};
+    uint64_t cancel_count{0};
+    uint64_t quote_count{0};
+    double captured_edge{0.0};
+    double adverse_selection{0.0};
+    uint64_t markout_count{0};
+    uint64_t total_quote_lifetime{0};
+    uint64_t max_quote_lifetime{0};
+    double average_abs_inventory{0.0};
+    int64_t max_abs_inventory{0};
+    uint64_t inventory_sign_changes{0};
+    bool available{false};
+};
+
 class Strategy
 {
    public:
@@ -38,6 +56,13 @@ class Strategy
         (void)trade;
     }
 
+    // Called with the latest BBO when the coordinator has one for this symbol.
+    virtual void on_market_trade(const MarketTrade& trade, const BboQuote* latest_bbo)
+    {
+        (void)latest_bbo;
+        on_market_trade(trade);
+    }
+
     // Called after an order receives its final ID and before it is sent to the engine.
     virtual void on_order_submitted(const StrategyOrder& order) = 0;
 
@@ -46,6 +71,11 @@ class Strategy
 
     virtual int64_t net_position() const = 0;
     virtual size_t working_order_count() const = 0;
+
+    virtual StrategyMetrics metrics() const
+    {
+        return {};
+    }
 
     // Called for trade, cancellation, resting, and fill reports.
     virtual void on_order_update(const ExecutionReport& rpt) = 0;

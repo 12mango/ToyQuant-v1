@@ -78,6 +78,15 @@ runtime quantities use those same units. BTCUSDT replay also uses its instrument
 the `0.10` price tick, minimum quantity, fee metadata, strategy spread, and inventory units. The
 existing `csv` and `udp` modes retain their legacy defaults.
 
+Use `l1` when you want the BBO-aware strategy:
+
+```bash
+./out/build/linux-debug/toy_quant replay \
+  data/v2/test_aggTrades_5k.csv \
+  data/v2/test_bookTicker_5k.csv \
+  BTCUSDT 0 l1 1000000
+```
+
 ## Scenarios
 
 Scenarios are CSV files containing synthetic market ticks. They make it easy to run the same

@@ -23,8 +23,10 @@ This documentation is organized into three layers:
 - **C++20 trading loop** for feed, order-book update, strategy decision, and matching.
 - **CSV and UDP market feeds** for reproduction and simulation.
 - **Order-book state and matching rules** with price-time priority and partial fills.
-- **Market-making strategies** such as `naive`, `optimized`, and `l1`.
-- **Backtest-oriented reporting** covering execution summaries, equity, drawdown, and inventory exposure.
+- **Market-making strategies** including a baseline, a smoothed multi-level maker, and a BBO-aware
+  L1 maker with inventory and execution-quality diagnostics.
+- **Backtest-oriented reporting** covering execution summaries, equity, drawdown, and inventory
+  exposure, with L1-specific runtime metrics kept separate from the simplified offline PnL model.
 - **CTest-based validation** for the behaviors that matter most to this project.
 
 This project is intentionally educational and does not aim to reproduce a production exchange stack or a production-grade low-latency HFT system.

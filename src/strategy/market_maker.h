@@ -97,6 +97,25 @@ class NaiveMarketMaker : public Strategy
     }
 };
 
+struct L1MarketMakerConfig
+{
+    uint64_t order_size{50};
+    double base_spread{0.00003};
+    int64_t inventory_limit{1000};
+    double tick_size{0.00001};
+    std::size_t trade_imbalance_window{32};
+    std::size_t volatility_window{16};
+    uint64_t max_quote_age{20};
+    double max_book_spread_ratio{0.02};
+    double inventory_risk_threshold{0.75};
+    double severe_spread_multiplier{20.0};
+    double stress_spread_multiplier{4.0};
+    double minimum_stress_quantity_ratio{0.25};
+    uint64_t max_market_trade_age{1000};
+    double max_trade_deviation_bps{50.0};
+    uint64_t markout_horizon_quotes{5};
+};
+
 class L1MarketMaker : public Strategy
 {
    public:
@@ -127,10 +146,62 @@ class L1MarketMaker : public Strategy
     double max_book_spread_ratio{0.02};
     double inventory_risk_threshold{0.75};
     double severe_spread_multiplier{20.0};
+    double stress_spread_multiplier{4.0};
+    double minimum_stress_quantity_ratio{0.25};
+    uint64_t max_market_trade_age{1000};
+    double max_trade_deviation_bps{50.0};
+    uint64_t markout_horizon_quotes{5};
+    uint64_t quote_cycle{0};
+    uint64_t submitted_quantity{0};
+    uint64_t filled_quantity{0};
+    uint64_t fill_count{0};
+    uint64_t cancel_count{0};
+    uint64_t quote_count{0};
+    double captured_edge{0.0};
+    double adverse_selection{0.0};
+    uint64_t markout_count{0};
+    uint64_t total_quote_lifetime{0};
+    uint64_t max_quote_lifetime{0};
+    uint64_t inventory_samples{0};
+    uint64_t inventory_sign_changes{0};
+    int64_t max_abs_inventory{0};
+    double average_abs_inventory{0.0};
+    struct FillObservation
+    {
+        Side side;
+        double execution_price;
+        uint64_t start_cycle;
+    };
+    std::deque<FillObservation> pending_markouts;
+    std::unordered_map<uint64_t, uint64_t> order_start_cycles;
+    bool has_inventory_sign{false};
+    int inventory_sign{0};
+
+    explicit L1MarketMaker(const L1MarketMakerConfig& config)
+        : base_order_size(config.order_size),
+          base_spread(config.base_spread),
+          inventory_limit(config.inventory_limit),
+          tick_size(config.tick_size),
+          trade_imbalance_window(config.trade_imbalance_window),
+          volatility_window(config.volatility_window),
+          max_quote_age(config.max_quote_age),
+          max_book_spread_ratio(config.max_book_spread_ratio),
+          inventory_risk_threshold(config.inventory_risk_threshold),
+          severe_spread_multiplier(config.severe_spread_multiplier),
+          stress_spread_multiplier(config.stress_spread_multiplier),
+          minimum_stress_quantity_ratio(config.minimum_stress_quantity_ratio),
+          max_market_trade_age(config.max_market_trade_age),
+          max_trade_deviation_bps(config.max_trade_deviation_bps),
+          markout_horizon_quotes(config.markout_horizon_quotes)
+    {
+    }
 
     L1MarketMaker(uint64_t size = 50, double spd = 0.00003, int64_t inv_limit = 1000,
                   double ts = 0.00001)
-        : base_order_size(size), base_spread(spd), inventory_limit(inv_limit), tick_size(ts)
+        : L1MarketMaker(L1MarketMakerConfig{.order_size = size,
+                                            .base_spread = spd,
+                                            .inventory_limit = inv_limit,
+                                            .tick_size = ts})
     {
     }
 
@@ -166,6 +237,17 @@ class L1MarketMaker : public Strategy
         }
     }
 
+    void on_market_trade(const MarketTrade& trade, const BboQuote* latest_bbo) override
+    {
+        if (latest_bbo == nullptr || trade.ts < latest_bbo->ts ||
+            trade.ts - latest_bbo->ts > max_market_trade_age)
+            return;
+        const double mid = (latest_bbo->bid_price + latest_bbo->ask_price) / 2.0;
+        const double deviation_bps = std::abs(trade.price - mid) / mid * 10000.0;
+        if (deviation_bps > max_trade_deviation_bps) return;
+        on_market_trade(trade);
+    }
+
     std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                               const TopOfBook& tob) override
     {
@@ -177,6 +259,8 @@ class L1MarketMaker : public Strategy
         }
 
         const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        ++quote_cycle;
+        update_markouts(mid);
         const double market_spread = tob.ask_price - tob.bid_price;
         const double spread_ratio = market_spread / std::max(mid, 1.0);
         const double severe_spread_threshold =
@@ -194,6 +278,7 @@ class L1MarketMaker : public Strategy
 
         const int64_t working_exposure = working_position();
         const int64_t inventory = position + working_exposure;
+        record_inventory(inventory);
         const double inventory_ratio =
             inventory_limit > 0
                 ? std::clamp(static_cast<double>(inventory) / static_cast<double>(inventory_limit),
@@ -217,13 +302,15 @@ class L1MarketMaker : public Strategy
             return orders;
         }
 
-        uint64_t buy_quantity = base_order_size;
-        uint64_t sell_quantity = base_order_size;
+        const double stress = spread_stress(effective_spread, market_spread);
+        uint64_t buy_quantity = stress_scaled_quantity(stress);
+        uint64_t sell_quantity = stress_scaled_quantity(stress);
         if (inventory > 0)
-            buy_quantity = scaled_quantity(inventory_limit - std::min(inventory, inventory_limit));
+            buy_quantity =
+                scaled_quantity(inventory_limit - std::min(inventory, inventory_limit), stress);
         if (inventory < 0)
             sell_quantity =
-                scaled_quantity(inventory_limit - std::min(-inventory, inventory_limit));
+                scaled_quantity(inventory_limit - std::min(-inventory, inventory_limit), stress);
 
         const double risk_threshold =
             inventory_limit > 0 ? static_cast<double>(inventory_limit) * inventory_risk_threshold
@@ -253,6 +340,7 @@ class L1MarketMaker : public Strategy
             last_quote_mid = mid;
             last_bid_price = bid_price;
             last_ask_price = ask_price;
+            ++quote_count;
         }
         return orders;
     }
@@ -260,6 +348,8 @@ class L1MarketMaker : public Strategy
     void on_order_submitted(const StrategyOrder& order) override
     {
         open_orders[order.order_id] = order;
+        order_start_cycles[order.order_id] = quote_cycle;
+        submitted_quantity += order.quantity;
         quote_age = 0;
     }
 
@@ -284,6 +374,17 @@ class L1MarketMaker : public Strategy
         return open_orders.size();
     }
 
+    StrategyMetrics metrics() const override
+    {
+        StrategyMetrics result{submitted_quantity,    filled_quantity,       fill_count,
+                               cancel_count,          quote_count,           captured_edge,
+                               adverse_selection,     markout_count,         total_quote_lifetime,
+                               max_quote_lifetime,    average_abs_inventory, max_abs_inventory,
+                               inventory_sign_changes};
+        result.available = true;
+        return result;
+    }
+
     void on_order_update(const ExecutionReport& report) override
     {
         if (report.exec_type == ExecType::Trade)
@@ -291,17 +392,31 @@ class L1MarketMaker : public Strategy
             auto it = open_orders.find(report.order_id);
             if (it != open_orders.end())
             {
+                const double reference_mid = last_quote_mid;
                 position += report.side == exchange::Side::Buy
                                 ? static_cast<int64_t>(report.quantity)
                                 : -static_cast<int64_t>(report.quantity);
+                filled_quantity += report.quantity;
+                ++fill_count;
+                captured_edge += report.side == exchange::Side::Buy ? reference_mid - report.price
+                                                                    : report.price - reference_mid;
+                pending_markouts.push_back(
+                    {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
+                     quote_cycle});
                 it->second.quantity = it->second.quantity > report.quantity
                                           ? it->second.quantity - report.quantity
                                           : 0;
-                if (it->second.quantity == 0) open_orders.erase(it);
+                if (it->second.quantity == 0)
+                {
+                    record_quote_lifetime(report.order_id);
+                    open_orders.erase(it);
+                }
             }
         }
         else if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
         {
+            if (report.exec_type == ExecType::Cancelled) ++cancel_count;
+            record_quote_lifetime(report.order_id);
             open_orders.erase(report.order_id);
         }
     }
@@ -317,6 +432,49 @@ class L1MarketMaker : public Strategy
                             : -static_cast<int64_t>(entry.second.quantity);
         }
         return exposure;
+    }
+
+    void record_inventory(int64_t inventory)
+    {
+        ++inventory_samples;
+        const double absolute_inventory = static_cast<double>(std::abs(inventory));
+        average_abs_inventory +=
+            (absolute_inventory - average_abs_inventory) / static_cast<double>(inventory_samples);
+        max_abs_inventory = std::max(max_abs_inventory, std::abs(inventory));
+
+        const int current_sign = inventory > 0 ? 1 : inventory < 0 ? -1 : 0;
+        if (has_inventory_sign && current_sign != 0 && current_sign != inventory_sign)
+            ++inventory_sign_changes;
+        if (current_sign != 0)
+        {
+            inventory_sign = current_sign;
+            has_inventory_sign = true;
+        }
+    }
+
+    void record_quote_lifetime(uint64_t order_id)
+    {
+        const auto it = order_start_cycles.find(order_id);
+        if (it == order_start_cycles.end()) return;
+        const uint64_t lifetime = quote_cycle >= it->second ? quote_cycle - it->second : 0;
+        total_quote_lifetime += lifetime;
+        max_quote_lifetime = std::max(max_quote_lifetime, lifetime);
+        order_start_cycles.erase(it);
+    }
+
+    void update_markouts(double current_mid)
+    {
+        while (!pending_markouts.empty())
+        {
+            const auto& observation = pending_markouts.front();
+            if (quote_cycle < observation.start_cycle + markout_horizon_quotes) break;
+
+            adverse_selection += observation.side == Side::Buy
+                                     ? observation.execution_price - current_mid
+                                     : current_mid - observation.execution_price;
+            ++markout_count;
+            pending_markouts.pop_front();
+        }
     }
 
     void update_mid_history(double mid)
@@ -347,12 +505,33 @@ class L1MarketMaker : public Strategy
                static_cast<double>(total_size);
     }
 
-    uint64_t scaled_quantity(int64_t available_inventory) const
+    uint64_t scaled_quantity(int64_t available_inventory, double stress = 0.0) const
     {
         if (inventory_limit <= 0 || available_inventory <= 0) return 0;
         const double scale =
             static_cast<double>(available_inventory) / static_cast<double>(inventory_limit);
-        return static_cast<uint64_t>(std::floor(base_order_size * scale));
+        const double stress_scale = std::max(minimum_stress_quantity_ratio,
+                                             1.0 - stress * (1.0 - minimum_stress_quantity_ratio));
+        return static_cast<uint64_t>(std::floor(base_order_size * scale * stress_scale));
+    }
+
+    uint64_t stress_scaled_quantity(double stress) const
+    {
+        const double stress_scale = std::max(minimum_stress_quantity_ratio,
+                                             1.0 - stress * (1.0 - minimum_stress_quantity_ratio));
+        return static_cast<uint64_t>(std::floor(base_order_size * stress_scale));
+    }
+
+    double spread_stress(double effective_spread, double market_spread) const
+    {
+        if (recent_mid_changes.size() < 2) return 0.0;
+        const double average_change =
+            std::accumulate(recent_mid_changes.begin(), recent_mid_changes.end(), 0.0) /
+            static_cast<double>(recent_mid_changes.size());
+        if (average_change <= market_spread) return 0.0;
+        const double reference_spread = std::max({base_spread, tick_size, market_spread});
+        const double excess = (effective_spread - market_spread) / reference_spread;
+        return std::clamp(excess / stress_spread_multiplier, 0.0, 1.0);
     }
 
     double round_price(double price) const

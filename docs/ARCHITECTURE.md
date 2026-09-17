@@ -43,7 +43,7 @@ The source map is:
 | Coordination | `src/main.cpp` | `Pipeline::process_tick`, output callbacks |
 | Market view | `src/orderbook/orderbook.*` | `TopOfBook`, `OrderBook::market_top` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
-| Strategy | `src/strategy/strategy.h`, `market_maker.h` | `Strategy`, two market makers |
+| Strategy | `src/strategy/strategy.h`, `market_maker.h` | `Strategy`, three market makers |
 | Analysis | `src/backtest/backtest_driver.*` | `BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
@@ -191,7 +191,7 @@ Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order
 }
 ```
 
-This is constructor injection: the `Pipeline` declares what it needs, while the caller chooses the concrete implementations. `IOrderBook` and `IMatchingEngine` make the coordinator depend on behavior rather than on `OrderBook` and `MatchingEngine` details. The strategy is injected through the `Strategy` base class, so the same pipeline can run `NaiveMarketMaker` or `OptimizedMarketMaker`:
+This is constructor injection: the `Pipeline` declares what it needs, while the caller chooses the concrete implementations. `IOrderBook` and `IMatchingEngine` make the coordinator depend on behavior rather than on `OrderBook` and `MatchingEngine` details. The strategy is injected through the `Strategy` base class, so the same pipeline can run `NaiveMarketMaker`, `OptimizedMarketMaker`, or `L1MarketMaker`:
 
 ```cpp
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
@@ -199,6 +199,13 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
     if (strategy_name == "naive")
     {
         return std::make_unique<NaiveMarketMaker>(100, 0.00001);
+    }
+    if (strategy_name == "l1")
+    {
+        L1MarketMakerConfig config;
+        config.order_size = 100;
+        config.base_spread = 0.000003;
+        return std::make_unique<L1MarketMaker>(config);
     }
     return std::make_unique<OptimizedMarketMaker>(100, 0.000003);
 }
@@ -478,20 +485,46 @@ quantities and position, and stale quotes are cancelled before replacement.
 
 ### 6.3 L1MarketMaker: BBO-aware quoting
 
-`L1MarketMaker` is the replay-oriented single-level strategy. It receives both BBO updates and
-venue trades through `on_market_trade()`. A rolling trade-volume imbalance widens quotes against
-the currently aggressive side. It also uses the current BBO spread, recent midpoint movement, and
-bid/ask size imbalance to adjust quote width. The final prices remain passive: buy prices are at or
-below the venue bid, and sell prices are at or above the venue ask.
+`L1MarketMaker` is the replay-oriented single-level strategy. It consumes BBO updates for quoting
+and venue trades for order-flow information. Its behavior is intentionally layered so each risk
+control has a distinct purpose:
 
-Inventory uses a bounded, smooth reservation-price skew rather than an unbounded linear shift. The
-strategy scales the risky side's quantity as inventory approaches its limit. A maximum quote age
-also forces cancellation, and new orders are submitted only after the previous cancellation has
-been confirmed through execution reports.
+1. **Input filtering.** A trade is used for imbalance only when a latest BBO exists, the trade is
+    not older than the BBO, its BBO age is below `max_market_trade_age`, and its price deviation
+    from the BBO midpoint is below `max_trade_deviation_bps`. Direct one-argument calls remain
+    available for focused tests; the replay pipeline uses the BBO-aware overload.
+2. **Flow and volatility state.** A single FIFO window of `TradeSample` values tracks buy and sell
+    aggressor volume. A rolling window of absolute midpoint changes estimates short-term movement.
+    This is a simple educational volatility proxy, not a statistical volatility model.
+3. **Reservation price.** Effective inventory is `position + working_exposure`, where working buys
+    are positive and working sells are negative. The reservation midpoint is shifted by a bounded
+    `tanh(inventory / inventory_limit)` term: long inventory shifts the center down to discourage
+    more buying, while short inventory shifts it up to encourage buying back.
+4. **Quote width.** The effective spread is at least the larger of the configured base spread and
+    current market spread, plus twice the average midpoint change. Trade-flow and BBO-size imbalance
+    add an adverse shift to both sides. Prices are rounded to the instrument tick and clipped to
+    remain passive relative to the venue BBO.
+5. **Quote size.** Volatility stress reduces both sides toward a configurable minimum quantity
+    ratio. Inventory reduces only the risky side. Above `inventory_risk_threshold`, the risky side is
+    disabled and only the inventory-reducing side remains.
+6. **Lifecycle and measurement.** A changed quote first requests cancellation; replacement waits for
+    cancellation reports. The strategy tracks quote-cycle lifetime, delayed markout, adverse
+    selection, inventory path statistics, fills, cancels, and submitted quantity.
+
+The tunable values are grouped in `L1MarketMakerConfig`. The legacy positional constructor remains
+for compatibility, while the application entry point uses the named configuration object. The
+configuration is deliberately in-process rather than JSON/YAML: this project is an educational
+simulator, not a production configuration service.
+
+`StrategyMetrics` exposes the L1 measurements through the common strategy interface. The runtime
+summary can therefore report L1-specific observations without downcasting the strategy. These
+metrics are execution diagnostics: `captured_edge` is an immediate midpoint comparison, while
+`adverse_selection` is a later markout after `markout_horizon_quotes` BBO cycles. Neither includes
+fees or constitutes a complete portfolio PnL calculation.
 
 ### 6.4 Strategy comparison
 
-For the same `sample_ticks.csv` run, the two strategies diverge immediately:
+For the same `sample_ticks.csv` run, the two legacy Tick strategies diverge immediately:
 
 | Strategy | Submitted orders | Submitted quantity | Cancel requests | Fill rate | Net position | Current equity | Max drawdown |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -499,6 +532,10 @@ For the same `sample_ticks.csv` run, the two strategies diverge immediately:
 | `optimized` | 24 | 1379 | 9 | 0.31037 | -428 | 999.670190 | 0.000334 |
 
 The table uses an initial capital of `1000.0`. It shows the core difference: `naive` is more aggressive and leaves more working orders behind, while `optimized` submits less, cancels stale quotes, and ends with smaller adverse position and drawdown. That is why the optimized version is the better demonstration of stateful market making in this project.
+
+`L1MarketMaker` is evaluated on the Trades+BBO replay path rather than this legacy Tick-only
+comparison. Its additional runtime measurements are useful for explaining quote safety and
+execution quality, but they are not yet folded into the offline PnL report.
 
 ## 7. Backtest and Performance Metrics
 
@@ -536,6 +573,9 @@ The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 | `cancel_rate` | Cancel requests divided by submitted orders | `main.cpp` execution summary |
 | `inventory_exposure` | Absolute value of net position | `main.cpp` execution summary |
 | `max_drawdown` | Largest decline from an equity peak | `BacktestDriver` |
+| `adverse_selection` | Delayed fill markout accumulated after a quote horizon | L1 runtime summary |
+| `average_abs_inventory` | Average absolute effective inventory at quote decisions | L1 runtime summary |
+| `quote_lifetime` | Number of BBO decision cycles before fill or cancel | L1 runtime summary |
 
 The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating formulas in `main.cpp`.
 

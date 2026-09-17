@@ -91,6 +91,35 @@ int main()
     assert(time_ordered_orders[0].price < 100.0);
     assert(time_ordered_orders[1].price > 100.1);
 
+    L1MarketMaker stale_trade_strategy(100, 0.2, 1000, 0.1);
+    const BboQuote stale_reference{1000, "BTCUSDT", 99.9, 100, 100.1, 100, 1};
+    stale_trade_strategy.on_market_trade(MarketTrade{2001, "BTCUSDT", 100.0, 100, Side::Buy, 1},
+                                         &stale_reference);
+    assert(stale_trade_strategy.buy_volume == 0);
+    stale_trade_strategy.on_market_trade(MarketTrade{1001, "BTCUSDT", 110.0, 100, Side::Buy, 2},
+                                         &stale_reference);
+    assert(stale_trade_strategy.buy_volume == 0);
+
+    L1MarketMaker metrics_strategy(10, 0.2, 1000, 0.1);
+    auto metric_orders =
+        metrics_strategy.on_top_of_book("BTCUSDT", TopOfBook{100.0, 100, 100.1, 100});
+    metric_orders[0].order_id = 11;
+    metrics_strategy.on_order_submitted(metric_orders[0]);
+    metrics_strategy.on_order_update(ExecutionReport{11, exchange::Side::Buy, ExecType::Trade,
+                                                     "BTCUSDT", 100.0, 5, 1, "MarketMaker"});
+    for (int i = 0; i < 5; ++i)
+        metrics_strategy.on_top_of_book("BTCUSDT", TopOfBook{99.8, 100, 99.9, 100});
+    metrics_strategy.on_order_update(ExecutionReport{11, exchange::Side::Buy, ExecType::Cancelled,
+                                                     "BTCUSDT", 100.0, 5, 1, "MarketMaker"});
+    assert(metrics_strategy.markout_count == 1);
+    assert(metrics_strategy.adverse_selection > 0.0);
+    assert(metrics_strategy.inventory_samples >= 6);
+    assert(metrics_strategy.max_abs_inventory >= 10);
+    assert(metrics_strategy.total_quote_lifetime == 5);
+    const auto metrics = metrics_strategy.metrics();
+    assert(metrics.filled_quantity == 5);
+    assert(metrics.markout_count == 1);
+
     OptimizedMarketMaker strategy;
 
     const StrategyOrder buy{Side::Buy, "EURUSD", 1.10000, 100, 1};

@@ -186,7 +186,12 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         instrument ? static_cast<int64_t>(instrument->quantity_scale / 10) : 1000;
     if (strategy_name == "l1")
     {
-        return std::make_unique<L1MarketMaker>(order_size, spread, inventory_limit, tick_size);
+        L1MarketMakerConfig l1_config;
+        l1_config.order_size = order_size;
+        l1_config.base_spread = spread;
+        l1_config.inventory_limit = inventory_limit;
+        l1_config.tick_size = tick_size;
+        return std::make_unique<L1MarketMaker>(l1_config);
     }
     return std::make_unique<OptimizedMarketMaker>(order_size, spread, inventory_limit, tick_size);
 }
@@ -279,12 +284,15 @@ class Pipeline
                 using Event = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<Event, MarketTrade>)
                 {
-                    strategy_.on_market_trade(value);
+                    const auto quote_it = latest_quotes_.find(value.symbol);
+                    strategy_.on_market_trade(
+                        value, quote_it == latest_quotes_.end() ? nullptr : &quote_it->second);
                     engine_.process_market_tick({value.ts, value.symbol, value.price,
                                                  value.quantity, value.aggressor_side});
                 }
                 else
                 {
+                    latest_quotes_[value.symbol] = value;
                     order_book_.on_bbo(value);
                     engine_.process_bbo(value);
                     const auto top = order_book_.market_top(value.symbol);
@@ -307,6 +315,7 @@ class Pipeline
         const double cancel_rate =
             metrics::compute_cancel_rate(submitted_orders_, cancel_requests_);
         double exposure = metrics::compute_inventory_exposure(strategy_.net_position());
+        const StrategyMetrics strategy_metrics = strategy_.metrics();
 
         logger_.log("[SUMMARY] submitted_orders=", submitted_orders_,
                     " submitted_quantity=", submitted_quantity_,
@@ -315,6 +324,26 @@ class Pipeline
                     " trade_report_quantity=", trade_report_quantity_,
                     " net_position=", strategy_.net_position(), " inventory_exposure=", exposure,
                     " working_orders=", strategy_.working_order_count());
+
+        if (strategy_metrics.available)
+        {
+            const double strategy_fill_rate = metrics::compute_fill_rate(
+                strategy_metrics.submitted_quantity, strategy_metrics.filled_quantity);
+            logger_.log(
+                "[STRATEGY_METRICS] submitted_quantity=", strategy_metrics.submitted_quantity,
+                " filled_quantity=", strategy_metrics.filled_quantity,
+                " fill_rate=", strategy_fill_rate, " fill_count=", strategy_metrics.fill_count,
+                " cancel_count=", strategy_metrics.cancel_count,
+                " quote_count=", strategy_metrics.quote_count,
+                " captured_edge=", strategy_metrics.captured_edge,
+                " adverse_selection=", strategy_metrics.adverse_selection,
+                " markout_count=", strategy_metrics.markout_count,
+                " total_quote_lifetime=", strategy_metrics.total_quote_lifetime,
+                " max_quote_lifetime=", strategy_metrics.max_quote_lifetime,
+                " avg_abs_inventory=", strategy_metrics.average_abs_inventory,
+                " max_abs_inventory=", strategy_metrics.max_abs_inventory,
+                " inventory_sign_changes=", strategy_metrics.inventory_sign_changes);
+        }
     }
 
    private:
@@ -345,6 +374,7 @@ class Pipeline
     Strategy& strategy_;
     IMatchingEngine& engine_;
     Logger& logger_;
+    std::unordered_map<std::string, BboQuote> latest_quotes_;
     std::atomic<uint64_t> next_order_id_{1};
     uint64_t submitted_orders_{0};
     uint64_t submitted_quantity_{0};
