@@ -14,6 +14,8 @@
 #include <type_traits>
 
 #include "accounting/portfolio.h"
+#include "app/pipeline.h"
+#include "app/strategy_factory.h"
 #include "backtest/backtest_driver.h"
 #include "backtest/performance.h"
 #include "common/instrument_spec.h"
@@ -22,7 +24,6 @@
 #include "market/replay_feed.h"
 #include "market/udp_feed.h"
 #include "orderbook/orderbook.h"
-#include "strategy/market_maker.h"
 #include "utils/logger.h"
 
 #ifndef PROJECT_ROOT_DIR
@@ -171,211 +172,6 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
     return true;
 }
 
-std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
-                                        const InstrumentSpec* instrument = nullptr)
-{
-    const uint64_t order_size =
-        instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
-                   : 100;
-    const double tick_size = instrument ? instrument->tick_size : PRICE_TICK_SIZE;
-    const double spread = instrument ? 2.0 * instrument->tick_size : 0.000003;
-    if (strategy_name == "naive")
-    {
-        return std::make_unique<NaiveMarketMaker>(order_size, spread, tick_size);
-    }
-    const int64_t inventory_limit =
-        instrument ? static_cast<int64_t>(instrument->quantity_scale / 10) : 1000;
-    if (strategy_name == "l1")
-    {
-        L1MarketMakerConfig l1_config;
-        l1_config.order_size = order_size;
-        l1_config.base_spread = spread;
-        l1_config.inventory_limit = inventory_limit;
-        l1_config.tick_size = tick_size;
-        return std::make_unique<L1MarketMaker>(l1_config);
-    }
-    return std::make_unique<OptimizedMarketMaker>(order_size, spread, inventory_limit, tick_size);
-}
-
-std::string side_to_csv(Side side)
-{
-    return side == Side::Buy ? "B" : side == Side::Sell ? "S" : "N";
-}
-
-exchange::Order to_exchange_order(const StrategyOrder& strategy_order, uint64_t ts,
-                                  const std::string& owner)
-{
-    exchange::Order order{};
-    order.id = strategy_order.order_id;
-    order.symbol = strategy_order.symbol;
-    order.side = strategy_order.side == Side::Buy ? exchange::Side::Buy : exchange::Side::Sell;
-    order.type = exchange::OrderType::Limit;
-    order.price = strategy_order.price;
-    order.qty = strategy_order.quantity;
-    order.remaining = strategy_order.quantity;
-    order.ts = ts;
-    order.owner = owner;
-    return order;
-}
-
-void write_order_csv_row(std::ofstream& out, uint64_t ts, const StrategyOrder& order)
-{
-    out << ts << "," << order.symbol << "," << side_to_csv(order.side) << "," << order.price << ","
-        << order.quantity << "," << order.order_id << "\n";
-}
-
-void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
-{
-    if (report.exec_type != ExecType::Trade || report.owner != "MarketMaker") return;
-    const char* role = report.liquidity_role == LiquidityRole::Maker   ? "maker"
-                       : report.liquidity_role == LiquidityRole::Taker ? "taker"
-                                                                       : "unknown";
-    out << report.ts << "," << report.symbol << ","
-        << (report.side == exchange::Side::Buy ? "B" : "S") << "," << report.price << ","
-        << report.quantity << "," << report.order_id << "," << role << "," << report.fee << "\n";
-}
-
-void print_tick(Logger& logger, const Tick& t, const TopOfBook& top)
-{
-    logger.debug("[TICK] ", t.symbol, " ts:", t.ts, " price:", t.price, " size:", t.size,
-                 " side:", to_char(t.side), " | Top Bid: ", top.bid_price, "@", top.bid_size,
-                 " | Top Ask: ", top.ask_price, "@", top.ask_size);
-}
-
-class Pipeline
-{
-   public:
-    Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-             Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio, Logger& logger)
-        : orders_out_(orders_out),
-          trades_out_(trades_out),
-          order_book_(order_book),
-          strategy_(strategy),
-          engine_(engine),
-          portfolio_(portfolio),
-          logger_(logger)
-    {
-        engine_.set_report_callback(
-            [this](const ExecutionReport& report)
-            {
-                portfolio_.apply(report);
-                strategy_.on_order_update(report);
-                if (report.exec_type == ExecType::Trade)
-                {
-                    if (report.owner == "MarketMaker")
-                    {
-                        ++trade_reports_;
-                        trade_report_quantity_ += report.quantity;
-                    }
-                }
-                write_trade_csv_row(trades_out_, report);
-            });
-    }
-
-    void process_tick(const Tick& tick, bool enable_print = true)
-    {
-        order_book_.on_tick(tick);
-        engine_.process_market_tick(tick);
-        auto top = order_book_.market_top(tick.symbol);
-        if (enable_print) print_tick(logger_, tick, top);
-
-        submit_strategy_actions(tick.symbol, tick.ts, top);
-    }
-
-    void process_event(const MarketEvent& event, bool enable_print = false)
-    {
-        std::visit(
-            [this, enable_print](const auto& value)
-            {
-                using Event = std::decay_t<decltype(value)>;
-                if constexpr (std::is_same_v<Event, MarketTrade>)
-                {
-                    const auto quote_it = latest_quotes_.find(value.symbol);
-                    strategy_.on_market_trade(
-                        value, quote_it == latest_quotes_.end() ? nullptr : &quote_it->second);
-                    engine_.process_market_tick({value.ts, value.symbol, value.price,
-                                                 value.quantity, value.aggressor_side});
-                }
-                else
-                {
-                    latest_quotes_[value.symbol] = value;
-                    order_book_.on_bbo(value);
-                    engine_.process_bbo(value);
-                    const auto top = order_book_.market_top(value.symbol);
-                    if (enable_print)
-                    {
-                        logger_.debug("[BBO] ", value.symbol, " ts:", value.ts,
-                                      " bid:", value.bid_price, "@", value.bid_quantity,
-                                      " ask:", value.ask_price, "@", value.ask_quantity);
-                    }
-                    submit_strategy_actions(value.symbol, value.ts, top);
-                }
-            },
-            event);
-    }
-
-    void print_summary() const
-    {
-        const double fill_rate =
-            metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_);
-        const double cancel_rate =
-            metrics::compute_cancel_rate(submitted_orders_, cancel_requests_);
-        const StrategyMetrics strategy_metrics = strategy_.metrics();
-        const PortfolioMetrics portfolio_metrics = portfolio_.metrics();
-
-        logger_.log("[EXECUTION] submitted_orders=", submitted_orders_,
-                    " submitted_quantity=", submitted_quantity_,
-                    " cancel_requests=", cancel_requests_, " trade_reports=", trade_reports_,
-                    " fill_rate=", fill_rate, " cancel_rate=", cancel_rate,
-                    " trade_report_quantity=", trade_report_quantity_,
-                    " working_orders=", strategy_.working_order_count());
-
-        logger_.log("[PORTFOLIO] ", portfolio_metrics.to_log_string());
-
-        if (strategy_metrics.available)
-        {
-            logger_.log("[STRATEGY_METRICS] ", strategy_metrics.to_log_string());
-        }
-    }
-
-   private:
-    void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top)
-    {
-        auto orders = strategy_.on_top_of_book(symbol, top);
-
-        for (uint64_t order_id : strategy_.cancel_requests())
-        {
-            ++cancel_requests_;
-            engine_.cancel_order(order_id);
-        }
-
-        for (auto& order : orders)
-        {
-            order.order_id = next_order_id_++;
-            auto ex_order = to_exchange_order(order, ts, "MarketMaker");
-            ++submitted_orders_;
-            submitted_quantity_ += order.quantity;
-            write_order_csv_row(orders_out_, ts, order);
-            strategy_.on_order_submitted(order);
-            engine_.send_order(ex_order);
-        }
-    }
-    std::ofstream& orders_out_;
-    std::ofstream& trades_out_;
-    IOrderBook& order_book_;
-    Strategy& strategy_;
-    IMatchingEngine& engine_;
-    Portfolio& portfolio_;
-    Logger& logger_;
-    std::unordered_map<std::string, BboQuote> latest_quotes_;
-    std::atomic<uint64_t> next_order_id_{1};
-    uint64_t submitted_orders_{0};
-    uint64_t submitted_quantity_{0};
-    uint64_t cancel_requests_{0};
-    uint64_t trade_reports_{0};
-    uint64_t trade_report_quantity_{0};
-};
-
 struct OutputFiles
 {
     std::ofstream orders;
@@ -426,7 +222,7 @@ void run_csv_mode(const AppConfig& cfg)
     CsvFeed feed(
         csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay, &logger);
     feed.run();
-    pipeline.print_summary();
+    logger.log(pipeline.summary().to_log_string());
 }
 
 void run_replay_mode(const AppConfig& cfg)
@@ -468,7 +264,7 @@ void run_replay_mode(const AppConfig& cfg)
                " dislocated_trades=", validation.dislocated_trades,
                " max_bbo_age_ms=", validation.max_bbo_age_ms,
                " max_trade_deviation_bps=", validation.max_trade_deviation_bps);
-    pipeline.print_summary();
+    logger.log(pipeline.summary().to_log_string());
 }
 
 void run_udp_mode(const AppConfig& cfg)
