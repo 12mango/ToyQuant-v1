@@ -86,8 +86,10 @@ from the latest BBO midpoint. Replay prints these counters in a `[DATA]` summary
 `InstrumentSpec` is shared by the market-data adapter, strategy, order book, and matching engine.
 For BTCUSDT it defines a `0.10` price tick and `1000000` integer quantity units per BTC. The replay
 strategy therefore uses `0.001 BTC` base orders, a two-tick base spread, and a `0.1 BTC` inventory
-limit. Fee rates are carried in the specification for portfolio accounting, which is not yet part
-of the L1 replay.
+limit. Fee rates are carried in the specification and injected into the replay matching engine.
+Execution reports then carry the liquidity role and fee for each MarketMaker fill; the current
+offline backtest can consume those recorded fees while retaining a fee-rate fallback for legacy
+six-column trade files.
 
 BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
 and drive matching. External Tick/BBO state is stored separately from local strategy orders.
@@ -160,7 +162,7 @@ engine_.set_report_callback(
 
 The `[this]` lambda is a C++11 closure. `Pipeline` stores references to its collaborators rather than owning them; the run function constructs them in an enclosing scope and destroys them after the feed finishes. `std::unique_ptr<Strategy>` expresses exclusive ownership of the selected concrete strategy, while `std::atomic<uint64_t>` supplies the order-ID counter.
 
-`orders.csv` is written when the pipeline submits a candidate order, before the matching result is known. `trades.csv` receives only `Trade` reports owned by `MarketMaker`; `Resting`, `Filled`, and `Cancelled` are lifecycle events, not additional executions.
+`orders.csv` is written when the pipeline submits a candidate order, before the matching result is known. `trades.csv` receives only `Trade` reports owned by `MarketMaker`; `Resting`, `Filled`, and `Cancelled` are lifecycle events, not additional executions. New trade files append `liquidity_role` and `fee` columns; the six required legacy columns remain unchanged for compatibility.
 
 ### 3.1 Dependency injection at the coordinator boundary
 
@@ -573,6 +575,7 @@ The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 | `cancel_rate` | Cancel requests divided by submitted orders | `main.cpp` execution summary |
 | `inventory_exposure` | Absolute value of net position | `main.cpp` execution summary |
 | `max_drawdown` | Largest decline from an equity peak | `BacktestDriver` |
+| `fees_paid` | Fees charged on recorded MarketMaker fills | Runtime and offline summaries |
 | `adverse_selection` | Delayed fill markout accumulated after a quote horizon | L1 runtime summary |
 | `average_abs_inventory` | Average absolute effective inventory at quote decisions | L1 runtime summary |
 | `quote_lifetime` | Number of BBO decision cycles before fill or cancel | L1 runtime summary |

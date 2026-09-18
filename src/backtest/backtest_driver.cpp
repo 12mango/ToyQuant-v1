@@ -91,6 +91,11 @@ void BacktestDriver::run()
     positions.clear();
     last_price.clear();
     realized_pnl = 0.0;
+    total_fees = 0.0;
+    maker_fees = 0.0;
+    taker_fees = 0.0;
+    maker_trade_count = 0;
+    taker_trade_count = 0;
     equity_curve_.clear();
 
     std::ifstream tick_in(tick_file_);
@@ -159,7 +164,7 @@ void BacktestDriver::run()
             BacktestExecutionReport trade;
             std::string tmp, side_str;
 
-            // CSV column order: ts,symbol,side,price,quantity,order_id.
+            // CSV columns: required legacy fields, followed by optional role and fee.
             std::getline(ss, tmp, ',');
             trade.ts = safe_stoull(tmp);          // ts
             std::getline(ss, trade.symbol, ',');  // symbol
@@ -170,6 +175,23 @@ void BacktestDriver::run()
             trade.quantity = safe_stoull(tmp);  // quantity
             std::getline(ss, tmp, ',');
             trade.order_id = safe_stoull(tmp);  // order_id
+
+            if (std::getline(ss, tmp, ','))
+            {
+                if (tmp == "maker")
+                    trade.liquidity_role = LiquidityRole::Maker;
+                else if (tmp == "taker")
+                    trade.liquidity_role = LiquidityRole::Taker;
+                else if (tmp != "unknown" && !tmp.empty())
+                    throw std::invalid_argument("liquidity role must be maker, taker, or unknown");
+
+                if (std::getline(ss, tmp, ','))
+                {
+                    trade.fee = safe_stod(tmp);
+                    if (trade.fee < 0.0) throw std::invalid_argument("fee cannot be negative");
+                    trade.has_recorded_fee = true;
+                }
+            }
 
             if (trade.symbol.empty()) throw std::invalid_argument("empty symbol");
             if (side_str != "B" && side_str != "S")
@@ -195,7 +217,19 @@ void BacktestDriver::run()
     auto apply_trade = [this](const BacktestExecutionReport& trade)
     {
         double exec_price = trade.price + (trade.side == Side::Buy ? slippage_ : -slippage_);
-        double fee = trade.quantity * exec_price * fee_rate_;
+        double fee = trade.has_recorded_fee ? trade.fee : trade.quantity * exec_price * fee_rate_;
+        total_fees += fee;
+        realized_pnl -= fee;
+        if (trade.liquidity_role == LiquidityRole::Maker)
+        {
+            maker_fees += fee;
+            ++maker_trade_count;
+        }
+        else if (trade.liquidity_role == LiquidityRole::Taker)
+        {
+            taker_fees += fee;
+            ++taker_trade_count;
+        }
 
         auto& pos = positions[trade.symbol];
         int64_t qty = static_cast<int64_t>(trade.quantity);
@@ -206,7 +240,7 @@ void BacktestDriver::run()
             if (pos.qty < 0)
             {
                 int64_t close_qty = std::min(-pos.qty, qty);
-                realized_pnl += close_qty * (pos.avg_price - exec_price) - fee;
+                realized_pnl += close_qty * (pos.avg_price - exec_price);
                 pos.qty += close_qty;
                 qty -= close_qty;
             }
@@ -221,7 +255,7 @@ void BacktestDriver::run()
             if (pos.qty > 0)
             {
                 int64_t close_qty = std::min(pos.qty, qty);
-                realized_pnl += close_qty * (exec_price - pos.avg_price) - fee;
+                realized_pnl += close_qty * (exec_price - pos.avg_price);
                 pos.qty -= close_qty;
                 qty -= close_qty;
             }
@@ -282,6 +316,12 @@ void BacktestDriver::print_report()
     logger_.log("\n=== Strategy Report ===");
     logger_.log("Initial Capital: " + std::to_string(InitialCapital));
     logger_.log("Realized PnL: " + std::to_string(realized_pnl));
+    logger_.log("Total Fees: " + std::to_string(total_fees));
+    logger_.log("Maker Fees: " + std::to_string(maker_fees) +
+                " (trades=" + std::to_string(maker_trade_count) + ")");
+    logger_.log("Taker Fees: " + std::to_string(taker_fees) +
+                " (trades=" + std::to_string(taker_trade_count) + ")");
+    logger_.log("Realized PnL Before Fees: " + std::to_string(realized_pnl + total_fees));
     logger_.log("Current Equity: " + std::to_string(equity));
     logger_.log("Max Drawdown: " + std::to_string(max_drawdown));
 }

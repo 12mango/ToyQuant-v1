@@ -226,9 +226,12 @@ void write_order_csv_row(std::ofstream& out, uint64_t ts, const StrategyOrder& o
 void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
 {
     if (report.exec_type != ExecType::Trade || report.owner != "MarketMaker") return;
+    const char* role = report.liquidity_role == LiquidityRole::Maker   ? "maker"
+                       : report.liquidity_role == LiquidityRole::Taker ? "taker"
+                                                                       : "unknown";
     out << report.ts << "," << report.symbol << ","
         << (report.side == exchange::Side::Buy ? "B" : "S") << "," << report.price << ","
-        << report.quantity << "," << report.order_id << "\n";
+        << report.quantity << "," << report.order_id << "," << role << "," << report.fee << "\n";
 }
 
 void print_tick(Logger& logger, const Tick& t, const TopOfBook& top)
@@ -260,6 +263,7 @@ class Pipeline
                     {
                         ++trade_reports_;
                         trade_report_quantity_ += report.quantity;
+                        fees_paid_ += report.fee;
                     }
                 }
                 write_trade_csv_row(trades_out_, report);
@@ -321,7 +325,7 @@ class Pipeline
                     " submitted_quantity=", submitted_quantity_,
                     " cancel_requests=", cancel_requests_, " trade_reports=", trade_reports_,
                     " fill_rate=", fill_rate, " cancel_rate=", cancel_rate,
-                    " trade_report_quantity=", trade_report_quantity_,
+                    " trade_report_quantity=", trade_report_quantity_, " fees_paid=", fees_paid_,
                     " net_position=", strategy_.net_position(), " inventory_exposure=", exposure,
                     " working_orders=", strategy_.working_order_count());
 
@@ -335,6 +339,7 @@ class Pipeline
                 " fill_rate=", strategy_fill_rate, " fill_count=", strategy_metrics.fill_count,
                 " cancel_count=", strategy_metrics.cancel_count,
                 " quote_count=", strategy_metrics.quote_count,
+                " fees_paid=", strategy_metrics.fees_paid,
                 " captured_edge=", strategy_metrics.captured_edge,
                 " adverse_selection=", strategy_metrics.adverse_selection,
                 " markout_count=", strategy_metrics.markout_count,
@@ -381,6 +386,7 @@ class Pipeline
     uint64_t cancel_requests_{0};
     uint64_t trade_reports_{0};
     uint64_t trade_report_quantity_{0};
+    double fees_paid_{0.0};
 };
 
 struct OutputFiles
@@ -412,7 +418,7 @@ OutputFiles open_output_files(const std::string& source,
     files.orders << "# " << source_type << "=" << source << "\n";
     files.trades << "# " << source_type << "=" << source << "\n";
     files.orders << "ts,symbol,side,price,quantity,order_id\n";
-    files.trades << "ts,symbol,side,price,quantity,order_id\n";
+    files.trades << "ts,symbol,side,price,quantity,order_id,liquidity_role,fee\n";
     return files;
 }
 
@@ -456,7 +462,10 @@ void run_replay_mode(const AppConfig& cfg)
     auto output_files = open_output_files(source, "source_market_data");
     OrderBook order_book(instrument.tick_size);
     auto strategy = make_strategy(cfg.strategy_name, &instrument);
-    MatchingEngine engine(&logger, instrument.tick_size);
+    MatchingEngine engine(&logger, instrument.tick_size,
+                          FeeSchedule{.maker_rate = instrument.maker_fee_rate,
+                                      .taker_rate = instrument.taker_fee_rate,
+                                      .quantity_scale = instrument.quantity_scale});
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       logger);
     ReplayFeed feed(

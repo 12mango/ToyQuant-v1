@@ -5,6 +5,13 @@
 #include "common/types.h"
 #include "order.h"
 
+enum class LiquidityRole : uint8_t
+{
+    Unknown = 0,
+    Maker,
+    Taker
+};
+
 struct ExecutionReport
 {
     uint64_t order_id{};
@@ -17,4 +24,6 @@ struct ExecutionReport
     uint64_t quantity{};
     uint64_t ts{};
     std::string owner;
+    LiquidityRole liquidity_role{LiquidityRole::Unknown};
+    double fee{0.0};
 };

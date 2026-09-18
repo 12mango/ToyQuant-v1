@@ -9,6 +9,26 @@
 
 using exchange::Order;
 
+void MatchingEngine::report_trade(const exchange::Order& order, double price, uint64_t quantity,
+                                  LiquidityRole liquidity_role, uint64_t ts)
+{
+    const double rate = liquidity_role == LiquidityRole::Maker ? fee_schedule_.maker_rate
+                                                               : fee_schedule_.taker_rate;
+    const double real_quantity =
+        static_cast<double>(quantity) /
+        static_cast<double>(std::max<uint64_t>(1, fee_schedule_.quantity_scale));
+    report(ExecutionReport{.order_id = order.id,
+                           .side = order.side,
+                           .exec_type = ExecType::Trade,
+                           .symbol = order.symbol,
+                           .price = price,
+                           .quantity = quantity,
+                           .ts = ts,
+                           .owner = order.owner,
+                           .liquidity_role = liquidity_role,
+                           .fee = price * real_quantity * rate});
+}
+
 void MatchingEngine::send_order(const exchange::Order& order)
 {
     if (order.id == 0 || order.qty == 0 || order.remaining == 0 || order.remaining > order.qty ||
@@ -62,14 +82,7 @@ void MatchingEngine::match_external_bbo(Order& order)
     const uint64_t traded = std::min(order.remaining, *available_quantity);
     order.remaining -= traded;
     *available_quantity -= traded;
-    report(ExecutionReport{.order_id = order.id,
-                           .side = order.side,
-                           .exec_type = ExecType::Trade,
-                           .symbol = order.symbol,
-                           .price = execution_price,
-                           .quantity = traded,
-                           .ts = order.ts,
-                           .owner = order.owner});
+    report_trade(order, execution_price, traded, LiquidityRole::Taker, order.ts);
     report(ExecutionReport{
         .order_id = order.id,
         .side = order.side,
@@ -183,23 +196,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                 }
                 uint64_t traded = std::min(qty, resting.remaining);
 
-                report(ExecutionReport{.order_id = new_order.id,
-                                       .side = new_order.side,
-                                       .exec_type = ExecType::Trade,
-                                       .symbol = new_order.symbol,
-                                       .price = to_price(best_price, tick_size_),
-                                       .quantity = traded,
-                                       .ts = new_order.ts,
-                                       .owner = new_order.owner});
-
-                report(ExecutionReport{.order_id = resting.id,
-                                       .side = resting.side,
-                                       .exec_type = ExecType::Trade,
-                                       .symbol = resting.symbol,
-                                       .price = to_price(best_price, tick_size_),
-                                       .quantity = traded,
-                                       .ts = new_order.ts,
-                                       .owner = resting.owner});
+                report_trade(new_order, to_price(best_price, tick_size_), traded,
+                             LiquidityRole::Taker, new_order.ts);
+                report_trade(resting, to_price(best_price, tick_size_), traded,
+                             LiquidityRole::Maker, new_order.ts);
 
                 qty -= traded;
                 resting.remaining -= traded;
@@ -291,23 +291,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                 }
                 uint64_t traded = std::min(qty, resting.remaining);
 
-                report(ExecutionReport{.order_id = new_order.id,
-                                       .side = new_order.side,
-                                       .exec_type = ExecType::Trade,
-                                       .symbol = new_order.symbol,
-                                       .price = to_price(best_price, tick_size_),
-                                       .quantity = traded,
-                                       .ts = new_order.ts,
-                                       .owner = new_order.owner});
-
-                report(ExecutionReport{.order_id = resting.id,
-                                       .side = resting.side,
-                                       .exec_type = ExecType::Trade,
-                                       .symbol = resting.symbol,
-                                       .price = to_price(best_price, tick_size_),
-                                       .quantity = traded,
-                                       .ts = new_order.ts,
-                                       .owner = resting.owner});
+                report_trade(new_order, to_price(best_price, tick_size_), traded,
+                             LiquidityRole::Taker, new_order.ts);
+                report_trade(resting, to_price(best_price, tick_size_), traded,
+                             LiquidityRole::Maker, new_order.ts);
 
                 qty -= traded;
                 resting.remaining -= traded;

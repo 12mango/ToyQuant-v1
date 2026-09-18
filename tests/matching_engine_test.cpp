@@ -150,4 +150,30 @@ int main()
     bbo_engine.process_market_tick({13, "BTCUSDT", 100.2, 30, Side::Sell});
     assert(has_report(bbo_reports, 50, ExecType::Trade, 30));
     assert(has_report(bbo_reports, 50, ExecType::Filled, 0));
+
+    MatchingEngine fee_engine(
+        nullptr, 0.1, FeeSchedule{.maker_rate = 0.001, .taker_rate = 0.002, .quantity_scale = 100});
+    std::vector<ExecutionReport> fee_reports;
+    fee_engine.set_report_callback([&fee_reports](const ExecutionReport& report)
+                                   { fee_reports.push_back(report); });
+    fee_engine.send_order({60, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 10.0, 100,
+                           100, 20, "MarketMaker"});
+    fee_engine.process_market_tick({21, "TEST", 10.0, 100, Side::Sell});
+    const auto fee_trade =
+        std::find_if(fee_reports.begin(), fee_reports.end(), [](const ExecutionReport& report)
+                     { return report.exec_type == ExecType::Trade && report.order_id == 60; });
+    assert(fee_trade != fee_reports.end());
+    assert(fee_trade->liquidity_role == LiquidityRole::Maker);
+    assert(std::abs(fee_trade->fee - 0.01) < 1e-12);
+
+    fee_reports.clear();
+    fee_engine.process_bbo({30, "TEST", 9.9, 100, 10.0, 100, 2});
+    fee_engine.send_order({61, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 10.0, 100,
+                           100, 31, "MarketMaker"});
+    const auto taker_trade =
+        std::find_if(fee_reports.begin(), fee_reports.end(), [](const ExecutionReport& report)
+                     { return report.exec_type == ExecType::Trade && report.order_id == 61; });
+    assert(taker_trade != fee_reports.end());
+    assert(taker_trade->liquidity_role == LiquidityRole::Taker);
+    assert(std::abs(taker_trade->fee - 0.02) < 1e-12);
 }

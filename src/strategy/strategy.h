@@ -30,6 +30,7 @@ struct StrategyMetrics
     uint64_t fill_count{0};
     uint64_t cancel_count{0};
     uint64_t quote_count{0};
+    double fees_paid{0.0};
     double captured_edge{0.0};
     double adverse_selection{0.0};
     uint64_t markout_count{0};

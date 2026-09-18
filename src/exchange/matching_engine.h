@@ -13,6 +13,13 @@
 
 class Logger;
 
+struct FeeSchedule
+{
+    double maker_rate{0.0};
+    double taker_rate{0.0};
+    uint64_t quantity_scale{1};
+};
+
 struct PriceLevel
 {
     std::list<exchange::Order> orders;
@@ -42,8 +49,9 @@ class MatchingEngine : public IMatchingEngine
    public:
     using ReportCallback = std::function<void(const ExecutionReport&)>;
 
-    explicit MatchingEngine(Logger* logger = nullptr, double tick_size = PRICE_TICK_SIZE)
-        : logger_(logger), tick_size_(tick_size)
+    explicit MatchingEngine(Logger* logger = nullptr, double tick_size = PRICE_TICK_SIZE,
+                            FeeSchedule fee_schedule = {})
+        : logger_(logger), tick_size_(tick_size), fee_schedule_(fee_schedule)
     {
     }
 
@@ -77,6 +85,8 @@ class MatchingEngine : public IMatchingEngine
 
     void match_external_bbo(exchange::Order& order);
     void match(MEOrderBook& book, const exchange::Order& incoming, bool rest_incoming);
+    void report_trade(const exchange::Order& order, double price, uint64_t quantity,
+                      LiquidityRole liquidity_role, uint64_t ts);
     void report(const ExecutionReport& rpt)
     {
         if (report_cb_) report_cb_(rpt);
@@ -88,4 +98,5 @@ class MatchingEngine : public IMatchingEngine
     ReportCallback report_cb_;
     Logger* logger_;
     double tick_size_;
+    FeeSchedule fee_schedule_;
 };

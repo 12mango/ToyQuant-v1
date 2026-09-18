@@ -157,6 +157,7 @@ class L1MarketMaker : public Strategy
     uint64_t fill_count{0};
     uint64_t cancel_count{0};
     uint64_t quote_count{0};
+    double fees_paid{0.0};
     double captured_edge{0.0};
     double adverse_selection{0.0};
     uint64_t markout_count{0};
@@ -376,11 +377,11 @@ class L1MarketMaker : public Strategy
 
     StrategyMetrics metrics() const override
     {
-        StrategyMetrics result{submitted_quantity,    filled_quantity,       fill_count,
-                               cancel_count,          quote_count,           captured_edge,
-                               adverse_selection,     markout_count,         total_quote_lifetime,
-                               max_quote_lifetime,    average_abs_inventory, max_abs_inventory,
-                               inventory_sign_changes};
+        StrategyMetrics result{submitted_quantity,   filled_quantity,       fill_count,
+                               cancel_count,         quote_count,           fees_paid,
+                               captured_edge,        adverse_selection,     markout_count,
+                               total_quote_lifetime, max_quote_lifetime,    average_abs_inventory,
+                               max_abs_inventory,    inventory_sign_changes};
         result.available = true;
         return result;
     }
@@ -398,6 +399,7 @@ class L1MarketMaker : public Strategy
                                 : -static_cast<int64_t>(report.quantity);
                 filled_quantity += report.quantity;
                 ++fill_count;
+                fees_paid += report.fee;
                 captured_edge += report.side == exchange::Side::Buy ? reference_mid - report.price
                                                                     : report.price - reference_mid;
                 pending_markouts.push_back(
