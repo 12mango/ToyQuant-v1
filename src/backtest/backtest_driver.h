@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "accounting/portfolio.h"
 #include "common/types.h"
 #include "exchange/execution_report.h"
 
@@ -22,12 +23,6 @@ struct BacktestExecutionReport
     LiquidityRole liquidity_role = LiquidityRole::Unknown;
     double fee = 0.0;
     bool has_recorded_fee = false;
-};
-
-struct Position
-{
-    int64_t qty = 0;
-    double avg_price = 0.0;
 };
 
 // ==================== BacktestDriver ====================
@@ -49,14 +44,8 @@ class BacktestDriver
     double fee_rate_;
     RunMode mode_;
 
-    std::unordered_map<std::string, Position> positions;
     std::unordered_map<std::string, double> last_price;
-    double realized_pnl = 0.0;
-    double total_fees = 0.0;
-    double maker_fees = 0.0;
-    double taker_fees = 0.0;
-    uint64_t maker_trade_count = 0;
-    uint64_t taker_trade_count = 0;
+    Portfolio portfolio_;
     std::vector<double> equity_curve_;
 
     Logger& logger_;

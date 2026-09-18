@@ -32,6 +32,7 @@ set(COMMON_INCLUDE_DIRS
 
 # Sources shared by application targets.
 set(COMMON_SOURCES
+    src/accounting/portfolio.cpp
     src/market/csv_feed.cpp
     src/market/market_data_adapter.cpp
     src/market/market_data_validator.cpp
@@ -85,3 +86,7 @@ add_test(NAME market_data_adapter_test COMMAND market_data_adapter_test)
 add_executable(performance_test tests/performance_test.cpp src/backtest/performance.cpp)
 target_include_directories(performance_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME performance_test COMMAND performance_test)
+
+add_executable(portfolio_test tests/portfolio_test.cpp src/accounting/portfolio.cpp)
+target_include_directories(portfolio_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME portfolio_test COMMAND portfolio_test)

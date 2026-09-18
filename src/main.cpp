@@ -15,6 +15,7 @@
 
 #include "backtest/backtest_driver.h"
 #include "backtest/performance.h"
+#include "accounting/portfolio.h"
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
 #include "market/csv_feed.h"
@@ -245,17 +246,19 @@ class Pipeline
 {
    public:
     Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-             Strategy& strategy, IMatchingEngine& engine, Logger& logger)
+             Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio, Logger& logger)
         : orders_out_(orders_out),
           trades_out_(trades_out),
           order_book_(order_book),
           strategy_(strategy),
           engine_(engine),
+          portfolio_(portfolio),
           logger_(logger)
     {
         engine_.set_report_callback(
             [this](const ExecutionReport& report)
             {
+                portfolio_.apply(report);
                 strategy_.on_order_update(report);
                 if (report.exec_type == ExecType::Trade)
                 {
@@ -263,7 +266,6 @@ class Pipeline
                     {
                         ++trade_reports_;
                         trade_report_quantity_ += report.quantity;
-                        fees_paid_ += report.fee;
                     }
                 }
                 write_trade_csv_row(trades_out_, report);
@@ -320,12 +322,16 @@ class Pipeline
             metrics::compute_cancel_rate(submitted_orders_, cancel_requests_);
         double exposure = metrics::compute_inventory_exposure(strategy_.net_position());
         const StrategyMetrics strategy_metrics = strategy_.metrics();
+        const PortfolioMetrics portfolio_metrics = portfolio_.metrics();
 
         logger_.log("[SUMMARY] submitted_orders=", submitted_orders_,
                     " submitted_quantity=", submitted_quantity_,
                     " cancel_requests=", cancel_requests_, " trade_reports=", trade_reports_,
                     " fill_rate=", fill_rate, " cancel_rate=", cancel_rate,
-                    " trade_report_quantity=", trade_report_quantity_, " fees_paid=", fees_paid_,
+                    " trade_report_quantity=", trade_report_quantity_,
+                    " cash=", portfolio_metrics.cash,
+                    " realized_pnl=", portfolio_metrics.realized_pnl,
+                    " fees_paid=", portfolio_metrics.fees_paid,
                     " net_position=", strategy_.net_position(), " inventory_exposure=", exposure,
                     " working_orders=", strategy_.working_order_count());
 
@@ -378,6 +384,7 @@ class Pipeline
     IOrderBook& order_book_;
     Strategy& strategy_;
     IMatchingEngine& engine_;
+    Portfolio& portfolio_;
     Logger& logger_;
     std::unordered_map<std::string, BboQuote> latest_quotes_;
     std::atomic<uint64_t> next_order_id_{1};
@@ -386,7 +393,6 @@ class Pipeline
     uint64_t cancel_requests_{0};
     uint64_t trade_reports_{0};
     uint64_t trade_report_quantity_{0};
-    double fees_paid_{0.0};
 };
 
 struct OutputFiles
@@ -433,8 +439,9 @@ void run_csv_mode(const AppConfig& cfg)
     OrderBook order_book;
     auto strategy = make_strategy(cfg.strategy_name);
     MatchingEngine engine(&logger);
+    Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      logger);
+                      portfolio, logger);
     CsvFeed feed(
         csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay, &logger);
     feed.run();
@@ -466,8 +473,9 @@ void run_replay_mode(const AppConfig& cfg)
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
                                       .quantity_scale = instrument.quantity_scale});
+    Portfolio portfolio(instrument.quantity_scale);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      logger);
+                      portfolio, logger);
     ReplayFeed feed(
         make_market_data_readers("binance", trades_file, quotes_file, instrument),
         [&](const MarketEvent& event) { pipeline.process_event(event); }, cfg.delay);
@@ -492,8 +500,9 @@ void run_udp_mode(const AppConfig& cfg)
     OrderBook order_book;
     auto strategy = make_strategy(cfg.strategy_name);
     MatchingEngine engine(&logger);
+    Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      logger);
+                      portfolio, logger);
     UdpFeed feed(port);
     feed.start();
 

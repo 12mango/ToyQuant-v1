@@ -16,20 +16,6 @@
 namespace
 {
 constexpr double InitialCapital = 1000.0;
-
-double current_equity(double realized_pnl,
-                      const std::unordered_map<std::string, Position>& positions,
-                      const std::unordered_map<std::string, double>& last_price)
-{
-    double equity = InitialCapital + realized_pnl;
-    for (const auto& [symbol, pos] : positions)
-    {
-        auto price_it = last_price.find(symbol);
-        if (price_it == last_price.end()) continue;
-        equity += pos.qty * (price_it->second - pos.avg_price);
-    }
-    return equity;
-}
 }  // namespace
 
 // ==================== Strict Conversion Helpers ====================
@@ -81,6 +67,7 @@ BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& 
       slippage_(slippage),
       fee_rate_(fee_rate),
       mode_(mode),
+    portfolio_(1, InitialCapital),
       logger_(logger)
 {
 }
@@ -88,14 +75,8 @@ BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& 
 // ==================== Backtest Execution ====================
 void BacktestDriver::run()
 {
-    positions.clear();
+    portfolio_.reset();
     last_price.clear();
-    realized_pnl = 0.0;
-    total_fees = 0.0;
-    maker_fees = 0.0;
-    taker_fees = 0.0;
-    maker_trade_count = 0;
-    taker_trade_count = 0;
     equity_curve_.clear();
 
     std::ifstream tick_in(tick_file_);
@@ -218,57 +199,23 @@ void BacktestDriver::run()
     {
         double exec_price = trade.price + (trade.side == Side::Buy ? slippage_ : -slippage_);
         double fee = trade.has_recorded_fee ? trade.fee : trade.quantity * exec_price * fee_rate_;
-        total_fees += fee;
-        realized_pnl -= fee;
-        if (trade.liquidity_role == LiquidityRole::Maker)
-        {
-            maker_fees += fee;
-            ++maker_trade_count;
-        }
-        else if (trade.liquidity_role == LiquidityRole::Taker)
-        {
-            taker_fees += fee;
-            ++taker_trade_count;
-        }
-
-        auto& pos = positions[trade.symbol];
-        int64_t qty = static_cast<int64_t>(trade.quantity);
-        Side s = trade.side;
-
-        if (s == Side::Buy)
-        {
-            if (pos.qty < 0)
-            {
-                int64_t close_qty = std::min(-pos.qty, qty);
-                realized_pnl += close_qty * (pos.avg_price - exec_price);
-                pos.qty += close_qty;
-                qty -= close_qty;
-            }
-            if (qty > 0)
-            {
-                pos.avg_price = (pos.avg_price * pos.qty + exec_price * qty) / (pos.qty + qty);
-                pos.qty += qty;
-            }
-        }
-        else
-        {  // Sell
-            if (pos.qty > 0)
-            {
-                int64_t close_qty = std::min(pos.qty, qty);
-                realized_pnl += close_qty * (exec_price - pos.avg_price);
-                pos.qty -= close_qty;
-                qty -= close_qty;
-            }
-            if (qty > 0)
-            {
-                pos.avg_price = (pos.avg_price * (-pos.qty) + exec_price * qty) / (-pos.qty + qty);
-                pos.qty -= qty;
-            }
-        }
+        ExecutionReport report{.side = trade.side == Side::Buy ? exchange::Side::Buy
+                                                                  : exchange::Side::Sell,
+                               .exec_type = ExecType::Trade,
+                               .symbol = trade.symbol,
+                               .price = exec_price,
+                               .quantity = trade.quantity,
+                               .ts = trade.ts,
+                               .owner = "Backtest",
+                               .liquidity_role = trade.liquidity_role,
+                               .fee = fee};
+        portfolio_.apply(report);
+        const auto portfolio_metrics = portfolio_.metrics();
 
         logger_.log("Trade: " + trade.symbol + " " + to_char(trade.side) + " " +
                     std::to_string(exec_price) + " qty=" + std::to_string(trade.quantity) +
-                    " Fee=" + std::to_string(fee) + " RealizedPnL=" + std::to_string(realized_pnl));
+                    " Fee=" + std::to_string(fee) +
+                    " RealizedPnL=" + std::to_string(portfolio_metrics.realized_pnl));
     };
 
     std::size_t trade_index = 0;
@@ -280,13 +227,15 @@ void BacktestDriver::run()
             apply_trade(trades[trade_index]);
             ++trade_index;
         }
-        equity_curve_.push_back(current_equity(realized_pnl, positions, last_price));
+        portfolio_.mark_to_market(last_price);
+        equity_curve_.push_back(portfolio_.metrics().equity);
     }
     while (trade_index < trades.size())
     {
         apply_trade(trades[trade_index]);
         ++trade_index;
-        equity_curve_.push_back(current_equity(realized_pnl, positions, last_price));
+        portfolio_.mark_to_market(last_price);
+        equity_curve_.push_back(portfolio_.metrics().equity);
     }
 
     print_report();
@@ -295,33 +244,33 @@ void BacktestDriver::run()
 // ==================== Report Results ====================
 void BacktestDriver::print_report()
 {
-    double equity = InitialCapital + realized_pnl;
+    portfolio_.mark_to_market(last_price);
+    const auto portfolio_metrics = portfolio_.metrics();
     std::vector<std::string> symbols;
-    symbols.reserve(positions.size());
-    for (const auto& [symbol, pos] : positions) symbols.push_back(symbol);
+    symbols.reserve(portfolio_.positions().size());
+    for (const auto& [symbol, position] : portfolio_.positions()) symbols.push_back(symbol);
     std::sort(symbols.begin(), symbols.end());
 
     for (const auto& symbol : symbols)
     {
-        const auto& pos = positions.at(symbol);
-        double unrealized_pnl = pos.qty * (last_price[symbol] - pos.avg_price);
-        equity += unrealized_pnl;
-        logger_.log("Symbol: " + symbol + " Qty: " + std::to_string(pos.qty) +
-                    " AvgPrice: " + std::to_string(pos.avg_price) +
-                    " UnrealizedPnL: " + std::to_string(unrealized_pnl));
+        const auto& position = portfolio_.positions().at(symbol);
+        logger_.log("Symbol: " + symbol + " Qty: " + std::to_string(position.quantity) +
+                    " AvgPrice: " + std::to_string(position.average_price));
     }
-    if (equity_curve_.empty()) equity_curve_.push_back(equity);
+    if (equity_curve_.empty()) equity_curve_.push_back(portfolio_metrics.equity);
     double max_drawdown = metrics::compute_max_drawdown(equity_curve_);
 
     logger_.log("\n=== Strategy Report ===");
     logger_.log("Initial Capital: " + std::to_string(InitialCapital));
-    logger_.log("Realized PnL: " + std::to_string(realized_pnl));
-    logger_.log("Total Fees: " + std::to_string(total_fees));
-    logger_.log("Maker Fees: " + std::to_string(maker_fees) +
-                " (trades=" + std::to_string(maker_trade_count) + ")");
-    logger_.log("Taker Fees: " + std::to_string(taker_fees) +
-                " (trades=" + std::to_string(taker_trade_count) + ")");
-    logger_.log("Realized PnL Before Fees: " + std::to_string(realized_pnl + total_fees));
-    logger_.log("Current Equity: " + std::to_string(equity));
+    logger_.log("Realized PnL: " + std::to_string(portfolio_metrics.realized_pnl));
+    logger_.log("Realized PnL Before Fees: " +
+                std::to_string(portfolio_metrics.realized_pnl + portfolio_metrics.fees_paid));
+    logger_.log("Total Fees: " + std::to_string(portfolio_metrics.fees_paid));
+    logger_.log("Maker Fees: " + std::to_string(portfolio_metrics.maker_fees) +
+                " (trades=" + std::to_string(portfolio_metrics.maker_trade_count) + ")");
+    logger_.log("Taker Fees: " + std::to_string(portfolio_metrics.taker_fees) +
+                " (trades=" + std::to_string(portfolio_metrics.taker_trade_count) + ")");
+    logger_.log("Unrealized PnL: " + std::to_string(portfolio_metrics.unrealized_pnl));
+    logger_.log("Current Equity: " + std::to_string(portfolio_metrics.equity));
     logger_.log("Max Drawdown: " + std::to_string(max_drawdown));
 }
