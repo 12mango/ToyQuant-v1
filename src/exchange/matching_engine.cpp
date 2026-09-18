@@ -151,10 +151,7 @@ void MatchingEngine::cancel_order(uint64_t order_id)
                            .ts = cancelled_order.ts,
                            .owner = cancelled_order.owner});
 
-    if (logger_)
-        logger_->log("Cancel order id=", order_id, " done.");
-    else
-        std::cout << "Cancel order id=" << order_id << " done.\n";
+    if (logger_) logger_->debug("[CANCEL] order_id=", order_id);
 }
 
 void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
@@ -251,11 +248,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .owner = new_order.owner});
 
             if (logger_)
-                logger_->log("Resting Buy order id=", new_order.id, " qty=", qty, " @ ",
-                             new_order.price);
-            else
-                std::cout << "Resting Buy order id=" << new_order.id << " qty=" << qty << " @ "
-                          << new_order.price << "\n";
+                logger_->debug("[RESTING] side=Buy order_id=", new_order.id, " qty=", qty,
+                               " price=", new_order.price);
         }
 
         // ==================== Sell-Side Matching ====================
@@ -346,11 +340,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .owner = new_order.owner});
 
             if (logger_)
-                logger_->log("Resting Sell order id=", new_order.id, " qty=", qty, " @ ",
-                             new_order.price);
-            else
-                std::cout << "Resting Sell order id=" << new_order.id << " qty=" << qty << " @ "
-                          << new_order.price << "\n";
+                logger_->debug("[RESTING] side=Sell order_id=", new_order.id, " qty=", qty,
+                               " price=", new_order.price);
         }
     }
 }

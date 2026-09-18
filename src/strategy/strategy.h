@@ -1,4 +1,5 @@
 #pragma once
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,27 @@ struct StrategyMetrics
     int64_t max_abs_inventory{0};
     uint64_t inventory_sign_changes{0};
     bool available{false};
+
+    std::string to_log_string() const
+    {
+        const double fill_rate =
+            submitted_quantity == 0
+                ? 0.0
+                : static_cast<double>(filled_quantity) / static_cast<double>(submitted_quantity);
+        std::ostringstream stream;
+        stream << "submitted_quantity=" << submitted_quantity
+               << " filled_quantity=" << filled_quantity << " fill_rate=" << fill_rate
+               << " fill_count=" << fill_count << " cancel_count=" << cancel_count
+               << " quote_count=" << quote_count << " fees_paid=" << fees_paid
+               << " captured_edge=" << captured_edge << " adverse_selection=" << adverse_selection
+               << " markout_count=" << markout_count
+               << " total_quote_lifetime=" << total_quote_lifetime
+               << " max_quote_lifetime=" << max_quote_lifetime
+               << " avg_abs_inventory=" << average_abs_inventory
+               << " max_abs_inventory=" << max_abs_inventory
+               << " inventory_sign_changes=" << inventory_sign_changes;
+        return stream.str();
+    }
 };
 
 class Strategy

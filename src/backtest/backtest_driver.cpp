@@ -67,7 +67,7 @@ BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& 
       slippage_(slippage),
       fee_rate_(fee_rate),
       mode_(mode),
-    portfolio_(1, InitialCapital),
+      portfolio_(1, InitialCapital),
       logger_(logger)
 {
 }
@@ -199,23 +199,22 @@ void BacktestDriver::run()
     {
         double exec_price = trade.price + (trade.side == Side::Buy ? slippage_ : -slippage_);
         double fee = trade.has_recorded_fee ? trade.fee : trade.quantity * exec_price * fee_rate_;
-        ExecutionReport report{.side = trade.side == Side::Buy ? exchange::Side::Buy
-                                                                  : exchange::Side::Sell,
-                               .exec_type = ExecType::Trade,
-                               .symbol = trade.symbol,
-                               .price = exec_price,
-                               .quantity = trade.quantity,
-                               .ts = trade.ts,
-                               .owner = "Backtest",
-                               .liquidity_role = trade.liquidity_role,
-                               .fee = fee};
+        ExecutionReport report{
+            .side = trade.side == Side::Buy ? exchange::Side::Buy : exchange::Side::Sell,
+            .exec_type = ExecType::Trade,
+            .symbol = trade.symbol,
+            .price = exec_price,
+            .quantity = trade.quantity,
+            .ts = trade.ts,
+            .owner = "Backtest",
+            .liquidity_role = trade.liquidity_role,
+            .fee = fee};
         portfolio_.apply(report);
         const auto portfolio_metrics = portfolio_.metrics();
 
-        logger_.log("Trade: " + trade.symbol + " " + to_char(trade.side) + " " +
-                    std::to_string(exec_price) + " qty=" + std::to_string(trade.quantity) +
-                    " Fee=" + std::to_string(fee) +
-                    " RealizedPnL=" + std::to_string(portfolio_metrics.realized_pnl));
+        logger_.debug("[TRADE] ", trade.symbol, " side=", to_char(trade.side),
+                      " price=", exec_price, " qty=", trade.quantity, " fee=", fee,
+                      " realized_pnl=", portfolio_metrics.realized_pnl);
     };
 
     std::size_t trade_index = 0;
@@ -254,23 +253,19 @@ void BacktestDriver::print_report()
     for (const auto& symbol : symbols)
     {
         const auto& position = portfolio_.positions().at(symbol);
-        logger_.log("Symbol: " + symbol + " Qty: " + std::to_string(position.quantity) +
-                    " AvgPrice: " + std::to_string(position.average_price));
+        logger_.log("[POSITION] symbol=", symbol, " qty=", position.quantity,
+                    " avg_price=", position.average_price);
     }
     if (equity_curve_.empty()) equity_curve_.push_back(portfolio_metrics.equity);
     double max_drawdown = metrics::compute_max_drawdown(equity_curve_);
 
-    logger_.log("\n=== Strategy Report ===");
-    logger_.log("Initial Capital: " + std::to_string(InitialCapital));
-    logger_.log("Realized PnL: " + std::to_string(portfolio_metrics.realized_pnl));
-    logger_.log("Realized PnL Before Fees: " +
-                std::to_string(portfolio_metrics.realized_pnl + portfolio_metrics.fees_paid));
-    logger_.log("Total Fees: " + std::to_string(portfolio_metrics.fees_paid));
-    logger_.log("Maker Fees: " + std::to_string(portfolio_metrics.maker_fees) +
-                " (trades=" + std::to_string(portfolio_metrics.maker_trade_count) + ")");
-    logger_.log("Taker Fees: " + std::to_string(portfolio_metrics.taker_fees) +
-                " (trades=" + std::to_string(portfolio_metrics.taker_trade_count) + ")");
-    logger_.log("Unrealized PnL: " + std::to_string(portfolio_metrics.unrealized_pnl));
-    logger_.log("Current Equity: " + std::to_string(portfolio_metrics.equity));
-    logger_.log("Max Drawdown: " + std::to_string(max_drawdown));
+    logger_.log(
+        "[BACKTEST] initial_capital=", InitialCapital,
+        " realized_pnl=", portfolio_metrics.realized_pnl,
+        " pnl_before_fees=", portfolio_metrics.realized_pnl + portfolio_metrics.fees_paid,
+        " unrealized_pnl=", portfolio_metrics.unrealized_pnl, " equity=", portfolio_metrics.equity,
+        " fees=", portfolio_metrics.fees_paid, " maker_fees=", portfolio_metrics.maker_fees,
+        " taker_fees=", portfolio_metrics.taker_fees,
+        " maker_trades=", portfolio_metrics.maker_trade_count,
+        " taker_trades=", portfolio_metrics.taker_trade_count, " max_drawdown=", max_drawdown);
 }

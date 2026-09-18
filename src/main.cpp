@@ -13,9 +13,9 @@
 #include <thread>
 #include <type_traits>
 
+#include "accounting/portfolio.h"
 #include "backtest/backtest_driver.h"
 #include "backtest/performance.h"
-#include "accounting/portfolio.h"
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
 #include "market/csv_feed.h"
@@ -237,9 +237,9 @@ void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
 
 void print_tick(Logger& logger, const Tick& t, const TopOfBook& top)
 {
-    logger.log("[TICK] ", t.symbol, " ts:", t.ts, " price:", t.price, " size:", t.size,
-               " side:", to_char(t.side), " | Top Bid: ", top.bid_price, "@", top.bid_size,
-               " | Top Ask: ", top.ask_price, "@", top.ask_size);
+    logger.debug("[TICK] ", t.symbol, " ts:", t.ts, " price:", t.price, " size:", t.size,
+                 " side:", to_char(t.side), " | Top Bid: ", top.bid_price, "@", top.bid_size,
+                 " | Top Ask: ", top.ask_price, "@", top.ask_size);
 }
 
 class Pipeline
@@ -304,9 +304,9 @@ class Pipeline
                     const auto top = order_book_.market_top(value.symbol);
                     if (enable_print)
                     {
-                        logger_.log("[BBO] ", value.symbol, " ts:", value.ts,
-                                    " bid:", value.bid_price, "@", value.bid_quantity,
-                                    " ask:", value.ask_price, "@", value.ask_quantity);
+                        logger_.debug("[BBO] ", value.symbol, " ts:", value.ts,
+                                      " bid:", value.bid_price, "@", value.bid_quantity,
+                                      " ask:", value.ask_price, "@", value.ask_quantity);
                     }
                     submit_strategy_actions(value.symbol, value.ts, top);
                 }
@@ -320,40 +320,21 @@ class Pipeline
             metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_);
         const double cancel_rate =
             metrics::compute_cancel_rate(submitted_orders_, cancel_requests_);
-        double exposure = metrics::compute_inventory_exposure(strategy_.net_position());
         const StrategyMetrics strategy_metrics = strategy_.metrics();
         const PortfolioMetrics portfolio_metrics = portfolio_.metrics();
 
-        logger_.log("[SUMMARY] submitted_orders=", submitted_orders_,
+        logger_.log("[EXECUTION] submitted_orders=", submitted_orders_,
                     " submitted_quantity=", submitted_quantity_,
                     " cancel_requests=", cancel_requests_, " trade_reports=", trade_reports_,
                     " fill_rate=", fill_rate, " cancel_rate=", cancel_rate,
                     " trade_report_quantity=", trade_report_quantity_,
-                    " cash=", portfolio_metrics.cash,
-                    " realized_pnl=", portfolio_metrics.realized_pnl,
-                    " fees_paid=", portfolio_metrics.fees_paid,
-                    " net_position=", strategy_.net_position(), " inventory_exposure=", exposure,
                     " working_orders=", strategy_.working_order_count());
+
+        logger_.log("[PORTFOLIO] ", portfolio_metrics.to_log_string());
 
         if (strategy_metrics.available)
         {
-            const double strategy_fill_rate = metrics::compute_fill_rate(
-                strategy_metrics.submitted_quantity, strategy_metrics.filled_quantity);
-            logger_.log(
-                "[STRATEGY_METRICS] submitted_quantity=", strategy_metrics.submitted_quantity,
-                " filled_quantity=", strategy_metrics.filled_quantity,
-                " fill_rate=", strategy_fill_rate, " fill_count=", strategy_metrics.fill_count,
-                " cancel_count=", strategy_metrics.cancel_count,
-                " quote_count=", strategy_metrics.quote_count,
-                " fees_paid=", strategy_metrics.fees_paid,
-                " captured_edge=", strategy_metrics.captured_edge,
-                " adverse_selection=", strategy_metrics.adverse_selection,
-                " markout_count=", strategy_metrics.markout_count,
-                " total_quote_lifetime=", strategy_metrics.total_quote_lifetime,
-                " max_quote_lifetime=", strategy_metrics.max_quote_lifetime,
-                " avg_abs_inventory=", strategy_metrics.average_abs_inventory,
-                " max_abs_inventory=", strategy_metrics.max_abs_inventory,
-                " inventory_sign_changes=", strategy_metrics.inventory_sign_changes);
+            logger_.log("[STRATEGY_METRICS] ", strategy_metrics.to_log_string());
         }
     }
 

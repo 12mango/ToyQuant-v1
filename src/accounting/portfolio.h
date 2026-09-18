@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -23,6 +24,17 @@ struct PortfolioMetrics
     double taker_fees{0.0};
     uint64_t maker_trade_count{0};
     uint64_t taker_trade_count{0};
+
+    std::string to_log_string() const
+    {
+        std::ostringstream stream;
+        stream << "cash=" << cash << " realized_pnl=" << realized_pnl
+               << " unrealized_pnl=" << unrealized_pnl << " equity=" << equity
+               << " fees_paid=" << fees_paid << " maker_fees=" << maker_fees
+               << " taker_fees=" << taker_fees << " maker_trade_count=" << maker_trade_count
+               << " taker_trade_count=" << taker_trade_count;
+        return stream.str();
+    }
 };
 
 class Portfolio
@@ -46,8 +58,8 @@ class Portfolio
 
     PortfolioMetrics metrics() const
     {
-        return {cash_,       realized_pnl_, unrealized_pnl_, equity_, fees_paid_,
-            maker_fees_, taker_fees_,   maker_trade_count_, taker_trade_count_};
+        return {cash_,       realized_pnl_, unrealized_pnl_,    equity_,           fees_paid_,
+                maker_fees_, taker_fees_,   maker_trade_count_, taker_trade_count_};
     }
 
     const PortfolioPosition* find_position(const std::string& symbol) const;

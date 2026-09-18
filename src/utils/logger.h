@@ -10,6 +10,11 @@ class Logger
    public:
     explicit Logger(const std::string& file = "");
 
+    void set_verbose(bool enabled)
+    {
+        verbose_ = enabled;
+    }
+
     template <typename... Args>
     void log(Args&&... args)
     {
@@ -20,6 +25,12 @@ class Logger
     void error(Args&&... args)
     {
         write(format(std::forward<Args>(args)...), std::cerr);
+    }
+
+    template <typename... Args>
+    void debug(Args&&... args)
+    {
+        if (verbose_) write(format(std::forward<Args>(args)...), std::cout);
     }
 
    private:
@@ -33,4 +44,5 @@ class Logger
 
     void write(const std::string& message, std::ostream& console);
     std::ofstream fout_;
+    bool verbose_{false};
 };
