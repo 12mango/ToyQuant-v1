@@ -48,8 +48,8 @@ set(COMMON_SOURCES
 find_package(Threads REQUIRED)
 
 # ==================== toy_quant Executable ====================
-add_executable(toy_quant src/main.cpp src/app/pipeline.cpp src/app/strategy_factory.cpp
-    src/market/udp_feed.cpp ${COMMON_SOURCES})
+add_executable(toy_quant src/main.cpp src/app/app_config.cpp src/app/application.cpp
+    src/app/pipeline.cpp src/app/strategy_factory.cpp src/market/udp_feed.cpp ${COMMON_SOURCES})
 target_include_directories(toy_quant PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(toy_quant PRIVATE Threads::Threads)
 set_target_properties(toy_quant PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
