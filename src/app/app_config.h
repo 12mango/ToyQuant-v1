@@ -3,9 +3,16 @@
 #include <cstdint>
 #include <string>
 
+enum class AppMode
+{
+    LegacyCsv,
+    LegacyUdp,
+    Replay
+};
+
 struct AppConfig
 {
-    std::string mode = "csv";
+    AppMode mode = AppMode::LegacyCsv;
     std::string path_or_port = "data/scenarios/synthetic_ticks.csv";
     std::string quotes_path;
     std::string symbol;

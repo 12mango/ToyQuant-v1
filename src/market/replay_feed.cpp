@@ -1,6 +1,7 @@
 #include "market/replay_feed.h"
 
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 
 namespace
@@ -18,6 +19,9 @@ ReplayFeed::ReplayFeed(MarketDataReaders readers, EventCallback callback, int ms
       ms_delay_(ms_delay),
       validator_(validation_config)
 {
+    if (!readers_.trades || !readers_.quotes)
+        throw std::invalid_argument("replay requires both trade and quote readers");
+    if (!callback_) throw std::invalid_argument("replay callback cannot be empty");
 }
 
 void ReplayFeed::run()
@@ -41,4 +45,7 @@ void ReplayFeed::run()
 
         if (ms_delay_ > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms_delay_));
     }
+
+    if (validator_.summary().events == 0)
+        throw std::invalid_argument("replay input contains no market events");
 }

@@ -1,6 +1,8 @@
 # User Guide
 
-ToyQuant is a small C++20 market-making simulator. It reads synthetic market ticks, lets a strategy submit quotes, matches orders, and writes the results to CSV files.
+ToyQuant is a small C++20 market-making simulator. Its current v2 path replays Binance aggregate
+trades and BBO updates as `MarketEvent` values, while legacy CSV and UDP modes remain available for
+simple scenarios and compatibility.
 
 ## Requirements
 
@@ -18,10 +20,21 @@ cmake --build --preset linux-debug
 ctest --preset linux-debug
 ```
 
-The main programs are `out/build/linux-debug/toy_quant` for the simulation and
-`out/build/linux-debug/backtest_main` for metrics from recorded data.
+The main programs are `out/build/linux-debug/toy_quant` for simulation/replay and
+`out/build/linux-debug/backtest_main` for legacy metrics from recorded Tick data.
 
-## Run with CSV
+## Current Modes
+
+```text
+csv    -> legacy Tick scenario
+udp    -> legacy Tick stream
+replay -> v2 Binance Trade+BBO MarketEvent replay
+```
+
+`replay` is the current primary path. CSV and UDP are intentionally retained as lightweight
+compatibility/demo inputs rather than separate v2 market-data models.
+
+## Run with Legacy CSV
 
 ```bash
 ./out/build/linux-debug/toy_quant csv data/scenarios/sample_ticks.csv 0 optimized
@@ -35,7 +48,7 @@ The command format is:
 
 `delay_ms` is normally `0`; use a positive value to slow down the tick stream. The available strategies are `naive`, `optimized`, and `l1`, with `optimized` as the default.
 
-## Run with UDP
+## Run with Legacy UDP
 
 Start the simulator:
 
@@ -50,6 +63,7 @@ python3 tools/udp_sender.py 127.0.0.1 9000 data/scenarios/sample_ticks.csv 0
 ```
 
 CSV mode is easier for repeatable experiments; UDP mode is useful for observing a streaming feed.
+Both modes use the legacy `Tick` contract and are not equivalent to the Binance Trade+BBO replay.
 
 ## Replay Trades and BBO
 
@@ -71,6 +85,10 @@ toy_quant replay <trades_csv> <bbo_csv> <symbol> [delay_ms] [strategy] [quantity
 The replay feed streams and merges both files by transaction timestamp. BBO events replace the
 external best bid and ask and trigger strategy decisions. Aggregate trades drive fills; Binance's
 `is_buyer_maker=true` means that the seller was the aggressor.
+
+Each event is validated before dispatch. Invalid structural data stops the run. The final `[DATA]`
+summary reports `status=ok` or `status=warning`; warning means the replay contained soft alignment
+issues such as a missing BBO, stale BBO, or a trade far from the BBO midpoint.
 
 `quantity_scale` converts decimal exchange quantities to the engine's integer units. The default
 is `1000000`, so `0.001 BTC` becomes `1000` internal units. Strategy order sizes and generated
@@ -151,7 +169,9 @@ data/runtime/orders.csv
 data/runtime/trades.csv
 ```
 
-The runtime files begin with a `# source_ticks=...` metadata line. Reuse that same Tick file for `backtest_main`; the backtest validates the source when the metadata is available.
+Legacy CSV/UDP runtime files begin with `# source_ticks=...`; reuse that same Tick file for
+`backtest_main`. Replay runtime files begin with `# source_market_data=...` and are not currently
+the input format for the legacy backtest analyzer.
 
 The terminal shows tick and summary information. Backtest reports are written under `logs/`:
 

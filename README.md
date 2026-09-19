@@ -15,7 +15,7 @@
 
 ---
 
-ToyQuant replays market data through the complete trading loop — feed, order book, strategy, matching, execution reports, and backtest metrics — so you can observe every decision a market maker makes, tick by tick.
+ToyQuant replays market data through the complete trading loop — market events, order book, strategy, matching, execution reports, and portfolio metrics — so you can observe every decision a market maker makes.
 
 It is a toy project for learning and experimentation, not a production trading system. APIs, scenarios, and strategy behavior may change between versions.
 
@@ -24,11 +24,10 @@ It is a toy project for learning and experimentation, not a production trading s
 ```console
 $ ./out/build/linux-debug/toy_quant csv data/scenarios/sample_ticks.csv 0 optimized
 
-[TICK] EURUSD ts:1625097601900 price:1.1859 size:100 side:S | Top Bid: 1.1855@150 | Top Ask: 1.1851@50
+[Mode: Legacy CSV] Opening: .../data/scenarios/sample_ticks.csv (delay: 0ms) strategy=optimized
 ...
-[SUMMARY] submitted_orders=24 submitted_quantity=1302 cancel_requests=9
-          trade_reports=11 fill_rate=0.318 cancel_rate=0.375
-          net_position=-414 inventory_exposure=414 working_orders=6
+[EXECUTION] submitted_orders=24 submitted_quantity=1302 cancel_requests=9 trade_reports=11
+            fill_rate=0.318 cancel_rate=0.375 trade_report_quantity=414 working_orders=6
 ```
 
 The same input and parameters produce deterministic runtime CSV output for this simulator.
@@ -36,16 +35,18 @@ The same input and parameters produce deterministic runtime CSV output for this 
 ## How It Works
 
 ```text
- CSV scenario ──╮
-                ├─► Feed ──► Order Book ──► Strategy ──► Matching Engine ──► orders.csv
- UDP stream ────╯            top of book     naive /       price–time         trades.csv
-                                             optimized     priority                │
-                                                                                  ▼
-                                          backtest_main ──► PnL · equity · max drawdown
+ Legacy CSV ──╮
+ Legacy UDP ──┼─► Tick adapter ─► Pipeline ─► Strategy ─► Matching Engine
+ Binance replay ─► MarketEvent ──╯                              │
+                                                               ▼
+                                             orders.csv / trades.csv
+                                                               │
+                                             backtest_main ─► PnL · equity · drawdown
 ```
 
-- **Two feed modes** — replay CSV scenarios or stream ticks over UDP.
-- **Two market-making strategies** — `naive` and `optimized` behind a common interface.
+- **Three current modes** — legacy CSV scenarios, legacy UDP ticks, and Binance Trade+BBO replay.
+- **Three market-making strategies** — `naive`, `optimized`, and `l1` behind a common interface.
+- **One v2 event path** — Binance replay uses `MarketEvent`; CSV and UDP remain compatibility inputs for the older `Tick` model.
 - **Price–time priority matching** with self-trade prevention and partial fills.
 - **Stateful execution reports** — position and working orders update from trade, cancel, and fill events.
 - **Deterministic backtests** — realized/unrealized PnL and a reusable drawdown calculation.
@@ -61,20 +62,29 @@ cmake --build --preset linux-debug
 ctest --preset linux-debug
 ```
 
-**Run a CSV scenario** (flat, trending, shock, and random markets ship in [data/scenarios](data/scenarios)):
+**Run a legacy CSV scenario** (flat, trending, shock, and random markets ship in [data/scenarios](data/scenarios)):
 
 ```bash
 ./out/build/linux-debug/toy_quant csv data/scenarios/flat_ticks.csv 0 optimized
 ```
 
-**Stream ticks over UDP** (and send a scenario from another terminal):
+**Stream legacy ticks over UDP** (and send a scenario from another terminal):
 
 ```bash
 ./out/build/linux-debug/toy_quant udp 9000 naive
 python3 tools/udp_sender.py --port 9000
 ```
 
-**Replay a backtest** from generated order and trade records:
+**Replay Binance Trade+BBO data**:
+
+```bash
+./out/build/linux-debug/toy_quant replay \
+  data/v2/test_aggTrades_5k.csv \
+  data/v2/test_bookTicker_5k.csv \
+  BTCUSDT 0 optimized 1000000
+```
+
+**Analyze legacy generated order and trade records**:
 
 ```bash
 ./out/build/linux-debug/backtest_main \
@@ -97,7 +107,9 @@ Each `toy_quant` run creates or truncates:
 - `data/runtime/orders.csv` — every order the strategy submitted.
 - `data/runtime/trades.csv` — every execution report the engine returned.
 
-Both runtime files include a `# source_ticks=...` metadata line. Pass the same Tick file to `backtest_main`; when metadata is present, the backtest rejects a mismatched file. Older runtime files without metadata remain readable.
+Legacy CSV/UDP runs include a `# source_ticks=...` metadata line. Replay runs include
+`# source_market_data=...` with the trade and BBO sources. `backtest_main` reads the legacy
+`source_ticks` format; older runtime files without metadata remain readable.
 
 The default backtest log is `logs/backtest.log`.
 

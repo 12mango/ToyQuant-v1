@@ -52,14 +52,20 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
 {
     if (argc == 2 && std::string(argv[1]) == "--help") return false;
 
-    if (argc >= 2) cfg.mode = argv[1];
-    if (cfg.mode != "csv" && cfg.mode != "udp" && cfg.mode != "replay")
+    const std::string mode = argc >= 2 ? argv[1] : "csv";
+    if (mode == "csv")
+        cfg.mode = AppMode::LegacyCsv;
+    else if (mode == "udp")
+        cfg.mode = AppMode::LegacyUdp;
+    else if (mode == "replay")
+        cfg.mode = AppMode::Replay;
+    else
     {
         error = "mode must be 'csv', 'udp', or 'replay'";
         return false;
     }
 
-    if (cfg.mode == "replay")
+    if (cfg.mode == AppMode::Replay)
     {
         if (argc < 5 || argc > 8)
         {
@@ -87,27 +93,28 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             return false;
         }
     }
-    else if (argc > 5 || (cfg.mode == "udp" && argc > 4))
+    else if (argc > 5 || (cfg.mode == AppMode::LegacyUdp && argc > 4))
     {
         error = "too many arguments";
         return false;
     }
 
-    if (cfg.mode != "replay" && argc >= 3) cfg.path_or_port = argv[2];
-    if (cfg.mode == "csv" && cfg.path_or_port.empty())
+    if (cfg.mode != AppMode::Replay && argc >= 3) cfg.path_or_port = argv[2];
+    if (cfg.mode == AppMode::LegacyCsv && cfg.path_or_port.empty())
     {
         error = "CSV path cannot be empty";
         return false;
     }
-    if (cfg.mode == "csv" && !std::filesystem::is_regular_file(to_abs_path(cfg.path_or_port)))
+    if (cfg.mode == AppMode::LegacyCsv &&
+        !std::filesystem::is_regular_file(to_abs_path(cfg.path_or_port)))
     {
         error = "CSV file does not exist: " + to_abs_path(cfg.path_or_port);
         return false;
     }
 
-    if (cfg.mode != "replay" && argc >= 4)
+    if (cfg.mode != AppMode::Replay && argc >= 4)
     {
-        if (cfg.mode == "udp")
+        if (cfg.mode == AppMode::LegacyUdp)
         {
             cfg.strategy_name = argv[3];
         }
@@ -117,7 +124,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             return false;
         }
     }
-    if (cfg.mode != "replay" && argc >= 5) cfg.strategy_name = argv[4];
+    if (cfg.mode != AppMode::Replay && argc >= 5) cfg.strategy_name = argv[4];
 
     if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive" &&
         cfg.strategy_name != "l1")
@@ -126,7 +133,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         return false;
     }
 
-    if (cfg.mode == "udp")
+    if (cfg.mode == AppMode::LegacyUdp)
     {
         int port = 0;
         if (!parse_integer(cfg.path_or_port, port) || port < 1 || port > 65535)

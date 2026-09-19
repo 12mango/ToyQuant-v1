@@ -5,7 +5,7 @@ This directory has two purposes:
 - `scenarios/`: Tick scenarios used as market-data inputs.
 - `runtime/`: Generated order and trade outputs.
 
-## Tick Input Format
+## Legacy Tick Input Format
 
 Scenario files use CSV with a header row. Generated scenario files contain the header directly:
 
@@ -25,7 +25,7 @@ ts,symbol,price,size,side
 The parser requires the first four fields, accepts an optional `side` field, and ignores extra
 columns so the input can be extended without changing the core fields.
 
-## Trades and BBO Input
+## v2 Trades and BBO Input
 
 `v2/` contains a Binance aggregate-trade file and a book-ticker BBO file. Replay mode consumes the
 files together rather than converting them into the legacy Tick format:
@@ -46,7 +46,8 @@ Replay validates each merged event before it reaches the strategy. Invalid price
 crossed BBO, timestamp regression, and non-increasing stream sequence numbers stop the run. The
 final `[DATA]` line reports softer cross-stream issues: trades without a prior BBO, trades whose
 latest BBO is older than one second, and trades more than 50 basis points from the BBO midpoint.
-These counters diagnose input alignment; they do not currently suppress strategy decisions.
+The line also includes `status=ok` or `status=warning`. These counters diagnose input alignment;
+they do not currently suppress strategy decisions.
 
 ## Generate Scenarios
 
@@ -74,8 +75,8 @@ The application writes strategy orders and trades to:
 - data/runtime/orders.csv
 - data/runtime/trades.csv
 
-Legacy CSV runs begin with `# source_ticks=...`; Trades+BBO replay runs begin with
-`# source_market_data=...`. Both then use this format:
+Legacy CSV and UDP runs begin with `# source_ticks=...`; Trades+BBO replay runs begin with
+`# source_market_data=...`. Both then use the common output columns:
 
 ```csv
 ts,symbol,side,price,quantity,order_id
@@ -83,7 +84,10 @@ ts,symbol,side,price,quantity,order_id
 
 `orders.csv` records submitted strategy orders. `trades.csv` records only actual `MarketMaker` trades and is read by `backtest_main`.
 
-Each runtime file begins with a `# source_ticks=...` metadata line. The backtest uses it to detect a mismatch between the Tick file used to generate the trades and the Tick file supplied for marking prices. Older files without this metadata remain compatible.
+Legacy runtime files include the source Tick path so `backtest_main` can detect a mismatch between
+the Tick file used to generate trades and the Tick file supplied for marking prices. Replay metadata
+records both market-data paths and instrument settings; the current legacy backtest analyzer does
+not consume full BBO replay output. Older files without metadata remain compatible.
 
 The generated built-in scenarios contain 1,000 ticks each, which is enough for a meaningful demo and visualization. `sample_ticks.csv` remains a small 20-tick input for quick format checks.
 

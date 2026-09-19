@@ -22,6 +22,11 @@ struct MarketDataValidationSummary
     uint64_t dislocated_trades{};
     uint64_t max_bbo_age_ms{};
     double max_trade_deviation_bps{};
+
+    bool has_soft_issues() const
+    {
+        return trades_without_bbo > 0 || stale_trades > 0 || dislocated_trades > 0;
+    }
 };
 
 class MarketDataValidator

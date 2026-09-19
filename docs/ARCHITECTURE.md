@@ -136,9 +136,10 @@ drops the incoming tick by design.
 
 ### Files: `src/app/application.*`, `src/app/pipeline.*`
 
-`main.cpp` is only the process bootstrap. `Application` wires concrete objects together. The CSV and
-UDP modes create a legacy Tick adapter, while replay creates a `MarketEvent` feed. `Pipeline` owns
-the v2 domain sequence.
+`main.cpp` is only the process bootstrap. `Application` wires concrete objects together. The
+`LegacyCsv` and `LegacyUdp` modes create a legacy Tick adapter, while `Replay` creates a
+`MarketEvent` feed. `Pipeline` owns the v2 domain sequence. These are the current three modes;
+the application intentionally does not introduce separate runner abstractions yet.
 
 ```mermaid
 sequenceDiagram
@@ -147,9 +148,9 @@ sequenceDiagram
     participant B as OrderBook
     participant M as MatchingEngine
     participant S as Strategy
-    F->>P: process_event(event)
-    P->>B: on_tick(tick)
-    P->>M: process_market_tick(tick)
+    F->>P: process_event(MarketEvent)
+    P->>B: on_bbo(BboQuote)
+    P->>M: process_market_trade(MarketTrade)
     P->>B: top(symbol)
     B-->>P: TopOfBook
     P->>S: on_top_of_book(top)
@@ -176,10 +177,10 @@ The `[this]` lambda is a C++11 closure. `Pipeline` stores references to its coll
 
 ### 3.1 Dependency injection at the coordinator boundary
 
-`Pipeline` does not construct the order book, strategy, matching engine, or output streams itself. They are created by `run_csv_mode` and passed into the constructor:
+`Pipeline` does not construct the order book, strategy, matching engine, or output streams itself. They are created by the application mode and passed into the constructor:
 
 ```cpp
-auto output_files = open_output_files(csv_file);
+auto output_files = open_output_files(source);
 OrderBook order_book;
 auto strategy = make_strategy(cfg.strategy_name);
 Logger logger(to_abs_path("logs/toy_quant.log"));
@@ -229,29 +230,29 @@ the complete application.
 
 ### 3.2 RAII and lifetime-bound resources
 
-The application uses RAII, or Resource Acquisition Is Initialization, to bind cleanup to object lifetime. In CSV mode, the local objects are created in dependency order and remain alive while the feed invokes the pipeline:
+The application uses RAII, or Resource Acquisition Is Initialization, to bind cleanup to object lifetime. In the legacy CSV mode, the local objects are created in dependency order and remain alive while the feed invokes the pipeline:
 
 ```cpp
-auto output_files = open_output_files();
+auto output_files = open_output_files(source);
 OrderBook order_book;
 auto strategy = make_strategy(cfg.strategy_name);
 Logger logger(to_abs_path("logs/toy_quant.log"));
 MatchingEngine engine(&logger);
 Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine, logger);
-legacy::TickPipeline tick_pipeline(pipeline);
-CsvFeed feed(csv_file, [&](const Tick& tick) { tick_pipeline.process(tick, true); }, cfg.delay,
+legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
+CsvFeed feed(csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick, true); }, cfg.delay,
              &logger);
 feed.run();
 ```
 
-When `run_csv_mode` returns, destruction runs in reverse declaration order. The feed, pipeline,
+When `run_legacy_csv_mode` returns, destruction runs in reverse declaration order. The feed, pipeline,
 logger, strategy, order book, and output streams clean themselves up through object lifetime. The
 same cleanup occurs during stack unwinding if the feed throws.
 
 The locking code applies the same rule to synchronization:
 
 ```cpp
-TopOfBook OrderBook::top(const std::string& symbol)
+TopOfBook OrderBook::market_top(const std::string& symbol)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     // Read the protected book state and return a snapshot.
@@ -582,9 +583,9 @@ The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 
 | Metric | Meaning | Current consumer |
 |---|---|---|
-| `fill_rate` | Filled quantity divided by submitted quantity | `main.cpp` execution summary |
-| `cancel_rate` | Cancel requests divided by submitted orders | `main.cpp` execution summary |
-| `inventory_exposure` | Absolute value of net position | `main.cpp` execution summary |
+| `fill_rate` | Filled quantity divided by submitted quantity | `Pipeline` execution summary |
+| `cancel_rate` | Cancel requests divided by submitted orders | `Pipeline` execution summary |
+| `inventory_exposure` | Absolute value of net position | `RunSummary` portfolio metrics |
 | `max_drawdown` | Largest decline from an equity peak | `BacktestDriver` |
 | `fees_paid` | Fees charged on recorded MarketMaker fills | Runtime and offline summaries |
 | `adverse_selection` | Delayed fill markout accumulated after a quote horizon | L1 runtime summary |

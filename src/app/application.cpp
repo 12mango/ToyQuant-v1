@@ -51,29 +51,26 @@ Application::OutputFiles Application::open_output_files(const std::string& sourc
 
 int Application::run() const
 {
-    if (cfg_.mode == "csv")
+    switch (cfg_.mode)
     {
-        run_csv_mode();
-        return 0;
-    }
-    if (cfg_.mode == "udp")
-    {
-        run_udp_mode();
-        return 0;
-    }
-    if (cfg_.mode == "replay")
-    {
-        run_replay_mode();
-        return 0;
+        case AppMode::LegacyCsv:
+            run_legacy_csv_mode();
+            return 0;
+        case AppMode::LegacyUdp:
+            run_legacy_udp_mode();
+            return 0;
+        case AppMode::Replay:
+            run_replay_mode();
+            return 0;
     }
     return 1;
 }
 
-void Application::run_csv_mode() const
+void Application::run_legacy_csv_mode() const
 {
     const std::string csv_file = to_abs_path(cfg_.path_or_port);
     Logger logger(to_abs_path("logs/toy_quant.log"));
-    logger.log("[Mode: CSV] Opening: ", csv_file, " (delay: ", cfg_.delay,
+    logger.log("[Mode: Legacy CSV] Opening: ", csv_file, " (delay: ", cfg_.delay,
                "ms) strategy=", cfg_.strategy_name);
 
     auto output_files = open_output_files(csv_file);
@@ -126,7 +123,8 @@ void Application::run_replay_mode() const
         [&](const MarketEvent& event) { pipeline.process_event(event); }, cfg_.delay);
     feed.run();
     const auto& validation = feed.validation_summary();
-    logger.log("[DATA] events=", validation.events, " trades=", validation.trades,
+    logger.log("[DATA] status=", validation.has_soft_issues() ? "warning" : "ok",
+               " events=", validation.events, " trades=", validation.trades,
                " quotes=", validation.quotes, " trades_without_bbo=", validation.trades_without_bbo,
                " stale_trades=", validation.stale_trades,
                " dislocated_trades=", validation.dislocated_trades,
@@ -135,11 +133,12 @@ void Application::run_replay_mode() const
     logger.log(pipeline.summary().to_log_string());
 }
 
-void Application::run_udp_mode() const
+void Application::run_legacy_udp_mode() const
 {
     int port = std::stoi(cfg_.path_or_port);
     Logger logger(to_abs_path("logs/toy_quant.log"));
-    logger.log("[Mode: UDP] Listening on UDP port: ", port, "... strategy=", cfg_.strategy_name);
+    logger.log("[Mode: Legacy UDP] Listening on UDP port: ", port,
+               "... strategy=", cfg_.strategy_name);
 
     auto output_files = open_output_files("udp://" + std::to_string(port));
     OrderBook order_book;

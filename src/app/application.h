@@ -20,9 +20,9 @@ class Application
 
     OutputFiles open_output_files(const std::string& source,
                                  const std::string& source_type = "source_ticks") const;
-    void run_csv_mode() const;
+    void run_legacy_csv_mode() const;
     void run_replay_mode() const;
-    void run_udp_mode() const;
+    void run_legacy_udp_mode() const;
 
     AppConfig cfg_;
 };
