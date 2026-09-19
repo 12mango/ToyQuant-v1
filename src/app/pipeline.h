@@ -19,13 +19,12 @@ class Pipeline
     Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
              Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio, Logger& logger);
 
-    void process_tick(const Tick& tick, bool enable_print = true);
     void process_event(const MarketEvent& event, bool enable_print = false);
+    void process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top,
+                             bool enable_print = false);
     RunSummary summary() const;
 
    private:
-    void process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top,
-                             bool enable_print);
     void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top);
 
     std::ofstream& orders_out_;

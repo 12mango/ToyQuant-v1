@@ -7,8 +7,12 @@
 #include "accounting/portfolio.h"
 #include "common/types.h"
 #include "exchange/execution_report.h"
+#include "legacy/tick.h"
 
 class Logger;
+
+namespace legacy
+{
 
 // ==================== Backtest Types ====================
 struct BacktestExecutionReport
@@ -50,3 +54,5 @@ class BacktestDriver
 
     Logger& logger_;
 };
+
+}  // namespace legacy

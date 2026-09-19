@@ -10,13 +10,16 @@
 #include <vector>
 
 #include "backtest/performance.h"
-#include "market/tick_csv_parser.h"
+#include "legacy/tick_csv_parser.h"
 #include "utils/logger.h"
 
 namespace
 {
 constexpr double InitialCapital = 1000.0;
 }  // namespace
+
+namespace legacy
+{
 
 // ==================== Strict Conversion Helpers ====================
 inline double safe_stod(const std::string& s)
@@ -106,7 +109,7 @@ void BacktestDriver::run()
         if (line.empty()) continue;  // Skip empty rows.
         try
         {
-            const Tick t = tick_csv::parse_row(line);
+            const Tick t = legacy::tick_csv::parse_row(line);
             ticks.push_back(t);
         }
         catch (const std::exception& ex)
@@ -269,3 +272,5 @@ void BacktestDriver::print_report()
         " maker_trades=", portfolio_metrics.maker_trade_count,
         " taker_trades=", portfolio_metrics.taker_trade_count, " max_drawdown=", max_drawdown);
 }
+
+    }  // namespace legacy

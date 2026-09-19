@@ -3,6 +3,7 @@
 #include <mutex>
 
 #include "common/types.h"
+#include "legacy/tick.h"
 #include "market/market_event.h"
 
 struct TopOfBook
@@ -17,16 +18,22 @@ class IOrderBook
 {
    public:
     virtual ~IOrderBook() = default;
-    virtual void on_tick(const Tick& t) = 0;
     virtual void on_bbo(const BboQuote& quote) = 0;
     virtual TopOfBook market_top(const std::string& symbol) = 0;
 };
 
-class OrderBook : public IOrderBook
+class ILegacyTickBook
+{
+   public:
+    virtual ~ILegacyTickBook() = default;
+    virtual void on_tick(const legacy::Tick& t) = 0;
+};
+
+class OrderBook : public IOrderBook, public ILegacyTickBook
 {
    public:
     explicit OrderBook(double tick_size = PRICE_TICK_SIZE) : tick_size_(tick_size) {}
-    void on_tick(const Tick& t) override;
+    void on_tick(const legacy::Tick& t) override;
     void on_bbo(const BboQuote& quote) override;
     TopOfBook market_top(const std::string& symbol) override;
 

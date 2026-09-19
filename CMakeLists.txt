@@ -37,7 +37,7 @@ set(COMMON_SOURCES
     src/market/market_data_adapter.cpp
     src/market/market_data_validator.cpp
     src/market/replay_feed.cpp
-    src/market/tick_csv_parser.cpp
+    src/legacy/tick_csv_parser.cpp
     src/backtest/performance.cpp
     src/orderbook/orderbook.cpp
     src/exchange/matching_engine.cpp
@@ -74,7 +74,7 @@ add_executable(matching_engine_test tests/matching_engine_test.cpp ${COMMON_SOUR
 target_include_directories(matching_engine_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME matching_engine_test COMMAND matching_engine_test)
 
-add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp src/market/tick_csv_parser.cpp)
+add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp src/legacy/tick_csv_parser.cpp)
 target_include_directories(tick_csv_parser_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME tick_csv_parser_test COMMAND tick_csv_parser_test)
 

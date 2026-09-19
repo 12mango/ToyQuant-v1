@@ -1,6 +1,6 @@
 #include "orderbook/orderbook.h"
 
-void OrderBook::on_tick(const Tick& t)
+void OrderBook::on_tick(const legacy::Tick& t)
 {
     std::lock_guard<std::mutex> lk(mtx_);
     auto& b = books_[t.symbol];

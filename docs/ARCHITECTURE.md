@@ -6,11 +6,12 @@ ToyQuant is a small event-driven market-making simulator. It connects market-dat
 
 ```mermaid
 flowchart LR
-    CSV[CsvFeed\nCSV rows] --> T[Tick]
+    CSV[CsvFeed\nCSV rows] --> T[Legacy Tick]
     UDP[UdpFeed\nUDP packets] --> T
+    T --> LT[legacy::TickPipeline]
     BA[Market data adapter\nBinance or future formats] --> RF[ReplayFeed\ntime merge]
     RF --> MEV[MarketEvent\nTrade or BBO]
-    T --> P[Pipeline::process_tick]
+    LT --> P[Pipeline::process_legacy_tick]
     MEV --> PE[Pipeline::process_event]
     PE --> OB
     PE --> ME
@@ -22,38 +23,43 @@ flowchart LR
     ME -->|ExecutionReport| S
     ME -->|Trade reports| TR[trades.csv]
     P -->|submitted orders| OR[orders.csv]
-    TR --> BT[BacktestDriver]
+    TR --> BT[legacy::BacktestDriver]
     T --> BT
 ```
 
-The central path is intentionally short:
+The v2 central path is intentionally short:
 
 ```text
-input -> Tick -> OrderBook / MatchingEngine -> Strategy -> orders -> reports -> output
+MarketEvent -> OrderBook / MatchingEngine -> Strategy -> orders -> reports -> output
 ```
+
+CSV and UDP remain compatibility inputs for the original Tick model. They enter through the
+`legacy` boundary and are not the v2 market-data contract.
 
 The source map is:
 
 | Responsibility | Main files | Key types or functions |
 |---|---|---|
-| Shared data | `src/common/types.h` | `Tick`, `Side`, `ExecType`, `TickCallback` |
+| Shared data | `src/common/types.h`, `src/market/market_event.h` | `Side`, `ExecType`, `MarketEvent` |
 | Instrument rules | `src/common/instrument_spec.h` | `InstrumentSpec`, `btc_usdt_spec` |
-| Input | `src/market/csv_feed.*`, `udp_feed.*` | `CsvFeed::run`, `UdpFeed::loop` |
+| Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
 | Market replay | `src/market/market_data_adapter.*`, `replay_feed.*` | `IMarketEventReader`, `ReplayFeed::run` |
-| Coordination | `src/main.cpp` | `Pipeline::process_tick`, output callbacks |
+| Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/orderbook.*` | `TopOfBook`, `OrderBook::market_top` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
 | Strategy | `src/strategy/strategy.h`, `market_maker.h` | `Strategy`, three market makers |
-| Analysis | `src/backtest/backtest_driver.*` | `BacktestDriver::run`, `print_report` |
+| Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
 ## 2. Shared Types and Input Boundary
 
-**Files:** `src/common/types.h`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
+**Files:** `src/market/market_event.h`, `src/legacy/tick.h`, `src/legacy/tick_csv_parser.*`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
 
-Every feed produces the same `Tick`, so downstream modules are independent of the transport:
+The legacy CSV and UDP feeds produce the original `Tick` contract:
 
 ```cpp
+namespace legacy
+{
 struct Tick
 {
     uint64_t ts = 0;
@@ -64,6 +70,7 @@ struct Tick
 };
 
 using TickCallback = std::function<void(const Tick&)>;
+}
 ```
 
 The legacy CSV and UDP paths retain this contract. Trades+BBO replay uses a richer boundary:
@@ -102,10 +109,11 @@ limit at or above the best ask executes at the ask; a sell limit at or below the
 at the bid. Execution is capped by the displayed BBO quantity, which is consumed across subsequent
 orders until the next BBO update. Any unfilled remainder enters the existing local limit-order book.
 
-`CsvFeed::run` reads rows, converts them into `Tick`, and invokes `cb_(t)`. Malformed rows are
-reported and skipped. The callback keeps the feed independent from `Pipeline`.
+`CsvFeed::run` reads rows, converts them into `Tick`, and invokes `cb_(t)`. The parser lives under
+`src/legacy`, and `legacy::TickPipeline` is the explicit compatibility boundary before the old
+Tick processing path. Malformed rows are reported and skipped.
 
-`UdpFeed` has a different transport but the same output contract. On Linux, `recvmmsg` receives
+`UdpFeed` has a different transport but the same legacy output contract. On Linux, `recvmmsg` receives
 datagrams in batches. The parser uses `std::string_view` and `find`, then publishes parsed ticks
 through a fixed-size ring buffer:
 
@@ -126,9 +134,11 @@ drops the incoming tick by design.
 
 ## 3. Application Coordinator
 
-### File: `src/main.cpp`, class `Pipeline`
+### Files: `src/app/application.*`, `src/app/pipeline.*`
 
-`main.cpp` wires concrete objects together. `run_csv_mode` creates an `OrderBook`, one polymorphic strategy, a `MatchingEngine`, a `Pipeline`, and a `CsvFeed`. The feed only knows its callback; `Pipeline` owns the domain sequence.
+`main.cpp` is only the process bootstrap. `Application` wires concrete objects together. The CSV and
+UDP modes create a legacy Tick adapter, while replay creates a `MarketEvent` feed. `Pipeline` owns
+the v2 domain sequence.
 
 ```mermaid
 sequenceDiagram
@@ -137,7 +147,7 @@ sequenceDiagram
     participant B as OrderBook
     participant M as MatchingEngine
     participant S as Strategy
-    F->>P: process_tick(tick)
+    F->>P: process_event(event)
     P->>B: on_tick(tick)
     P->>M: process_market_tick(tick)
     P->>B: top(symbol)
@@ -228,7 +238,8 @@ auto strategy = make_strategy(cfg.strategy_name);
 Logger logger(to_abs_path("logs/toy_quant.log"));
 MatchingEngine engine(&logger);
 Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine, logger);
-CsvFeed feed(csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg.delay,
+legacy::TickPipeline tick_pipeline(pipeline);
+CsvFeed feed(csv_file, [&](const Tick& tick) { tick_pipeline.process(tick, true); }, cfg.delay,
              &logger);
 feed.run();
 ```

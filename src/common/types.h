@@ -3,8 +3,6 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
-#include <functional>
-#include <string>
 
 enum class Side : uint8_t
 {
@@ -41,17 +39,6 @@ inline double to_price(PriceTick tick, double tick_size = PRICE_TICK_SIZE)
 {
     return static_cast<double>(tick) * tick_size;
 }
-
-struct Tick
-{
-    uint64_t ts = 0;
-    std::string symbol;
-    double price = 0.0;
-    uint64_t size = 0;
-    Side side = Side::Unknown;
-};
-
-using TickCallback = std::function<void(const Tick&)>;
 
 inline Side to_side(char c)
 {

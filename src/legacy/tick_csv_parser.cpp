@@ -1,4 +1,4 @@
-#include "market/tick_csv_parser.h"
+#include "legacy/tick_csv_parser.h"
 
 #include <sstream>
 #include <stdexcept>
@@ -17,7 +17,7 @@ std::string read_field(std::istringstream& stream, const char* field_name)
 }
 }  // namespace
 
-namespace tick_csv
+namespace legacy::tick_csv
 {
 Tick parse_row(const std::string& row)
 {
@@ -34,4 +34,4 @@ Tick parse_row(const std::string& row)
     tick.side = side.empty() ? Side::Unknown : to_side(side.front());
     return tick;
 }
-}  // namespace tick_csv
+}  // namespace legacy::tick_csv

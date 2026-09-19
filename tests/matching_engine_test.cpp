@@ -42,12 +42,12 @@ int main()
     assert(cancelled_aggressor);
 
     reports.clear();
-    engine.process_market_tick({3, "EURUSD", 1.10000, 40, Side::Sell});
+    engine.process_market_trade({3, "EURUSD", 1.10000, 40, Side::Sell, 0});
     assert(has_report(reports, 1, ExecType::Trade, 40));
     assert(has_report(reports, 1, ExecType::PartialFill, 60));
 
     reports.clear();
-    engine.process_market_tick({4, "EURUSD", 1.10000, 60, Side::Sell});
+    engine.process_market_trade({4, "EURUSD", 1.10000, 60, Side::Sell, 0});
     assert(has_report(reports, 1, ExecType::Trade, 60));
     assert(has_report(reports, 1, ExecType::Filled, 0));
 
@@ -121,7 +121,7 @@ int main()
                                     { tick_reports.push_back(report); });
     tick_engine.send_order({40, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 0.1 + 0.2,
                             10, 10, 1, "LiquidityProvider"});
-    tick_engine.process_market_tick({2, "TEST", 0.3, 10, Side::Sell});
+    tick_engine.process_market_trade({2, "TEST", 0.3, 10, Side::Sell, 0});
     assert(std::any_of(tick_reports.begin(), tick_reports.end(),
                        [](const ExecutionReport& report)
                        {
@@ -147,7 +147,7 @@ int main()
                         { return report.exec_type == ExecType::Trade; }));
 
     bbo_reports.clear();
-    bbo_engine.process_market_tick({13, "BTCUSDT", 100.2, 30, Side::Sell});
+    bbo_engine.process_market_trade({13, "BTCUSDT", 100.2, 30, Side::Sell, 0});
     assert(has_report(bbo_reports, 50, ExecType::Trade, 30));
     assert(has_report(bbo_reports, 50, ExecType::Filled, 0));
 
@@ -158,7 +158,7 @@ int main()
                                    { fee_reports.push_back(report); });
     fee_engine.send_order({60, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 10.0, 100,
                            100, 20, "MarketMaker"});
-    fee_engine.process_market_tick({21, "TEST", 10.0, 100, Side::Sell});
+    fee_engine.process_market_trade({21, "TEST", 10.0, 100, Side::Sell, 0});
     const auto fee_trade =
         std::find_if(fee_reports.begin(), fee_reports.end(), [](const ExecutionReport& report)
                      { return report.exec_type == ExecType::Trade && report.order_id == 60; });

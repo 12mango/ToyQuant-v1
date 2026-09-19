@@ -2,9 +2,9 @@
 
 #include <string>
 
-#include "common/types.h"
+#include "legacy/tick.h"
 
-namespace tick_csv
+namespace legacy::tick_csv
 {
 Tick parse_row(const std::string& row);
 }

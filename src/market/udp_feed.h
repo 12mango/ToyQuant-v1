@@ -3,7 +3,7 @@
 #include <thread>
 #include <vector>
 
-#include "common/types.h"
+#include "legacy/tick.h"
 
 class UdpFeed
 {
@@ -13,7 +13,7 @@ class UdpFeed
     bool start();
     void stop();
 
-    bool pop_tick(Tick& t);
+    bool pop_tick(legacy::Tick& t);
 
     uint64_t get_tick_count() const
     {
@@ -25,7 +25,7 @@ class UdpFeed
     void loop();
 
     // C++ parser using string_view and find.
-    bool parse_tick_cpp(std::string_view s, Tick& t);
+    bool parse_tick_cpp(std::string_view s, legacy::Tick& t);
 
     // static const
     static constexpr size_t RING_SIZE = 8192;
@@ -38,7 +38,7 @@ class UdpFeed
     std::atomic<bool> running_{false};
     std::thread thread_;
 
-    std::vector<Tick> ring_{std::vector<Tick>(RING_SIZE)};
+    std::vector<legacy::Tick> ring_{std::vector<legacy::Tick>(RING_SIZE)};
     std::atomic<size_t> head_{0};
     std::atomic<size_t> tail_{0};
 

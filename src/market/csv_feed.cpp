@@ -5,10 +5,10 @@
 #include <iostream>
 #include <thread>
 
-#include "market/tick_csv_parser.h"
+#include "legacy/tick_csv_parser.h"
 #include "utils/logger.h"
 
-CsvFeed::CsvFeed(const std::string& path, TickCallback cb, int ms_delay, Logger* logger)
+CsvFeed::CsvFeed(const std::string& path, legacy::TickCallback cb, int ms_delay, Logger* logger)
     : path_(path), cb_(cb), ms_delay_(ms_delay), logger_(logger)
 {
 }
@@ -38,7 +38,7 @@ void CsvFeed::run()
             {
                 continue;
             }
-            const Tick t = tick_csv::parse_row(line);
+            const legacy::Tick t = legacy::tick_csv::parse_row(line);
 
             // Dispatch the parsed tick to the consumer.
             cb_(t);

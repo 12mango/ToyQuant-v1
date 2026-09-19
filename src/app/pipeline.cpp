@@ -73,14 +73,6 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
         });
 }
 
-void Pipeline::process_tick(const Tick& tick, bool enable_print)
-{
-    order_book_.on_tick(tick);
-    engine_.process_market_tick(tick);
-    const auto top = order_book_.market_top(tick.symbol);
-    process_top_of_book(tick.symbol, tick.ts, top, enable_print);
-}
-
 void Pipeline::process_event(const MarketEvent& event, bool enable_print)
 {
     std::visit(
@@ -92,8 +84,7 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
                 const auto quote_it = latest_quotes_.find(value.symbol);
                 strategy_.on_market_trade(
                     value, quote_it == latest_quotes_.end() ? nullptr : &quote_it->second);
-                engine_.process_market_tick(
-                    {value.ts, value.symbol, value.price, value.quantity, value.aggressor_side});
+                engine_.process_market_trade(value);
             }
             else
             {

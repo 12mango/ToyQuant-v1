@@ -77,7 +77,7 @@ void UdpFeed::stop()
 -------------------------------------------
 */
 
-bool UdpFeed::parse_tick_cpp(std::string_view s, Tick& t)
+bool UdpFeed::parse_tick_cpp(std::string_view s, legacy::Tick& t)
 {
     size_t pos = 0, end;
 
@@ -151,7 +151,7 @@ void UdpFeed::loop()
 
             std::string_view sv(recv_bufs_[i].data(), len);
 
-            Tick t;
+            legacy::Tick t;
             if (!parse_tick_cpp(sv, t)) continue;
 
             size_t h = head_.load(std::memory_order_relaxed);
@@ -186,7 +186,7 @@ void UdpFeed::loop()
         }
 
         std::string_view sv(buf, n);
-        Tick t;
+        legacy::Tick t;
         if (!parse_tick_cpp(sv, t)) continue;
 
         size_t h = head_.load(std::memory_order_relaxed);
@@ -202,7 +202,7 @@ void UdpFeed::loop()
 #endif
 }
 
-bool UdpFeed::pop_tick(Tick& t)
+bool UdpFeed::pop_tick(legacy::Tick& t)
 {
     size_t tl = tail_.load();
     size_t hd = head_.load();

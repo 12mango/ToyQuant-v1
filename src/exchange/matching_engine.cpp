@@ -94,22 +94,28 @@ void MatchingEngine::match_external_bbo(Order& order)
         .owner = order.owner});
 }
 
-void MatchingEngine::process_market_tick(const Tick& tick)
+void MatchingEngine::process_market_trade(const MarketTrade& trade)
 {
-    if (tick.side == Side::Unknown || tick.size == 0) return;
+    process_market_order(trade.symbol, trade.aggressor_side, trade.price, trade.quantity, trade.ts);
+}
+
+void MatchingEngine::process_market_order(const std::string& symbol, Side side, double price,
+                                          uint64_t quantity, uint64_t ts)
+{
+    if (side == Side::Unknown || quantity == 0) return;
 
     // External market ticks are treated as synthetic market orders from the venue.
     exchange::Order market_order{
         0,
-        tick.symbol,
-        tick.side == Side::Buy ? exchange::Side::Buy : exchange::Side::Sell,
+        symbol,
+        side == Side::Buy ? exchange::Side::Buy : exchange::Side::Sell,
         exchange::OrderType::Market,
-        tick.price,
-        tick.size,
-        tick.size,
-        tick.ts,
+        price,
+        quantity,
+        quantity,
+        ts,
         "Market"};
-    auto& book = books_[tick.symbol];
+    auto& book = books_[symbol];
     match(book, market_order, false);
 }
 

@@ -12,6 +12,8 @@
 #include "app/strategy_factory.h"
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
+#include "legacy/tick.h"
+#include "legacy/tick_pipeline.h"
 #include "market/csv_feed.h"
 #include "market/replay_feed.h"
 #include "market/udp_feed.h"
@@ -81,8 +83,10 @@ void Application::run_csv_mode() const
     Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, logger);
+    legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     CsvFeed feed(
-        csv_file, [&](const Tick& tick) { pipeline.process_tick(tick, true); }, cfg_.delay, &logger);
+        csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick, true); }, cfg_.delay,
+        &logger);
     feed.run();
     logger.log(pipeline.summary().to_log_string());
 }
@@ -144,15 +148,16 @@ void Application::run_udp_mode() const
     Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, logger);
+    legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     UdpFeed feed(port);
     feed.start();
 
-    Tick tick;
+    legacy::Tick tick;
     while (true)
     {
         if (feed.pop_tick(tick))
         {
-            pipeline.process_tick(tick, true);
+            tick_pipeline.process(tick, true);
         }
         else
         {

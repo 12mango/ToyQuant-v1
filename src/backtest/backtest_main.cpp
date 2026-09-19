@@ -76,8 +76,8 @@ int main(int argc, char** argv)
                    "Mode:          ", (mode == RunMode::Realtime ? "Realtime" : "Backtest"), "\n",
                    "Log file:      ", log_file);
 
-        BacktestDriver driver(tick_file, orders_file, trades_file, slippage, fee_rate, mode,
-                              logger);
+        legacy::BacktestDriver driver(tick_file, orders_file, trades_file, slippage, fee_rate,
+                          mode, logger);
         driver.run();
     }
     catch (const std::exception& ex)
