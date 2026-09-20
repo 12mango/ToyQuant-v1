@@ -22,6 +22,7 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/logs")
 # ==================== Include Paths and Shared Sources ====================
 set(COMMON_INCLUDE_DIRS
     src
+    src/app
     src/market
     src/orderbook
     src/strategy
@@ -60,9 +61,17 @@ target_include_directories(backtest_main PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(backtest_main PRIVATE Threads::Threads)
 set_target_properties(backtest_main PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# ==================== Strategy benchmark ====================
+add_executable(strategy_benchmark src/app/strategy_benchmark_main.cpp
+    src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/strategy_factory.cpp ${COMMON_SOURCES})
+target_include_directories(strategy_benchmark PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(strategy_benchmark PRIVATE Threads::Threads)
+set_target_properties(strategy_benchmark PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # ==================== Tests ====================
 enable_testing()
-add_executable(strategy_state_test tests/strategy_state_test.cpp)
+add_executable(strategy_state_test tests/strategy_state_test.cpp
+    src/app/strategy_factory.cpp)
 target_include_directories(strategy_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME strategy_state_test COMMAND strategy_state_test)
 
@@ -91,3 +100,14 @@ add_test(NAME performance_test COMMAND performance_test)
 add_executable(portfolio_test tests/portfolio_test.cpp src/accounting/portfolio.cpp)
 target_include_directories(portfolio_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME portfolio_test COMMAND portfolio_test)
+
+add_executable(pipeline_accounting_test tests/pipeline_accounting_test.cpp
+    src/app/pipeline.cpp ${COMMON_SOURCES})
+target_include_directories(pipeline_accounting_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME pipeline_accounting_test COMMAND pipeline_accounting_test)
+
+add_executable(strategy_benchmark_test tests/strategy_benchmark_test.cpp
+    src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/strategy_factory.cpp
+    ${COMMON_SOURCES})
+target_include_directories(strategy_benchmark_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME strategy_benchmark_test COMMAND strategy_benchmark_test)

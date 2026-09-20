@@ -53,7 +53,7 @@ int main()
     assert(summary.quotes == 35312);
     assert(summary.trades_without_bbo == 0);
     assert(summary.stale_trades > 0);
-    assert(summary.dislocated_trades == 0);
+    assert(summary.dislocated_trades > 0);
 
     MarketDataValidator validator;
     validator.validate(BboQuote{1, "TEST", 100.0, 10, 100.1, 20, 1});

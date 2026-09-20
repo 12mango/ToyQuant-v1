@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdint>
 
+#include "app/strategy_factory.h"
 #include "strategy/market_maker.h"
 
 uint64_t quantity_for_side(const std::vector<StrategyOrder>& orders, Side side)
@@ -16,6 +17,48 @@ uint64_t quantity_for_side(const std::vector<StrategyOrder>& orders, Side side)
 
 int main()
 {
+    const auto instrument = btc_usdt_spec(100);
+    auto passive_l1 = make_strategy("passive_l1", &instrument);
+    assert(passive_l1 != nullptr);
+    assert(dynamic_cast<PassiveL1MarketMaker*>(passive_l1.get()) != nullptr);
+
+    auto inventory_aware_l1 = make_strategy("inventory_aware_l1", &instrument);
+    assert(inventory_aware_l1 != nullptr);
+    assert(dynamic_cast<InventoryAwareL1MarketMaker*>(inventory_aware_l1.get()) != nullptr);
+
+    auto flow_aware_l1 = make_strategy("flow_aware_l1", &instrument);
+    assert(flow_aware_l1 != nullptr);
+    assert(dynamic_cast<FlowAwareL1MarketMaker*>(flow_aware_l1.get()) != nullptr);
+
+    InventoryAwareL1MarketMaker long_inventory_l1(100, 0.00003,
+                                                 static_cast<int64_t>(instrument.quantity_scale / 10),
+                                                 instrument.tick_size);
+    long_inventory_l1.position = 500;
+    const TopOfBook inventory_top{100.0, 100, 100.1, 100};
+    const auto inventory_orders = long_inventory_l1.on_top_of_book("BTCUSDT", inventory_top);
+    assert(quantity_for_side(inventory_orders, Side::Buy) <
+           quantity_for_side(inventory_orders, Side::Sell));
+
+    FlowAwareL1MarketMaker neutral_flow_strategy(100, 2.0 * instrument.tick_size,
+                                                 static_cast<int64_t>(instrument.quantity_scale / 10),
+                                                 instrument.tick_size);
+    const TopOfBook flow_top{100.0, 100, 100.1, 100};
+    const auto neutral_flow_orders =
+        neutral_flow_strategy.on_top_of_book("BTCUSDT", flow_top);
+
+    FlowAwareL1MarketMaker buy_flow_strategy(100, 2.0 * instrument.tick_size,
+                                            static_cast<int64_t>(instrument.quantity_scale / 10),
+                                            instrument.tick_size);
+    buy_flow_strategy.on_market_trade(MarketTrade{1, "BTCUSDT", 100.0, 100, Side::Buy, 10});
+    buy_flow_strategy.on_market_trade(MarketTrade{2, "BTCUSDT", 100.0, 100, Side::Buy, 10});
+    const auto flow_orders = buy_flow_strategy.on_top_of_book("BTCUSDT", flow_top);
+    assert(neutral_flow_orders.size() == 2);
+    assert(flow_orders.size() == 2);
+    assert(flow_orders[0].price == neutral_flow_orders[0].price);
+    assert(flow_orders[1].price >= neutral_flow_orders[1].price + instrument.tick_size);
+    assert(quantity_for_side(flow_orders, Side::Buy) == 100);
+    assert(quantity_for_side(flow_orders, Side::Sell) == 80);
+
     L1MarketMaker l1_strategy(100, 0.0002, 1000, 0.0001);
     const TopOfBook l1_top{100.0, 100, 100.1, 100};
     auto l1_orders = l1_strategy.on_top_of_book("BTCUSDT", l1_top);

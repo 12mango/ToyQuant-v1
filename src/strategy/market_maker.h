@@ -116,6 +116,570 @@ struct L1MarketMakerConfig
     uint64_t markout_horizon_quotes{5};
 };
 
+class PassiveL1MarketMaker : public Strategy
+{
+   public:
+    uint64_t base_order_size;
+    double base_spread;
+    int64_t inventory_limit;
+    double tick_size;
+    std::unordered_map<uint64_t, StrategyOrder> open_orders;
+    int64_t position{0};
+    double last_quote_mid{0.0};
+    double last_bid_price{0.0};
+    double last_ask_price{0.0};
+    bool cancel_pending{false};
+    uint64_t quote_age{0};
+    uint64_t max_quote_age{20};
+    uint64_t quote_cycle{0};
+
+    explicit PassiveL1MarketMaker(uint64_t size = 50, double spd = 0.00003,
+                                  int64_t inv_limit = 1000, double ts = 0.00001,
+                                  uint64_t max_age = 20)
+        : base_order_size(size),
+          base_spread(spd),
+          inventory_limit(inv_limit),
+          tick_size(ts),
+          max_quote_age(max_age)
+    {
+    }
+
+    std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
+                                              const TopOfBook& tob) override
+    {
+        std::vector<StrategyOrder> orders;
+        if (tob.bid_price <= 0.0 || tob.ask_price <= 0.0 || tob.bid_price > tob.ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        ++quote_cycle;
+        if (!open_orders.empty()) ++quote_age;
+
+        const bool should_refresh =
+            open_orders.empty() ||
+            std::abs(mid - last_quote_mid) >= 2.0 * tick_size ||
+            std::abs(tob.bid_price - last_bid_price) >= tick_size ||
+            std::abs(tob.ask_price - last_ask_price) >= tick_size || quote_age >= max_quote_age;
+        if (!should_refresh)
+        {
+            return orders;
+        }
+
+        if (!open_orders.empty() && should_refresh)
+        {
+            cancel_pending = true;
+            return orders;
+        }
+
+        const double bid_price = std::round((mid - base_spread / 2.0) / tick_size) * tick_size;
+        const double ask_price = std::round((mid + base_spread / 2.0) / tick_size) * tick_size;
+        if (bid_price >= ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        int64_t working_exposure = 0;
+        for (const auto& entry : open_orders)
+        {
+            const StrategyOrder& order = entry.second;
+            working_exposure += order.side == Side::Buy ? static_cast<int64_t>(order.quantity)
+                                                        : -static_cast<int64_t>(order.quantity);
+        }
+
+        const int64_t inventory = position + working_exposure;
+        uint64_t buy_quantity = base_order_size;
+        uint64_t sell_quantity = base_order_size;
+        if (inventory_limit > 0)
+        {
+            if (inventory > 0)
+            {
+                buy_quantity = static_cast<uint64_t>(
+                    std::max<int64_t>(0, inventory_limit - std::min<int64_t>(inventory, inventory_limit)));
+            }
+            if (inventory < 0)
+            {
+                sell_quantity = static_cast<uint64_t>(
+                    std::max<int64_t>(0, inventory_limit - std::min<int64_t>(-inventory, inventory_limit)));
+            }
+        }
+        if (inventory > inventory_limit) buy_quantity = 0;
+        if (inventory < -inventory_limit) sell_quantity = 0;
+
+        if (buy_quantity > 0)
+            orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
+        if (sell_quantity > 0)
+            orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+
+        last_quote_mid = mid;
+        last_bid_price = tob.bid_price;
+        last_ask_price = tob.ask_price;
+        quote_age = 0;
+        return orders;
+    }
+
+    void on_order_submitted(const StrategyOrder& order) override
+    {
+        open_orders[order.order_id] = order;
+        quote_age = 0;
+    }
+
+    std::vector<uint64_t> cancel_requests() override
+    {
+        if (!cancel_pending) return {};
+
+        std::vector<uint64_t> order_ids;
+        order_ids.reserve(open_orders.size());
+        for (const auto& entry : open_orders) order_ids.push_back(entry.first);
+        cancel_pending = false;
+        return order_ids;
+    }
+
+    int64_t net_position() const override
+    {
+        return position;
+    }
+
+    size_t working_order_count() const override
+    {
+        return open_orders.size();
+    }
+
+    void on_order_update(const ExecutionReport& report) override
+    {
+        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        {
+            open_orders.erase(report.order_id);
+            return;
+        }
+
+        if (report.exec_type == ExecType::Trade)
+        {
+            auto it = open_orders.find(report.order_id);
+            if (it != open_orders.end())
+            {
+                position += report.side == exchange::Side::Buy
+                                ? static_cast<int64_t>(report.quantity)
+                                : -static_cast<int64_t>(report.quantity);
+                it->second.quantity = it->second.quantity > report.quantity ? it->second.quantity - report.quantity : 0;
+                if (it->second.quantity == 0) open_orders.erase(it);
+            }
+        }
+    }
+};
+
+class InventoryAwareL1MarketMaker : public Strategy
+{
+   public:
+    uint64_t base_order_size;
+    double base_spread;
+    int64_t inventory_limit;
+    double tick_size;
+    std::unordered_map<uint64_t, StrategyOrder> open_orders;
+    int64_t position{0};
+    double last_quote_mid{0.0};
+    double last_bid_price{0.0};
+    double last_ask_price{0.0};
+    bool cancel_pending{false};
+    uint64_t quote_age{0};
+    uint64_t max_quote_age{20};
+    uint64_t quote_cycle{0};
+    double inventory_risk_threshold{0.5};
+
+    explicit InventoryAwareL1MarketMaker(uint64_t size = 50, double spd = 0.00003,
+                                         int64_t inv_limit = 1000, double ts = 0.00001,
+                                         uint64_t max_age = 20,
+                                         double risk_threshold = 0.5)
+        : base_order_size(size),
+          base_spread(spd),
+          inventory_limit(inv_limit),
+          tick_size(ts),
+          max_quote_age(max_age),
+          inventory_risk_threshold(risk_threshold)
+    {
+    }
+
+    std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
+                                              const TopOfBook& tob) override
+    {
+        std::vector<StrategyOrder> orders;
+        if (tob.bid_price <= 0.0 || tob.ask_price <= 0.0 || tob.bid_price > tob.ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        ++quote_cycle;
+        if (!open_orders.empty()) ++quote_age;
+
+        const bool should_refresh = open_orders.empty() ||
+                                    std::abs(mid - last_quote_mid) >= 2.0 * tick_size ||
+                                    std::abs(tob.bid_price - last_bid_price) >= tick_size ||
+                                    std::abs(tob.ask_price - last_ask_price) >= tick_size ||
+                                    quote_age >= max_quote_age;
+        if (!should_refresh) return orders;
+
+        if (!open_orders.empty() && should_refresh)
+        {
+            cancel_pending = true;
+            return orders;
+        }
+
+        const int64_t working_exposure = 0;
+        const int64_t inventory = position + working_exposure;
+        const double inventory_ratio = inventory_limit > 0
+                                          ? std::clamp(static_cast<double>(inventory) /
+                                                          static_cast<double>(inventory_limit),
+                                                      -1.0, 1.0)
+                                          : 0.0;
+
+        double bid_offset = base_spread / 2.0;
+        double ask_offset = base_spread / 2.0;
+        if (inventory > 0)
+        {
+            const double pressure = std::clamp(std::abs(inventory_ratio), 0.0, 1.0);
+            bid_offset *= (1.0 + pressure * 0.5);
+            ask_offset *= (1.0 - pressure * 0.25);
+        }
+        else if (inventory < 0)
+        {
+            const double pressure = std::clamp(std::abs(inventory_ratio), 0.0, 1.0);
+            ask_offset *= (1.0 + pressure * 0.5);
+            bid_offset *= (1.0 - pressure * 0.25);
+        }
+
+        const double bid_price = std::round((mid - bid_offset) / tick_size) * tick_size;
+        const double ask_price = std::round((mid + ask_offset) / tick_size) * tick_size;
+        if (bid_price >= ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        uint64_t buy_quantity = base_order_size;
+        uint64_t sell_quantity = base_order_size;
+        if (inventory_limit > 0)
+        {
+            const double risk_ratio = std::clamp(std::abs(inventory_ratio), 0.0, 1.0);
+            if (inventory > 0)
+            {
+                buy_quantity = static_cast<uint64_t>(
+                    std::max<int64_t>(0, base_order_size * (1.0 - risk_ratio * 0.9)));
+            }
+            else if (inventory < 0)
+            {
+                sell_quantity = static_cast<uint64_t>(
+                    std::max<int64_t>(0, base_order_size * (1.0 - risk_ratio * 0.9)));
+            }
+        }
+
+        if (inventory > inventory_limit * inventory_risk_threshold) buy_quantity = 0;
+        if (inventory < -inventory_limit * inventory_risk_threshold) sell_quantity = 0;
+
+        if (buy_quantity > 0) orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
+        if (sell_quantity > 0)
+            orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+
+        last_quote_mid = mid;
+        last_bid_price = tob.bid_price;
+        last_ask_price = tob.ask_price;
+        quote_age = 0;
+        return orders;
+    }
+
+    void on_order_submitted(const StrategyOrder& order) override
+    {
+        open_orders[order.order_id] = order;
+        quote_age = 0;
+    }
+
+    std::vector<uint64_t> cancel_requests() override
+    {
+        if (!cancel_pending) return {};
+
+        std::vector<uint64_t> order_ids;
+        order_ids.reserve(open_orders.size());
+        for (const auto& entry : open_orders) order_ids.push_back(entry.first);
+        cancel_pending = false;
+        return order_ids;
+    }
+
+    int64_t net_position() const override
+    {
+        return position;
+    }
+
+    size_t working_order_count() const override
+    {
+        return open_orders.size();
+    }
+
+    void on_order_update(const ExecutionReport& report) override
+    {
+        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        {
+            open_orders.erase(report.order_id);
+            return;
+        }
+
+        if (report.exec_type == ExecType::Trade)
+        {
+            auto it = open_orders.find(report.order_id);
+            if (it != open_orders.end())
+            {
+                position += report.side == exchange::Side::Buy
+                                ? static_cast<int64_t>(report.quantity)
+                                : -static_cast<int64_t>(report.quantity);
+                it->second.quantity = it->second.quantity > report.quantity ? it->second.quantity - report.quantity : 0;
+                if (it->second.quantity == 0) open_orders.erase(it);
+            }
+        }
+    }
+};
+
+class FlowAwareL1MarketMaker : public Strategy
+{
+   public:
+    struct TradeSample
+    {
+        Side side;
+        uint64_t quantity;
+    };
+
+    uint64_t base_order_size;
+    double base_spread;
+    int64_t inventory_limit;
+    double tick_size;
+    std::unordered_map<uint64_t, StrategyOrder> open_orders;
+    int64_t position{0};
+    double last_quote_mid{0.0};
+    double last_bid_price{0.0};
+    double last_ask_price{0.0};
+    bool cancel_pending{false};
+    uint64_t quote_age{0};
+    uint64_t max_quote_age{20};
+    uint64_t quote_cycle{0};
+    double inventory_risk_threshold{0.5};
+    std::deque<TradeSample> recent_trades;
+    uint64_t buy_volume{0};
+    uint64_t sell_volume{0};
+    std::size_t trade_imbalance_window{32};
+
+    explicit FlowAwareL1MarketMaker(uint64_t size = 50, double spd = 0.00003,
+                                    int64_t inv_limit = 1000, double ts = 0.00001,
+                                    uint64_t max_age = 20, double risk_threshold = 0.5)
+        : base_order_size(size),
+          base_spread(spd),
+          inventory_limit(inv_limit),
+          tick_size(ts),
+          max_quote_age(max_age),
+          inventory_risk_threshold(risk_threshold)
+    {
+    }
+
+    void on_market_trade(const MarketTrade& trade) override
+    {
+        if (trade.aggressor_side != Side::Buy && trade.aggressor_side != Side::Sell) return;
+
+        recent_trades.push_back({trade.aggressor_side, trade.quantity});
+        if (trade.aggressor_side == Side::Buy)
+            buy_volume += trade.quantity;
+        else
+            sell_volume += trade.quantity;
+
+        while (recent_trades.size() > trade_imbalance_window)
+        {
+            const auto stale = recent_trades.front();
+            recent_trades.pop_front();
+            if (stale.side == Side::Buy)
+                buy_volume = buy_volume >= stale.quantity ? buy_volume - stale.quantity : 0;
+            else
+                sell_volume = sell_volume >= stale.quantity ? sell_volume - stale.quantity : 0;
+        }
+    }
+
+    std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
+                                              const TopOfBook& tob) override
+    {
+        std::vector<StrategyOrder> orders;
+        if (tob.bid_price <= 0.0 || tob.ask_price <= 0.0 || tob.bid_price > tob.ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        ++quote_cycle;
+        if (!open_orders.empty()) ++quote_age;
+
+        const bool should_refresh = open_orders.empty() ||
+                                    std::abs(mid - last_quote_mid) >= 2.0 * tick_size ||
+                                    std::abs(tob.bid_price - last_bid_price) >= tick_size ||
+                                    std::abs(tob.ask_price - last_ask_price) >= tick_size ||
+                                    quote_age >= max_quote_age;
+        if (!should_refresh) return orders;
+
+        if (!open_orders.empty() && should_refresh)
+        {
+            cancel_pending = true;
+            return orders;
+        }
+
+        const int64_t working_exposure = 0;
+        const int64_t inventory = position + working_exposure;
+        const double inventory_ratio = inventory_limit > 0
+                                          ? std::clamp(static_cast<double>(inventory) /
+                                                          static_cast<double>(inventory_limit),
+                                                      -1.0, 1.0)
+                                          : 0.0;
+        const double book_imbalance =
+            (tob.bid_size + tob.ask_size == 0)
+                ? 0.0
+                : (static_cast<double>(tob.bid_size) - static_cast<double>(tob.ask_size)) /
+                      static_cast<double>(tob.bid_size + tob.ask_size);
+        const double total_flow = buy_volume + sell_volume;
+        const double trade_imbalance =
+            total_flow == 0 ? 0.0 : (static_cast<double>(buy_volume) - static_cast<double>(sell_volume)) /
+                                       static_cast<double>(total_flow);
+        const double flow_bias_raw = trade_imbalance * 0.8 + book_imbalance * 0.2;
+        const double flow_bias = std::clamp(flow_bias_raw, -0.20, 0.20);
+
+        double bid_offset = base_spread / 2.0;
+        double ask_offset = base_spread / 2.0;
+        if (inventory > 0)
+        {
+            const double pressure = std::clamp(std::abs(inventory_ratio), 0.0, 1.0);
+            bid_offset *= (1.0 + pressure * 0.5);
+            ask_offset *= (1.0 - pressure * 0.25);
+        }
+        else if (inventory < 0)
+        {
+            const double pressure = std::clamp(std::abs(inventory_ratio), 0.0, 1.0);
+            ask_offset *= (1.0 + pressure * 0.5);
+            bid_offset *= (1.0 - pressure * 0.25);
+        }
+
+        if (std::abs(flow_bias_raw) >= 0.06)
+        {
+            if (flow_bias > 0.0)
+            {
+                ask_offset += tick_size;
+            }
+            else if (flow_bias < 0.0)
+            {
+                bid_offset += tick_size;
+            }
+        }
+
+        const double bid_price = std::round((mid - bid_offset) / tick_size) * tick_size;
+        const double ask_price = std::round((mid + ask_offset) / tick_size) * tick_size;
+        if (bid_price >= ask_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        uint64_t buy_quantity = base_order_size;
+        uint64_t sell_quantity = base_order_size;
+        if (inventory_limit > 0)
+        {
+            const double risk_ratio = std::clamp(std::abs(inventory_ratio), 0.0, 1.0);
+            if (inventory > 0)
+            {
+                buy_quantity = static_cast<uint64_t>(
+                    std::max<int64_t>(0, base_order_size * (1.0 - risk_ratio * 0.9)));
+            }
+            else if (inventory < 0)
+            {
+                sell_quantity = static_cast<uint64_t>(
+                    std::max<int64_t>(0, base_order_size * (1.0 - risk_ratio * 0.9)));
+            }
+        }
+        if (inventory > inventory_limit * inventory_risk_threshold) buy_quantity = 0;
+        if (inventory < -inventory_limit * inventory_risk_threshold) sell_quantity = 0;
+
+        if (std::abs(flow_bias_raw) >= 0.08)
+        {
+            const double quantity_reduction = std::min(0.20, std::abs(flow_bias));
+            if (flow_bias > 0.0)
+            {
+                sell_quantity = static_cast<uint64_t>(std::max<int64_t>(
+                    0, std::llround(static_cast<double>(sell_quantity) *
+                                    (1.0 - quantity_reduction))));
+            }
+            else if (flow_bias < 0.0)
+            {
+                buy_quantity = static_cast<uint64_t>(std::max<int64_t>(
+                    0, std::llround(static_cast<double>(buy_quantity) *
+                                    (1.0 - quantity_reduction))));
+            }
+        }
+
+        if (buy_quantity > 0) orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
+        if (sell_quantity > 0)
+            orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+
+        last_quote_mid = mid;
+        last_bid_price = tob.bid_price;
+        last_ask_price = tob.ask_price;
+        quote_age = 0;
+        return orders;
+    }
+
+    void on_order_submitted(const StrategyOrder& order) override
+    {
+        open_orders[order.order_id] = order;
+        quote_age = 0;
+    }
+
+    std::vector<uint64_t> cancel_requests() override
+    {
+        if (!cancel_pending) return {};
+
+        std::vector<uint64_t> order_ids;
+        order_ids.reserve(open_orders.size());
+        for (const auto& entry : open_orders) order_ids.push_back(entry.first);
+        cancel_pending = false;
+        return order_ids;
+    }
+
+    int64_t net_position() const override
+    {
+        return position;
+    }
+
+    size_t working_order_count() const override
+    {
+        return open_orders.size();
+    }
+
+    void on_order_update(const ExecutionReport& report) override
+    {
+        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        {
+            open_orders.erase(report.order_id);
+            return;
+        }
+
+        if (report.exec_type == ExecType::Trade)
+        {
+            auto it = open_orders.find(report.order_id);
+            if (it != open_orders.end())
+            {
+                position += report.side == exchange::Side::Buy
+                                ? static_cast<int64_t>(report.quantity)
+                                : -static_cast<int64_t>(report.quantity);
+                it->second.quantity = it->second.quantity > report.quantity ? it->second.quantity - report.quantity : 0;
+                if (it->second.quantity == 0) open_orders.erase(it);
+            }
+        }
+    }
+};
+
 class L1MarketMaker : public Strategy
 {
    public:

@@ -19,6 +19,15 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
 
     const int64_t inventory_limit =
         instrument ? static_cast<int64_t>(instrument->quantity_scale / 10) : 1000;
+    if (strategy_name == "passive_l1")
+        return std::make_unique<PassiveL1MarketMaker>(order_size, spread, inventory_limit,
+                                                      tick_size);
+    if (strategy_name == "inventory_aware_l1")
+        return std::make_unique<InventoryAwareL1MarketMaker>(order_size, spread, inventory_limit,
+                                                            tick_size);
+    if (strategy_name == "flow_aware_l1")
+        return std::make_unique<FlowAwareL1MarketMaker>(order_size, spread, inventory_limit,
+                                                       tick_size);
     if (strategy_name == "l1")
     {
         L1MarketMakerConfig config;

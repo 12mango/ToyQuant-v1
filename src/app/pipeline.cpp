@@ -62,7 +62,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
     engine_.set_report_callback(
         [this](const ExecutionReport& report)
         {
-            portfolio_.apply(report);
+            if (report.owner == "MarketMaker") portfolio_.apply(report);
             strategy_.on_order_update(report);
             if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
             {

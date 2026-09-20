@@ -9,7 +9,7 @@
 struct MarketDataValidationConfig
 {
     uint64_t max_bbo_age_ms{1000};
-    double max_trade_deviation_bps{50.0};
+    double max_trade_deviation_bps{5.0};
 };
 
 struct MarketDataValidationSummary
