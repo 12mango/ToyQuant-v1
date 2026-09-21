@@ -59,7 +59,14 @@ int main()
     assert(quantity_for_side(flow_orders, Side::Buy) == 100);
     assert(quantity_for_side(flow_orders, Side::Sell) == 80);
 
-    L1MarketMaker l1_strategy(100, 0.0002, 1000, 0.0001);
+    L1MarketMakerConfig l1_test_config;
+    l1_test_config.order_size = 100;
+    l1_test_config.base_spread = 0.0002;
+    l1_test_config.inventory_limit = 1000;
+    l1_test_config.tick_size = 0.0001;
+    l1_test_config.maker_fee_rate = 0.0;
+    l1_test_config.fee_spread_multiplier = 0.0;
+    L1MarketMaker l1_strategy(l1_test_config);
     const TopOfBook l1_top{100.0, 100, 100.1, 100};
     auto l1_orders = l1_strategy.on_top_of_book("BTCUSDT", l1_top);
     assert(quantity_for_side(l1_orders, Side::Buy) == 100);

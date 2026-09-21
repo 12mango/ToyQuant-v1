@@ -1,5 +1,6 @@
 #include "market/market_data_adapter.h"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
@@ -26,8 +27,15 @@ uint64_t scaled_quantity(const std::string& value, uint64_t scale)
 
 bool parse_boolean(const std::string& value)
 {
-    if (value == "true" || value == "True" || value == "1") return true;
-    if (value == "false" || value == "False" || value == "0") return false;
+    std::string normalized = value;
+    normalized.erase(std::remove_if(normalized.begin(), normalized.end(),
+                                    [](unsigned char character)
+                                    { return std::isspace(character) || character == '"'; }),
+                     normalized.end());
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+    if (normalized == "true" || normalized == "1") return true;
+    if (normalized == "false" || normalized == "0") return false;
     throw std::invalid_argument("invalid boolean value: " + value);
 }
 

@@ -107,13 +107,31 @@ struct L1MarketMakerConfig
     std::size_t volatility_window{16};
     uint64_t max_quote_age{20};
     double max_book_spread_ratio{0.02};
-    double inventory_risk_threshold{0.75};
+    double inventory_risk_threshold{0.60};
     double severe_spread_multiplier{20.0};
-    double stress_spread_multiplier{4.0};
-    double minimum_stress_quantity_ratio{0.25};
+    double stress_spread_multiplier{2.5};
+    double minimum_stress_quantity_ratio{0.10};
+    double maker_fee_rate{0.0002};
+    double fee_spread_multiplier{0.40};
     uint64_t max_market_trade_age{1000};
     double max_trade_deviation_bps{50.0};
     uint64_t markout_horizon_quotes{5};
+    double flow_trade_weight{0.6};
+    double flow_book_weight{0.4};
+    double flow_price_threshold{0.06};
+    double flow_quantity_threshold{0.08};
+    double flow_max_quantity_reduction{0.20};
+    uint64_t flow_price_ticks{1};
+};
+
+struct FlowAwareMarketMakerConfig
+{
+    double trade_weight{0.6};
+    double book_weight{0.4};
+    double price_threshold{0.06};
+    double quantity_threshold{0.08};
+    double max_quantity_reduction{0.20};
+    uint64_t price_ticks{1};
 };
 
 class PassiveL1MarketMaker : public Strategy
@@ -468,16 +486,19 @@ class FlowAwareL1MarketMaker : public Strategy
     uint64_t buy_volume{0};
     uint64_t sell_volume{0};
     std::size_t trade_imbalance_window{32};
+    FlowAwareMarketMakerConfig flow_config;
 
     explicit FlowAwareL1MarketMaker(uint64_t size = 50, double spd = 0.00003,
                                     int64_t inv_limit = 1000, double ts = 0.00001,
-                                    uint64_t max_age = 20, double risk_threshold = 0.5)
+                                    uint64_t max_age = 20, double risk_threshold = 0.5,
+                                    FlowAwareMarketMakerConfig config = {})
         : base_order_size(size),
           base_spread(spd),
           inventory_limit(inv_limit),
           tick_size(ts),
           max_quote_age(max_age),
-          inventory_risk_threshold(risk_threshold)
+          inventory_risk_threshold(risk_threshold),
+          flow_config(config)
     {
     }
 
@@ -545,7 +566,8 @@ class FlowAwareL1MarketMaker : public Strategy
         const double trade_imbalance =
             total_flow == 0 ? 0.0 : (static_cast<double>(buy_volume) - static_cast<double>(sell_volume)) /
                                        static_cast<double>(total_flow);
-        const double flow_bias_raw = trade_imbalance * 0.8 + book_imbalance * 0.2;
+        const double flow_bias_raw = trade_imbalance * flow_config.trade_weight +
+                         book_imbalance * flow_config.book_weight;
         const double flow_bias = std::clamp(flow_bias_raw, -0.20, 0.20);
 
         double bid_offset = base_spread / 2.0;
@@ -563,15 +585,15 @@ class FlowAwareL1MarketMaker : public Strategy
             bid_offset *= (1.0 - pressure * 0.25);
         }
 
-        if (std::abs(flow_bias_raw) >= 0.06)
+        if (std::abs(flow_bias_raw) >= flow_config.price_threshold)
         {
             if (flow_bias > 0.0)
             {
-                ask_offset += tick_size;
+                ask_offset += static_cast<double>(flow_config.price_ticks) * tick_size;
             }
             else if (flow_bias < 0.0)
             {
-                bid_offset += tick_size;
+                bid_offset += static_cast<double>(flow_config.price_ticks) * tick_size;
             }
         }
 
@@ -602,9 +624,10 @@ class FlowAwareL1MarketMaker : public Strategy
         if (inventory > inventory_limit * inventory_risk_threshold) buy_quantity = 0;
         if (inventory < -inventory_limit * inventory_risk_threshold) sell_quantity = 0;
 
-        if (std::abs(flow_bias_raw) >= 0.08)
+        if (std::abs(flow_bias_raw) >= flow_config.quantity_threshold)
         {
-            const double quantity_reduction = std::min(0.20, std::abs(flow_bias));
+            const double quantity_reduction =
+                std::min(flow_config.max_quantity_reduction, std::abs(flow_bias));
             if (flow_bias > 0.0)
             {
                 sell_quantity = static_cast<uint64_t>(std::max<int64_t>(
@@ -710,11 +733,19 @@ class L1MarketMaker : public Strategy
     double max_book_spread_ratio{0.02};
     double inventory_risk_threshold{0.75};
     double severe_spread_multiplier{20.0};
-    double stress_spread_multiplier{4.0};
-    double minimum_stress_quantity_ratio{0.25};
+    double stress_spread_multiplier{2.5};
+    double minimum_stress_quantity_ratio{0.10};
+    double maker_fee_rate{0.0002};
+    double fee_spread_multiplier{1.0};
     uint64_t max_market_trade_age{1000};
     double max_trade_deviation_bps{50.0};
     uint64_t markout_horizon_quotes{5};
+    double flow_trade_weight{0.6};
+    double flow_book_weight{0.4};
+    double flow_price_threshold{0.06};
+    double flow_quantity_threshold{0.08};
+    double flow_max_quantity_reduction{0.20};
+    uint64_t flow_price_ticks{1};
     uint64_t quote_cycle{0};
     uint64_t submitted_quantity{0};
     uint64_t filled_quantity{0};
@@ -755,9 +786,17 @@ class L1MarketMaker : public Strategy
           severe_spread_multiplier(config.severe_spread_multiplier),
           stress_spread_multiplier(config.stress_spread_multiplier),
           minimum_stress_quantity_ratio(config.minimum_stress_quantity_ratio),
+          maker_fee_rate(config.maker_fee_rate),
+          fee_spread_multiplier(config.fee_spread_multiplier),
           max_market_trade_age(config.max_market_trade_age),
           max_trade_deviation_bps(config.max_trade_deviation_bps),
-          markout_horizon_quotes(config.markout_horizon_quotes)
+          markout_horizon_quotes(config.markout_horizon_quotes),
+          flow_trade_weight(config.flow_trade_weight),
+          flow_book_weight(config.flow_book_weight),
+          flow_price_threshold(config.flow_price_threshold),
+          flow_quantity_threshold(config.flow_quantity_threshold),
+          flow_max_quantity_reduction(config.flow_max_quantity_reduction),
+          flow_price_ticks(config.flow_price_ticks)
     {
     }
 
@@ -853,12 +892,24 @@ class L1MarketMaker : public Strategy
         const double reservation_mid = mid - inventory_skew;
         const double imbalance = trade_imbalance();
         const double book_imbalance = tob_imbalance(tob);
+        const double flow_bias = std::clamp(
+            imbalance * config_flow_trade_weight() + book_imbalance * config_flow_book_weight(),
+            -0.20, 0.20);
         const double adverse_shift = (std::abs(imbalance) * base_spread * 0.5) +
                                      (std::abs(book_imbalance) * base_spread * 0.25);
+        const double fee_spread_unit = mid * maker_fee_rate * 2.0;
+        const double fee_offset = fee_spread_unit * fee_spread_multiplier / 2.0;
         const double effective_spread = dynamic_spread(tob);
 
-        const double raw_bid = reservation_mid - effective_spread / 2.0 - adverse_shift;
-        const double raw_ask = reservation_mid + effective_spread / 2.0 + adverse_shift;
+        double raw_bid = reservation_mid - effective_spread / 2.0 - adverse_shift - fee_offset;
+        double raw_ask = reservation_mid + effective_spread / 2.0 + adverse_shift + fee_offset;
+        if (std::abs(flow_bias) >= flow_price_threshold)
+        {
+            if (flow_bias > 0.0)
+                raw_ask += static_cast<double>(flow_price_ticks) * tick_size;
+            else
+                raw_bid -= static_cast<double>(flow_price_ticks) * tick_size;
+        }
         const double bid_price = std::min(tob.bid_price, round_price(raw_bid));
         const double ask_price = std::max(tob.ask_price, round_price(raw_ask));
         if (bid_price >= ask_price)
@@ -889,6 +940,15 @@ class L1MarketMaker : public Strategy
         {
             sell_quantity = 0;
             buy_quantity = std::max<uint64_t>(buy_quantity, 1);
+        }
+
+        if (std::abs(flow_bias) >= flow_quantity_threshold)
+        {
+            const double reduction = std::min(flow_max_quantity_reduction, std::abs(flow_bias));
+            if (flow_bias > 0.0)
+                sell_quantity = static_cast<uint64_t>(std::llround(sell_quantity * (1.0 - reduction)));
+            else
+                buy_quantity = static_cast<uint64_t>(std::llround(buy_quantity * (1.0 - reduction)));
         }
 
         if (should_refresh(mid, bid_price, ask_price))
@@ -1111,6 +1171,16 @@ class L1MarketMaker : public Strategy
         if (total_volume == 0) return 0.0;
         return (static_cast<double>(buy_volume) - static_cast<double>(sell_volume)) /
                static_cast<double>(total_volume);
+    }
+
+    double config_flow_trade_weight() const
+    {
+        return flow_trade_weight;
+    }
+
+    double config_flow_book_weight() const
+    {
+        return flow_book_weight;
     }
 
     bool should_refresh(double mid, double bid_price, double ask_price) const

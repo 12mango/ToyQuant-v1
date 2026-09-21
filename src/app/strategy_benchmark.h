@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "strategy/market_maker.h"
+
 struct StrategyBenchmarkResult
 {
     std::string strategy_name;
@@ -27,4 +29,9 @@ struct StrategyBenchmarkResult
 std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& trades_path,
                                                             const std::string& quotes_path,
                                                             const std::string& symbol,
-                                                            uint64_t quantity_scale = 1000000);
+                                                            uint64_t quantity_scale = 1000000,
+                                                            const FlowAwareMarketMakerConfig& flow_config = {},
+                                                            double l1_risk_threshold = 0.60,
+                                                            double l1_stress_spread_multiplier = 2.5,
+                                                            double l1_minimum_stress_quantity_ratio = 0.10,
+                                                            double l1_fee_spread_multiplier = 0.40);

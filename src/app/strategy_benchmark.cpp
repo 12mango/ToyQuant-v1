@@ -35,7 +35,12 @@ struct StrategyBenchmarkEnv
 std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& trades_path,
                                                             const std::string& quotes_path,
                                                             const std::string& symbol,
-                                                            uint64_t quantity_scale)
+                                                            uint64_t quantity_scale,
+                                                            const FlowAwareMarketMakerConfig& flow_config,
+                                                            double l1_risk_threshold,
+                                                            double l1_stress_spread_multiplier,
+                                                            double l1_minimum_stress_quantity_ratio,
+                                                            double l1_fee_spread_multiplier)
 {
     if (symbol.empty()) throw std::invalid_argument("benchmark symbol cannot be empty");
 
@@ -58,7 +63,10 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         orders << "ts,symbol,side,price,quantity,order_id\n";
         trades << "ts,symbol,side,price,quantity,order_id,liquidity_role,fee\n";
 
-        auto strategy = make_strategy(name, &instrument);
+        auto strategy = make_strategy(name, &instrument, flow_config, l1_risk_threshold,
+                          l1_stress_spread_multiplier,
+                                      l1_minimum_stress_quantity_ratio,
+                                      l1_fee_spread_multiplier);
         OrderBook order_book(instrument.tick_size);
         MatchingEngine engine(nullptr, instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,

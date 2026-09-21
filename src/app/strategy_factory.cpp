@@ -6,7 +6,12 @@
 #include "strategy/market_maker.h"
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
-                                        const InstrumentSpec* instrument)
+                                        const InstrumentSpec* instrument,
+                                        const FlowAwareMarketMakerConfig& flow_config,
+                                        double l1_risk_threshold,
+                                        double l1_stress_spread_multiplier,
+                                        double l1_minimum_stress_quantity_ratio,
+                                        double l1_fee_spread_multiplier)
 {
     const uint64_t order_size =
         instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
@@ -27,7 +32,7 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                                             tick_size);
     if (strategy_name == "flow_aware_l1")
         return std::make_unique<FlowAwareL1MarketMaker>(order_size, spread, inventory_limit,
-                                                       tick_size);
+                                                       tick_size, 20, 0.5, flow_config);
     if (strategy_name == "l1")
     {
         L1MarketMakerConfig config;
@@ -35,6 +40,10 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         config.base_spread = spread;
         config.inventory_limit = inventory_limit;
         config.tick_size = tick_size;
+        config.inventory_risk_threshold = l1_risk_threshold;
+        config.stress_spread_multiplier = l1_stress_spread_multiplier;
+        config.minimum_stress_quantity_ratio = l1_minimum_stress_quantity_ratio;
+        config.fee_spread_multiplier = l1_fee_spread_multiplier;
         return std::make_unique<L1MarketMaker>(config);
     }
 
