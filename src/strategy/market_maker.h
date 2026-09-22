@@ -1198,6 +1198,339 @@ class L1MarketMaker : public Strategy
     }
 };
 
+class ActiveL1MarketMaker : public Strategy
+{
+   public:
+    uint64_t base_order_size;
+    double base_spread;
+    int64_t inventory_limit;
+    double tick_size;
+    double maker_fee_rate{0.0002};
+    double fee_spread_multiplier{0.30};
+    uint64_t max_quote_age{20};
+    std::unordered_map<uint64_t, StrategyOrder> open_orders;
+    int64_t position{0};
+    double last_mid{0.0};
+    double last_bid{0.0};
+    double last_ask{0.0};
+    uint64_t quote_age{0};
+    bool cancel_pending{false};
+    uint64_t submitted_quantity{0};
+    uint64_t filled_quantity{0};
+    uint64_t fill_count{0};
+    uint64_t cancel_count{0};
+    uint64_t quote_count{0};
+    double fees_paid{0.0};
+    double captured_edge{0.0};
+    uint64_t inventory_samples{0};
+    uint64_t inventory_sign_changes{0};
+    int64_t max_abs_inventory{0};
+    double average_abs_inventory{0.0};
+    bool has_inventory_sign{false};
+    int inventory_sign{0};
+    uint64_t total_quote_lifetime{0};
+    uint64_t max_quote_lifetime{0};
+    std::unordered_map<uint64_t, uint64_t> order_start_cycles;
+    uint64_t quote_cycle{0};
+    struct FillObservation
+    {
+        Side side;
+        double execution_price;
+        uint64_t start_cycle;
+    };
+    std::deque<FillObservation> pending_markouts;
+    double adverse_selection{0.0};
+    uint64_t markout_count{0};
+    uint64_t markout_horizon{5};
+    Side recovery_side{Side::Unknown};
+    uint64_t recovery_cycles{0};
+    uint64_t recovery_horizon{6};
+    struct TradeSample
+    {
+        Side side;
+        uint64_t quantity;
+    };
+    std::deque<TradeSample> recent_trades;
+    uint64_t buy_volume{0};
+    uint64_t sell_volume{0};
+    std::size_t flow_window{32};
+
+    explicit ActiveL1MarketMaker(uint64_t size = 50, double spd = 0.00003,
+                                 int64_t inv_limit = 1000, double ts = 0.00001)
+        : base_order_size(size), base_spread(spd), inventory_limit(inv_limit), tick_size(ts)
+    {
+    }
+
+    void on_market_trade(const MarketTrade& trade) override
+    {
+        if (trade.aggressor_side != Side::Buy && trade.aggressor_side != Side::Sell) return;
+        recent_trades.push_back({trade.aggressor_side, trade.quantity});
+        if (trade.aggressor_side == Side::Buy)
+            buy_volume += trade.quantity;
+        else
+            sell_volume += trade.quantity;
+        while (recent_trades.size() > flow_window)
+        {
+            const auto stale = recent_trades.front();
+            recent_trades.pop_front();
+            if (stale.side == Side::Buy)
+                buy_volume = buy_volume >= stale.quantity ? buy_volume - stale.quantity : 0;
+            else
+                sell_volume = sell_volume >= stale.quantity ? sell_volume - stale.quantity : 0;
+        }
+    }
+
+    std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
+                                              const TopOfBook& tob) override
+    {
+        std::vector<StrategyOrder> orders;
+        if (tob.bid_price <= 0.0 || tob.ask_price <= tob.bid_price)
+        {
+            cancel_pending = !open_orders.empty();
+            return orders;
+        }
+
+        const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        ++quote_cycle;
+        update_markouts(mid);
+        if (!open_orders.empty()) ++quote_age;
+        const bool price_changed = last_mid == 0.0 || std::abs(mid - last_mid) >= 2.0 * tick_size;
+        if (!open_orders.empty() && !price_changed && quote_age < max_quote_age) return orders;
+        if (!open_orders.empty())
+        {
+            cancel_pending = true;
+            return orders;
+        }
+
+        const int64_t inventory = position + working_exposure();
+        record_inventory(inventory);
+        if (inventory == 0 || recovery_cycles == 0) recovery_side = Side::Unknown;
+        if (recovery_cycles > 0) --recovery_cycles;
+        const double inventory_ratio = inventory_limit > 0
+                                           ? std::clamp(static_cast<double>(inventory) /
+                                                            static_cast<double>(inventory_limit),
+                                                        -1.0, 1.0)
+                                           : 0.0;
+        const double fee_offset = mid * maker_fee_rate * fee_spread_multiplier;
+        const double inventory_offset = std::abs(inventory_ratio) * base_spread;
+        const double total_flow = static_cast<double>(buy_volume + sell_volume);
+        const double trade_imbalance =
+            total_flow > 0.0
+                ? (static_cast<double>(buy_volume) - static_cast<double>(sell_volume)) /
+                      total_flow
+                : 0.0;
+        const double total_depth = static_cast<double>(tob.bid_size + tob.ask_size);
+        const double book_imbalance =
+            total_depth > 0.0
+                ? (static_cast<double>(tob.bid_size) - static_cast<double>(tob.ask_size)) /
+                      total_depth
+                : 0.0;
+        const double flow_bias = std::clamp(trade_imbalance * 0.6 + book_imbalance * 0.4,
+                                            -1.0, 1.0);
+        const double flow_offset = std::abs(flow_bias) >= 0.08 ? tick_size : 0.0;
+
+        double bid_price = mid - base_spread / 2.0 - fee_offset;
+        double ask_price = mid + base_spread / 2.0 + fee_offset;
+        if (inventory > 0)
+        {
+            bid_price -= inventory_offset * 2.0;
+            ask_price -= inventory_offset * 0.5;
+        }
+        else if (inventory < 0)
+        {
+            bid_price += inventory_offset * 0.5;
+            ask_price += inventory_offset * 2.0;
+        }
+
+        if (flow_bias > 0.0)
+            ask_price += flow_offset;
+        else if (flow_bias < 0.0)
+            bid_price -= flow_offset;
+
+        if (recovery_side == Side::Sell)
+            ask_price += fee_offset * -0.5;
+        else if (recovery_side == Side::Buy)
+            bid_price -= fee_offset * -0.5;
+
+        bid_price = std::min(tob.bid_price, round_price(bid_price));
+        ask_price = std::max(tob.ask_price, round_price(ask_price));
+        if (bid_price >= ask_price) return orders;
+
+        uint64_t buy_quantity = base_order_size;
+        uint64_t sell_quantity = base_order_size;
+        if (inventory > 0)
+        {
+            buy_quantity = scaled_quantity(inventory_limit - std::min(inventory, inventory_limit));
+            sell_quantity = base_order_size;
+        }
+        else if (inventory < 0)
+        {
+            buy_quantity = base_order_size;
+            sell_quantity = scaled_quantity(inventory_limit - std::min(-inventory, inventory_limit));
+        }
+
+        if (inventory > inventory_limit * 0.8) buy_quantity = 0;
+        if (inventory < -inventory_limit * 0.8) sell_quantity = 0;
+        if (recovery_side == Side::Buy) sell_quantity = 0;
+        if (recovery_side == Side::Sell) buy_quantity = 0;
+        if (std::abs(flow_bias) >= 0.08)
+        {
+            const double flow_reduction = std::min(0.20, std::abs(flow_bias));
+            if (flow_bias > 0.0)
+                sell_quantity = static_cast<uint64_t>(
+                    std::llround(static_cast<double>(sell_quantity) * (1.0 - flow_reduction)));
+            else
+                buy_quantity = static_cast<uint64_t>(
+                    std::llround(static_cast<double>(buy_quantity) * (1.0 - flow_reduction)));
+        }
+        if (buy_quantity > 0) orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
+        if (sell_quantity > 0) orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+
+        last_mid = mid;
+        last_bid = tob.bid_price;
+        last_ask = tob.ask_price;
+        quote_age = 0;
+        if (!orders.empty()) ++quote_count;
+        return orders;
+    }
+
+    void on_order_submitted(const StrategyOrder& order) override
+    {
+        open_orders[order.order_id] = order;
+        order_start_cycles[order.order_id] = quote_cycle;
+        submitted_quantity += order.quantity;
+        quote_age = 0;
+    }
+
+    std::vector<uint64_t> cancel_requests() override
+    {
+        if (!cancel_pending) return {};
+        std::vector<uint64_t> ids;
+        for (const auto& entry : open_orders) ids.push_back(entry.first);
+        cancel_pending = false;
+        return ids;
+    }
+
+    int64_t net_position() const override { return position; }
+    size_t working_order_count() const override { return open_orders.size(); }
+
+    StrategyMetrics metrics() const override
+    {
+        StrategyMetrics result{submitted_quantity,
+                               filled_quantity,
+                               fill_count,
+                               cancel_count,
+                               quote_count,
+                               fees_paid,
+                               captured_edge,
+                               adverse_selection,
+                               markout_count,
+                               total_quote_lifetime,
+                               max_quote_lifetime,
+                               average_abs_inventory,
+                               max_abs_inventory,
+                               inventory_sign_changes};
+        result.available = true;
+        return result;
+    }
+
+    void on_order_update(const ExecutionReport& report) override
+    {
+        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        {
+            if (report.exec_type == ExecType::Cancelled) ++cancel_count;
+            record_quote_lifetime(report.order_id);
+            open_orders.erase(report.order_id);
+            return;
+        }
+        if (report.exec_type != ExecType::Trade) return;
+        auto it = open_orders.find(report.order_id);
+        if (it == open_orders.end()) return;
+        position += report.side == exchange::Side::Buy ? static_cast<int64_t>(report.quantity)
+                                                        : -static_cast<int64_t>(report.quantity);
+        filled_quantity += report.quantity;
+        ++fill_count;
+        fees_paid += report.fee;
+        captured_edge += report.side == exchange::Side::Buy ? last_mid - report.price
+                                     : report.price - last_mid;
+        pending_markouts.push_back(
+            {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
+             quote_cycle});
+        cancel_pending = true;
+        quote_age = max_quote_age;
+        recovery_side = report.side == exchange::Side::Buy ? Side::Sell : Side::Buy;
+        recovery_cycles = recovery_horizon;
+        it->second.quantity = it->second.quantity > report.quantity
+                                  ? it->second.quantity - report.quantity
+                                  : 0;
+        if (it->second.quantity == 0) open_orders.erase(it);
+    }
+
+   private:
+    void update_markouts(double current_mid)
+    {
+        while (!pending_markouts.empty())
+        {
+            const auto& observation = pending_markouts.front();
+            if (quote_cycle < observation.start_cycle + markout_horizon) break;
+            adverse_selection += observation.side == Side::Buy
+                                     ? observation.execution_price - current_mid
+                                     : current_mid - observation.execution_price;
+            ++markout_count;
+            pending_markouts.pop_front();
+        }
+    }
+
+    void record_inventory(int64_t inventory)
+    {
+        ++inventory_samples;
+        const double absolute_inventory = static_cast<double>(std::abs(inventory));
+        average_abs_inventory +=
+            (absolute_inventory - average_abs_inventory) / static_cast<double>(inventory_samples);
+        max_abs_inventory = std::max(max_abs_inventory, std::abs(inventory));
+        const int current_sign = inventory > 0 ? 1 : inventory < 0 ? -1 : 0;
+        if (has_inventory_sign && current_sign != 0 && current_sign != inventory_sign)
+            ++inventory_sign_changes;
+        if (current_sign != 0)
+        {
+            inventory_sign = current_sign;
+            has_inventory_sign = true;
+        }
+    }
+
+    void record_quote_lifetime(uint64_t order_id)
+    {
+        const auto it = order_start_cycles.find(order_id);
+        if (it == order_start_cycles.end()) return;
+        const uint64_t lifetime = quote_cycle >= it->second ? quote_cycle - it->second : 0;
+        total_quote_lifetime += lifetime;
+        max_quote_lifetime = std::max(max_quote_lifetime, lifetime);
+        order_start_cycles.erase(it);
+    }
+
+    int64_t working_exposure() const
+    {
+        int64_t exposure = 0;
+        for (const auto& entry : open_orders)
+            exposure += entry.second.side == Side::Buy
+                            ? static_cast<int64_t>(entry.second.quantity)
+                            : -static_cast<int64_t>(entry.second.quantity);
+        return exposure;
+    }
+
+    uint64_t scaled_quantity(int64_t available) const
+    {
+        if (inventory_limit <= 0 || available <= 0) return 0;
+        return static_cast<uint64_t>(std::min<int64_t>(
+            base_order_size, std::max<int64_t>(0, available)));
+    }
+
+    double round_price(double price) const
+    {
+        return std::round(price / tick_size) * tick_size;
+    }
+};
+
 class OptimizedMarketMaker : public Strategy
 {
    public:

@@ -1,9 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <deque>
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "app/run_summary.h"
 #include "exchange/matching_engine.h"
@@ -24,6 +26,16 @@ class Pipeline
                              bool enable_print = false);
     RunSummary summary() const;
 
+    uint64_t filtered_market_trades() const
+    {
+        return filtered_market_trades_;
+    }
+
+    const ExecutionQualityMetrics& execution_quality() const
+    {
+        return execution_quality_;
+    }
+
    private:
     void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top);
 
@@ -41,4 +53,20 @@ class Pipeline
     uint64_t cancel_requests_{0};
     uint64_t trade_reports_{0};
     uint64_t trade_report_quantity_{0};
+    uint64_t filtered_market_trades_{0};
+    ExecutionQualityMetrics execution_quality_;
+    int64_t position_{0};
+    uint64_t quote_cycle_{0};
+    double last_mid_{0.0};
+    bool has_inventory_sign_{false};
+    int inventory_sign_{0};
+    uint64_t inventory_samples_{0};
+    struct FillObservation
+    {
+        Side side;
+        double price;
+        uint64_t start_cycle;
+    };
+    std::deque<FillObservation> pending_markouts_;
+    std::unordered_map<uint64_t, uint64_t> order_start_cycles_;
 };

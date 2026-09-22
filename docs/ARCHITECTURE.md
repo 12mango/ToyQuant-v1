@@ -87,8 +87,10 @@ merge. To support another vendor, implement readers for its files and add a fact
 Before dispatch, `MarketDataValidator` rejects structural errors: non-positive or non-finite
 prices, zero quantities, unknown trade sides, crossed BBO, timestamp regression, and non-increasing
 per-stream sequence numbers. Cross-stream conditions are reported rather than rejected: trades
-without a prior BBO, trades using a BBO older than one second, and trades more than 50 basis points
-from the latest BBO midpoint. Replay prints these counters in a `[DATA]` summary.
+without a prior BBO, trades using a BBO older than one second, and trades more than 5 basis points
+from the latest BBO midpoint. The replay `Pipeline` also filters trades without a usable BBO or beyond
+the 5-basis-point deviation threshold before sending them to the strategy and matching engine,
+preventing invalid alignment from creating synthetic fills.
 
 `InstrumentSpec` is shared by the market-data adapter, strategy, order book, and matching engine.
 For BTCUSDT it defines a `0.10` price tick and `1000000` integer quantity units per BTC. The replay
@@ -550,6 +552,66 @@ The table uses an initial capital of `1000.0`. It shows the core difference: `na
 `L1MarketMaker` is evaluated on the Trades+BBO replay path rather than this legacy Tick-only
 comparison. Its additional runtime measurements are useful for explaining quote safety and
 execution quality, but they are not yet folded into the offline PnL report.
+
+The replay path has four additional strategy variants. They share the same `Strategy` interface,
+instrument scale, matching engine, and fee model, so the comparison isolates decision behavior:
+
+| Strategy | Main idea | Strength | Limitation | Role in this demo |
+|---|---|---|---|---|
+| `passive_l1` | Fixed two-sided L1 quotes with basic inventory limits | Simple and easy to explain | Does not use trade flow or volatility | Passive baseline |
+| `inventory_aware_l1` | Inventory-dependent price and quantity skew | Demonstrates risk-aware quoting | Can still trade too much in a one-sided market | Inventory baseline |
+| `flow_aware_l1` | Adds recent aggressor-flow and BBO-size imbalance | Avoids some flow-against trades | Still a transitional experiment; may reduce activity too much | Flow experiment |
+| `active_l1` | Inventory-reversion-first quotes with shorter quote lifetime | More visible activity and inventory rotation | More adverse-selection and inventory risk | Active experiment |
+| `l1` | Combines inventory, volatility, flow, markout, refresh, and fee-aware spread controls | Most complete replay strategy | More mechanisms and metrics to interpret | Mainline demo strategy |
+
+`PassiveL1MarketMaker` refreshes quotes when the midpoint, BBO, or quote age changes, but its
+prices remain symmetric around the midpoint. Its inventory logic limits the risky side without
+using a forecast of short-term direction.
+
+`InventoryAwareL1MarketMaker` shifts the two quote offsets according to the signed inventory and
+reduces the risky-side quantity. It is useful for showing the difference between a neutral maker
+and one that actively controls exposure, but it does not retain a trade-flow window.
+
+`FlowAwareL1MarketMaker` keeps a quantity-weighted FIFO window of recent aggressor trades. It
+combines trade imbalance and displayed BBO imbalance using the current demo weights `0.6` and
+`0.4`. When the signal is sufficiently directional, it moves the threatened quote one tick away
+and reduces the threatened-side quantity. It is intentionally bounded: it is a learning strategy,
+not a claim of production alpha.
+
+The mainline `L1MarketMaker` retains the more mature inventory and volatility controls, then adds
+the useful flow-aware behavior as a constrained overlay. It also applies a fee-aware spread floor:
+the configured base spread is compared with a fraction of the theoretical two-sided maker-fee
+break-even spread. The current demo uses a `0.40` coverage factor, so the strategy does not treat
+the result as a production profitability guarantee. The factor is a demonstration control that
+helps make the relationship between gross PnL, fees, and net PnL visible.
+
+`ActiveL1MarketMaker` is deliberately separate from `L1MarketMaker`. It gives inventory reduction
+priority: when long, it moves the bid farther away and keeps the sell quote comparatively active;
+when short, it does the opposite. It also expires quotes sooner and uses a simpler fee-aware
+spread. This makes inventory rotation and trade activity easier to observe, but it accepts more
+adverse-selection risk. It is an experiment for studying the activity-versus-execution-quality
+trade-off, not a replacement for the defensive mainline. A fill immediately marks the quote as
+stale, so the next BBO cycle can cancel and rebuild around the updated inventory. Its benchmark
+metrics include submitted and filled quantity, quote count, captured edge, fees, average and peak
+inventory, inventory sign changes, and quote lifetime.
+
+For the current BTCUSDT replay demo, the benchmark prints `gross_pnl`, `net_pnl`, `fees`,
+`fee_ratio`, filtered market trades, filled quantity, final position, captured edge, adverse
+selection, inventory path, markout counts, and quote lifetime. These execution-quality metrics are
+computed by `Pipeline`, so simple and complex strategies share the same measurement basis. Always read gross PnL and fees together: a strategy can have
+more fills or a positive captured edge while still losing after fees.
+
+The benchmark can be run with:
+
+```bash
+./out/build/linux-debug/strategy_benchmark \
+    data/v2/test_aggTrades_5k.csv \
+    data/v2/test_bookTicker_5k.csv BTCUSDT 1000000
+```
+
+The benchmark is an educational replay, not a live-trading validation. Its results depend on the
+selected replay window, displayed BBO liquidity, fee assumptions, and the quality of the paired
+Trades+BBO data.
 
 ## 7. Backtest and Performance Metrics
 

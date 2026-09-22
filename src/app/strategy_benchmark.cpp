@@ -40,15 +40,24 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
                                                             double l1_risk_threshold,
                                                             double l1_stress_spread_multiplier,
                                                             double l1_minimum_stress_quantity_ratio,
-                                                            double l1_fee_spread_multiplier)
+                                                            double l1_fee_spread_multiplier,
+                                                            const std::string& timeline_path)
 {
     if (symbol.empty()) throw std::invalid_argument("benchmark symbol cannot be empty");
 
     const InstrumentSpec instrument = btc_usdt_spec(quantity_scale);
     const std::vector<std::string> names = {"passive_l1", "inventory_aware_l1",
-                                            "flow_aware_l1", "l1"};
+                                            "flow_aware_l1", "active_l1", "l1"};
     std::vector<StrategyBenchmarkResult> results;
     results.reserve(names.size());
+    std::ofstream timeline;
+    if (!timeline_path.empty())
+    {
+        timeline.open(timeline_path);
+        if (!timeline) throw std::runtime_error("failed to open benchmark timeline: " + timeline_path);
+        timeline << "strategy,hour,ts,orders,fills,filled_qty,position,gross_pnl,net_pnl,fees,"
+                    "filtered,edge,markout,avg_inv,max_inv,inv_flip\n";
+    }
 
     for (const auto& name : names)
     {
@@ -77,16 +86,58 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio, logger);
 
         double final_mid = 0.0;
+        uint64_t last_event_ts = 0;
+        uint64_t replay_start_ts = 0;
+        uint64_t next_timeline_ts = 0;
+        uint64_t timeline_hour = 0;
+        auto write_timeline = [&](uint64_t ts)
+        {
+            if (!timeline || replay_start_ts == 0) return;
+            portfolio.mark_to_market({{symbol, final_mid}});
+            const auto snapshot = pipeline.summary();
+            const auto& quality = snapshot.execution_quality;
+            const double gross = snapshot.portfolio.realized_pnl + snapshot.portfolio.fees_paid +
+                                 snapshot.portfolio.unrealized_pnl;
+            timeline << name << ',' << timeline_hour << ',' << ts << ','
+                     << snapshot.submitted_orders << ',' << snapshot.trade_reports << ','
+                     << snapshot.trade_report_quantity << ',' << strategy->net_position() << ','
+                     << gross << ',' << snapshot.portfolio.equity - 1000.0 << ','
+                     << snapshot.portfolio.fees_paid << ',' << snapshot.filtered_market_trades << ','
+                     << quality.captured_edge << ',' << quality.adverse_selection << ','
+                     << quality.average_abs_inventory << ',' << quality.max_abs_inventory << ','
+                     << quality.inventory_sign_changes << '\n';
+        };
         ReplayFeed feed(make_market_data_readers("binance", trades_path, quotes_path, instrument),
                        [&](const MarketEvent& event)
                        {
+                           const uint64_t ts = std::visit(
+                               [](const auto& value) { return value.ts; }, event);
+                           last_event_ts = ts;
+                           if (replay_start_ts == 0)
+                           {
+                               replay_start_ts = ts;
+                               next_timeline_ts = ts + 60ULL * 60ULL * 1000ULL;
+                           }
                            if (const auto* quote = std::get_if<BboQuote>(&event))
+                           {
+                               while (timeline && ts >= next_timeline_ts)
+                               {
+                                   write_timeline(next_timeline_ts);
+                                   ++timeline_hour;
+                                   next_timeline_ts += 60ULL * 60ULL * 1000ULL;
+                               }
                                final_mid = (quote->bid_price + quote->ask_price) / 2.0;
+                           }
                            pipeline.process_event(event);
                        },
                        0);
         feed.run();
         if (final_mid > 0.0) portfolio.mark_to_market({{symbol, final_mid}});
+        if (timeline && replay_start_ts != 0)
+        {
+            ++timeline_hour;
+            write_timeline(last_event_ts);
+        }
         const auto summary = pipeline.summary();
         const auto& validation = feed.validation_summary();
         StrategyBenchmarkResult result;
@@ -95,13 +146,30 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         result.submitted_quantity = summary.submitted_quantity;
         result.trade_reports = summary.trade_reports;
         result.filled_quantity = summary.trade_report_quantity;
+        result.filtered_market_trades = summary.filtered_market_trades;
         result.cancel_requests = summary.cancel_requests;
         result.net_position = strategy->net_position();
         result.fill_rate = summary.fill_rate;
         result.cancel_rate = summary.cancel_rate;
         result.realized_pnl = summary.portfolio.realized_pnl;
         result.equity = summary.portfolio.equity;
+        result.gross_pnl = summary.portfolio.realized_pnl + summary.portfolio.fees_paid +
+                   summary.portfolio.unrealized_pnl;
         result.fees_paid = summary.portfolio.fees_paid;
+        result.fee_ratio = std::abs(result.gross_pnl) > 1e-12
+                       ? result.fees_paid / std::abs(result.gross_pnl)
+                       : 0.0;
+        result.maker_trade_count = summary.portfolio.maker_trade_count;
+        result.taker_trade_count = summary.portfolio.taker_trade_count;
+        const auto& quality = summary.execution_quality;
+        result.captured_edge = quality.captured_edge;
+        result.adverse_selection = quality.adverse_selection;
+        result.average_abs_inventory = quality.average_abs_inventory;
+        result.max_abs_inventory = quality.max_abs_inventory;
+        result.inventory_sign_changes = quality.inventory_sign_changes;
+        result.markout_count = quality.markout_count;
+        result.total_quote_lifetime = quality.total_quote_lifetime;
+        result.max_quote_lifetime = quality.max_quote_lifetime;
         result.working_orders = summary.working_orders;
         result.stale_trades = validation.stale_trades;
         result.dislocated_trades = validation.dislocated_trades;

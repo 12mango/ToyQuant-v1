@@ -30,6 +30,17 @@ int main()
     assert(flow_aware_l1 != nullptr);
     assert(dynamic_cast<FlowAwareL1MarketMaker*>(flow_aware_l1.get()) != nullptr);
 
+    auto active_l1 = make_strategy("active_l1", &instrument);
+    assert(active_l1 != nullptr);
+    assert(dynamic_cast<ActiveL1MarketMaker*>(active_l1.get()) != nullptr);
+
+    ActiveL1MarketMaker active_inventory_strategy(100, 0.2, 1000, 0.1);
+    active_inventory_strategy.position = 900;
+    const auto active_orders =
+        active_inventory_strategy.on_top_of_book("BTCUSDT", TopOfBook{100.0, 100, 100.1, 100});
+    assert(quantity_for_side(active_orders, Side::Buy) == 0);
+    assert(quantity_for_side(active_orders, Side::Sell) > 0);
+
     InventoryAwareL1MarketMaker long_inventory_l1(100, 0.00003,
                                                  static_cast<int64_t>(instrument.quantity_scale / 10),
                                                  instrument.tick_size);

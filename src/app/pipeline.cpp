@@ -1,5 +1,6 @@
 #include "pipeline.h"
 
+#include <cmath>
 #include <type_traits>
 
 #include "backtest/performance.h"
@@ -63,6 +64,32 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
         [this](const ExecutionReport& report)
         {
             if (report.owner == "MarketMaker") portfolio_.apply(report);
+            if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
+            {
+                position_ += report.side == exchange::Side::Buy
+                                 ? static_cast<int64_t>(report.quantity)
+                                 : -static_cast<int64_t>(report.quantity);
+                execution_quality_.captured_edge +=
+                    report.side == exchange::Side::Buy ? last_mid_ - report.price
+                                                       : report.price - last_mid_;
+                pending_markouts_.push_back(
+                    {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
+                     quote_cycle_});
+            }
+            if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+            {
+                const auto start = order_start_cycles_.find(report.order_id);
+                if (start != order_start_cycles_.end())
+                {
+                    const uint64_t lifetime = quote_cycle_ >= start->second
+                                                  ? quote_cycle_ - start->second
+                                                  : 0;
+                    execution_quality_.total_quote_lifetime += lifetime;
+                    execution_quality_.max_quote_lifetime =
+                        std::max(execution_quality_.max_quote_lifetime, lifetime);
+                    order_start_cycles_.erase(start);
+                }
+            }
             strategy_.on_order_update(report);
             if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
             {
@@ -82,8 +109,20 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
             if constexpr (std::is_same_v<Event, MarketTrade>)
             {
                 const auto quote_it = latest_quotes_.find(value.symbol);
-                strategy_.on_market_trade(
-                    value, quote_it == latest_quotes_.end() ? nullptr : &quote_it->second);
+                if (quote_it == latest_quotes_.end())
+                {
+                    ++filtered_market_trades_;
+                    return;
+                }
+                const BboQuote& quote = quote_it->second;
+                const double mid = (quote.bid_price + quote.ask_price) / 2.0;
+                const double deviation_bps = std::abs(value.price - mid) / mid * 10000.0;
+                if (deviation_bps > 5.0)
+                {
+                    ++filtered_market_trades_;
+                    return;
+                }
+                strategy_.on_market_trade(value, &quote);
                 engine_.process_market_trade(value);
             }
             else
@@ -92,6 +131,25 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
                 order_book_.on_bbo(value);
                 engine_.process_bbo(value);
                 const auto top = order_book_.market_top(value.symbol);
+                last_mid_ = (value.bid_price + value.ask_price) / 2.0;
+                ++quote_cycle_;
+                while (!pending_markouts_.empty() &&
+                       quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
+                {
+                    const auto observation = pending_markouts_.front();
+                    pending_markouts_.pop_front();
+                    execution_quality_.adverse_selection +=
+                        observation.side == Side::Buy ? observation.price - last_mid_
+                                                      : last_mid_ - observation.price;
+                    ++execution_quality_.markout_count;
+                }
+                const double abs_inventory = static_cast<double>(std::abs(position_));
+                ++inventory_samples_;
+                execution_quality_.average_abs_inventory +=
+                    (abs_inventory - execution_quality_.average_abs_inventory) /
+                    static_cast<double>(inventory_samples_);
+                execution_quality_.max_abs_inventory =
+                    std::max(execution_quality_.max_abs_inventory, std::abs(position_));
                 process_top_of_book(value.symbol, value.ts, top, enable_print);
             }
         },
@@ -114,11 +172,13 @@ RunSummary Pipeline::summary() const
             .cancel_requests = cancel_requests_,
             .trade_reports = trade_reports_,
             .trade_report_quantity = trade_report_quantity_,
+            .filtered_market_trades = filtered_market_trades_,
             .fill_rate = metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_),
             .cancel_rate = metrics::compute_cancel_rate(submitted_orders_, cancel_requests_),
             .working_orders = strategy_.working_order_count(),
             .portfolio = portfolio_.metrics(),
-            .strategy = strategy_.metrics()};
+            .strategy = strategy_.metrics(),
+            .execution_quality = execution_quality_};
 }
 
 void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top)
@@ -139,6 +199,7 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts, c
         submitted_quantity_ += order.quantity;
         write_order_csv_row(orders_out_, ts, order);
         strategy_.on_order_submitted(order);
+        order_start_cycles_[order.order_id] = quote_cycle_;
         engine_.send_order(exchange_order);
     }
 }

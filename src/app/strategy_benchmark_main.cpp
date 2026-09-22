@@ -32,6 +32,8 @@ int main(int argc, char** argv)
     if (argc >= 13) l1_stress_spread_multiplier = std::stod(argv[12]);
     if (argc >= 14) l1_minimum_stress_quantity_ratio = std::stod(argv[13]);
     if (argc >= 15) l1_fee_spread_multiplier = std::stod(argv[14]);
+    std::string timeline_path;
+    if (argc >= 16) timeline_path = argv[15];
 
     try
     {
@@ -39,19 +41,28 @@ int main(int argc, char** argv)
             run_strategy_benchmark(trades_path, quotes_path, symbol, quantity_scale, flow_config,
                                    l1_risk_threshold, l1_stress_spread_multiplier,
                                    l1_minimum_stress_quantity_ratio,
-                                   l1_fee_spread_multiplier);
+                                   l1_fee_spread_multiplier, timeline_path);
         std::cout << std::left << std::setw(20) << "strategy" << std::setw(12) << "orders"
                   << std::setw(12) << "filled_qty" << std::setw(10) << "fills"
-                  << std::setw(12) << "position" << std::setw(14) << "net_pnl"
-                  << std::setw(12) << "fees" << '\n';
+                  << std::setw(12) << "filtered" 
+                  << std::setw(12) << "position" << std::setw(14) << "gross_pnl"
+                  << std::setw(14) << "net_pnl" << std::setw(12) << "fees"
+                      << std::setw(12) << "fee_ratio" << std::setw(14) << "edge"
+                      << std::setw(14) << "markout" << std::setw(12) << "avg_inv"
+                      << std::setw(12) << "max_inv" << std::setw(10) << "inv_flip" << '\n';
         for (const auto& r : results)
         {
             std::cout << std::left << std::setw(20) << r.strategy_name << std::setw(12)
                       << r.submitted_orders << std::setw(12) << r.filled_quantity << std::setw(10)
-                      << r.trade_reports << std::setw(12) << r.net_position << std::setw(14)
+                      << r.trade_reports << std::setw(12) << r.filtered_market_trades
+                      << std::setw(12) << r.net_position << std::setw(14)
+                      << std::fixed << std::setprecision(6) << r.gross_pnl << std::setw(14)
                       << std::fixed << std::setprecision(6) << r.equity - 1000.0 << std::setw(12)
-                      << std::fixed << std::setprecision(6)
-                      << r.fees_paid << '\n';
+                          << std::fixed << std::setprecision(6) << r.fees_paid << std::setw(12)
+                          << r.fee_ratio << std::setw(14) << r.captured_edge << std::setw(14)
+                          << r.adverse_selection << std::setw(12) << r.average_abs_inventory
+                          << std::setw(12) << r.max_abs_inventory << std::setw(10)
+                          << r.inventory_sign_changes << '\n';
         }
         std::cerr << "flow_config trade_weight=" << flow_config.trade_weight
                   << " book_weight=" << flow_config.book_weight

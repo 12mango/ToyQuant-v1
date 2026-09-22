@@ -105,6 +105,72 @@ Use `l1` when you want the BBO-aware strategy:
   BTCUSDT 0 l1 1000000
 ```
 
+### Replay strategy choices
+
+The replay command accepts these strategy names:
+
+| Name | Use when you want to demonstrate |
+|---|---|
+| `passive_l1` | A simple passive two-sided L1 baseline |
+| `inventory_aware_l1` | Inventory-sensitive prices and quantities |
+| `flow_aware_l1` | Recent trade-flow and BBO imbalance response |
+| `l1` | The complete replay-oriented strategy and default mainline comparison |
+
+For a side-by-side replay comparison, use the benchmark target:
+
+```bash
+./out/build/linux-debug/strategy_benchmark \
+  data/v2/test_aggTrades_5k.csv \
+  data/v2/test_bookTicker_5k.csv BTCUSDT 1000000
+```
+
+To keep one continuous strategy state while recording hourly checkpoints, append the optional
+timeline path after the parameter list:
+
+```bash
+./out/build/linux-debug/strategy_benchmark \
+  data/v2/BTCUSDT-aggTrades-2024-03-30.csv \
+  data/v2/BTCUSDT-bookTicker-2024-03-30.csv BTCUSDT 1000000 \
+  0.6 0.4 0.06 0.08 0.20 1 0.60 2.5 0.10 0.40 \
+  reports/strategy_timeline.csv
+```
+
+The timeline keeps the replay state continuous and records cumulative hourly orders, fills,
+position, gross/net PnL, fees, filtered trades, markout, and inventory metrics. The existing
+window tool resets state per window and remains useful for comparing market phases; it is not a
+replacement for this continuous timeline.
+
+### Current demo status
+
+The replay demo is complete for strategy comparison and learning. The current roles are:
+
+- `l1`: defensive mainline with inventory, flow, volatility, fee-aware spread, and execution-quality metrics;
+- `active_l1`: separate higher-activity experiment focused on inventory rotation;
+- `flow_aware_l1`: bounded order-flow experiment and comparison baseline;
+- `passive_l1` and `inventory_aware_l1`: simple reference baselines.
+
+Replay trades without a usable BBO, or with a price more than 5 bps from the latest BBO midpoint,
+are counted as `filtered` and are not sent to matching. This keeps data-alignment problems from
+creating synthetic fills. A high filtered count is still a data-quality warning: it does not mean
+the source file has been repaired.
+
+For final comparisons, read `gross_pnl`, `fees`, and `net_pnl` together with `markout`, inventory,
+and filtered-trade counts. The result is an educational replay measurement, not a claim of live
+profitability.
+
+The benchmark reports submitted orders, filled quantity, final position, gross PnL, fees, net
+PnL, and fee ratio. It also records unified execution-quality diagnostics for every replay strategy:
+captured edge, adverse selection, inventory, markouts, and quote lifetime. `net_pnl` is the primary
+result for cost-aware comparisons;
+`gross_pnl` and `fees` explain why it changed.
+
+The five replay strategies are intentionally different teaching baselines, not five production
+algorithms. `l1` is the mainline strategy; `flow_aware_l1` is an experimental transition strategy
+whose useful bounded behavior has partly been incorporated into `l1`. `active_l1` is a separate
+experiment that produces more observable activity and inventory rotation while accepting more
+adverse-selection risk. After a fill it rebuilds quotes around the new inventory on the next BBO
+cycle, making the inventory-reversion behavior visible in the benchmark diagnostics.
+
 ## Scenarios
 
 Scenarios are CSV files containing synthetic market ticks. They make it easy to run the same

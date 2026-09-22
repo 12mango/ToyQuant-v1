@@ -45,7 +45,7 @@ void print_usage(const char* executable)
     std::cerr << "   or: " << executable
               << " replay <agg_trades_csv> <bbo_csv> <symbol> [ms_delay] [strategy] "
                  "[quantity_scale]\n";
-    std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1\n";
+    std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -128,9 +128,10 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
 
     if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive" &&
         cfg.strategy_name != "l1" && cfg.strategy_name != "passive_l1" &&
-        cfg.strategy_name != "inventory_aware_l1" && cfg.strategy_name != "flow_aware_l1")
+        cfg.strategy_name != "inventory_aware_l1" && cfg.strategy_name != "flow_aware_l1" &&
+        cfg.strategy_name != "active_l1")
     {
-        error = "strategy must be 'optimized', 'naive', 'l1', 'passive_l1', 'inventory_aware_l1', or 'flow_aware_l1'";
+        error = "strategy must be 'optimized', 'naive', 'l1', 'passive_l1', 'inventory_aware_l1', 'flow_aware_l1', or 'active_l1'";
         return false;
     }
 

@@ -25,6 +25,7 @@ int main()
     const auto temp = std::filesystem::temp_directory_path();
     const auto trades_path = temp / "toy_quant_flow_signal_trades.csv";
     const auto quotes_path = temp / "toy_quant_flow_signal_quotes.csv";
+    const auto timeline_path = temp / "toy_quant_flow_signal_timeline.csv";
     std::ofstream trades(trades_path);
     std::ofstream quotes(quotes_path);
     assert(trades && quotes);
@@ -72,8 +73,9 @@ int main()
     trades.close();
     quotes.close();
 
-    const auto results =
-        run_strategy_benchmark(trades_path.string(), quotes_path.string(), "BTCUSDT", 1000000);
+    const auto results = run_strategy_benchmark(trades_path.string(), quotes_path.string(),
+                                                "BTCUSDT", 1000000, {}, 0.60, 2.5, 0.10,
+                                                0.40, timeline_path.string());
     const auto& inventory = find_result(results, "inventory_aware_l1");
     const auto& flow = find_result(results, "flow_aware_l1");
 
@@ -82,4 +84,14 @@ int main()
     assert(flow.fees_paid < inventory.fees_paid);
     assert(std::abs(flow.net_position) < std::abs(inventory.net_position));
     assert(flow.equity > inventory.equity);
+    assert(inventory.markout_count > 0);
+    assert(inventory.average_abs_inventory >= 0.0);
+    assert(flow.captured_edge != 0.0);
+
+    std::ifstream timeline(timeline_path);
+    std::string header;
+    std::string first_record;
+    assert(timeline && std::getline(timeline, header) && std::getline(timeline, first_record));
+    assert(header.find("strategy,hour,ts") == 0);
+    assert(first_record.find("passive_l1,") == 0);
 }

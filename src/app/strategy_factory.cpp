@@ -33,6 +33,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     if (strategy_name == "flow_aware_l1")
         return std::make_unique<FlowAwareL1MarketMaker>(order_size, spread, inventory_limit,
                                                        tick_size, 20, 0.5, flow_config);
+    if (strategy_name == "active_l1")
+        return std::make_unique<ActiveL1MarketMaker>(order_size, spread, inventory_limit,
+                                                     tick_size);
     if (strategy_name == "l1")
     {
         L1MarketMakerConfig config;

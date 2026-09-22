@@ -60,6 +60,11 @@ data/trades.csv
 data/runtime/*
 !data/runtime/.gitkeep
 
+# Large Binance replay datasets; keep the small test_* fixtures tracked.
+data/v2/BTCUSDT-aggTrades-*.csv
+data/v2/BTCUSDT-bookTicker-*.csv
+data/v2/*.csv:Zone.Identifier
+
 # Visualization reports: keep the README example image and ignore other outputs
 reports/*
 !reports/synthetic_ticks_optimized.png
