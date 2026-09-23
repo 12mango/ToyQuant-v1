@@ -24,6 +24,8 @@ class Pipeline
     void process_event(const MarketEvent& event, bool enable_print = false);
     void process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top,
                              bool enable_print = false);
+    void process_l2_market_view(const L2MarketView& view, bool enable_print = false);
+    void process_l2_market_trade(const MarketTrade& trade);
     RunSummary summary() const;
 
     uint64_t filtered_market_trades() const
@@ -38,6 +40,8 @@ class Pipeline
 
    private:
     void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top);
+    void submit_strategy_actions(const std::string& symbol, uint64_t ts,
+                                 std::vector<StrategyOrder> orders);
 
     std::ofstream& orders_out_;
     std::ofstream& trades_out_;
@@ -47,6 +51,7 @@ class Pipeline
     Portfolio& portfolio_;
     Logger& logger_;
     std::unordered_map<std::string, BboQuote> latest_quotes_;
+    std::string market_exchange_;
     std::atomic<uint64_t> next_order_id_{1};
     uint64_t submitted_orders_{0};
     uint64_t submitted_quantity_{0};

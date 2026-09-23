@@ -38,14 +38,15 @@ The same input and parameters produce deterministic runtime CSV output for this 
  Legacy CSV ──╮
  Legacy UDP ──┼─► Tick adapter ─► Pipeline ─► Strategy ─► Matching Engine
  Binance replay ─► MarketEvent ──╯                              │
+ Deribit L2 replay ─► L2OrderBook ─► L2MarketView ──────────────╯
                                                                ▼
                                              orders.csv / trades.csv
                                                                │
                                              backtest_main ─► PnL · equity · drawdown
 ```
 
-- **Three current modes** — legacy CSV scenarios, legacy UDP ticks, and Binance Trade+BBO replay.
-- **Three market-making strategies** — `naive`, `optimized`, and `l1` behind a common interface.
+- **Four current modes** — legacy CSV scenarios, legacy UDP ticks, Binance Trade+BBO replay, and Deribit L2 trade+depth replay.
+- **L2 strategy variants** — `l2_baseline`, `l2_depth`, `l2_micro`, and `l2_flow` separate simple baseline, depth, micro-price, and trade-flow experiments behind the same execution lifecycle.
 - **One v2 event path** — Binance replay uses `MarketEvent`; CSV and UDP remain compatibility inputs for the older `Tick` model.
 - **Price–time priority matching** with self-trade prevention and partial fills.
 - **Stateful execution reports** — position and working orders update from trade, cancel, and fill events.
@@ -82,6 +83,17 @@ python3 tools/udp_sender.py --port 9000
   data/v2/test_aggTrades_5k.csv \
   data/v2/test_bookTicker_5k.csv \
   BTCUSDT 0 optimized 1000000
+```
+
+**Replay Deribit L2 trades and snapshots** (slice the large snapshot first):
+
+```bash
+python3 tools/slice_l2_snapshot.py \
+  data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  /tmp/deribit_depth.csv --start-ts 1585699200000000 --every 5 --max-rows 300
+./out/build/linux-debug/toy_quant l2_replay \
+  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  /tmp/deribit_depth.csv BTC-PERPETUAL 0 l2_flow 1
 ```
 
 **Analyze legacy generated order and trade records**:

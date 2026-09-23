@@ -7,7 +7,8 @@ enum class AppMode
 {
     LegacyCsv,
     LegacyUdp,
-    Replay
+    Replay,
+    L2Replay
 };
 
 struct AppConfig

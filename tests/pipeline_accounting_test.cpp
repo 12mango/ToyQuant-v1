@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <fstream>
+#include <stdexcept>
 
 #include "accounting/portfolio.h"
 #include "app/pipeline.h"
@@ -23,8 +24,8 @@ int main()
     Logger logger;
     Pipeline pipeline(orders, trades, order_book, strategy, engine, portfolio, logger);
 
-    pipeline.process_event(BboQuote{1, "TEST", 99.0, 100, 101.0, 100, 1});
-    pipeline.process_event(MarketTrade{2, "TEST", 100.0, 10, Side::Sell, 2});
+    pipeline.process_event(BboQuote{1, "TEST", 99.0, 100, 101.0, 100, 1, "binance"});
+    pipeline.process_event(MarketTrade{2, "TEST", 100.0, 10, Side::Sell, 2, "binance"});
 
     const auto* position = portfolio.find_position("TEST");
     const auto metrics = portfolio.metrics();
@@ -36,7 +37,27 @@ int main()
     assert(pipeline.summary().trade_reports == 1);
 
     Pipeline filtered_pipeline(orders, trades, order_book, strategy, engine, portfolio, logger);
-    filtered_pipeline.process_event(MarketTrade{3, "TEST", 110.0, 10, Side::Sell, 3});
+    filtered_pipeline.process_event(MarketTrade{3, "TEST", 110.0, 10, Side::Sell, 3, "binance"});
     assert(filtered_pipeline.summary().trade_reports == 0);
     assert(filtered_pipeline.summary().filtered_market_trades == 1);
+
+    Pipeline isolated_pipeline(orders, trades, order_book, strategy, engine, portfolio, logger);
+    isolated_pipeline.process_event(BboQuote{4, "TEST", 99.0, 100, 101.0, 100, 4, "binance"});
+    bool rejected_mixed_exchange = false;
+    try
+    {
+        isolated_pipeline.process_event(MarketDepthSnapshot{
+            .ts = 5,
+            .symbol = "BTC-PERPETUAL",
+            .sequence = 1,
+            .bids = {{100.0, 1}},
+            .asks = {{101.0, 1}},
+            .exchange = "deribit",
+        });
+    }
+    catch (const std::invalid_argument&)
+    {
+        rejected_mixed_exchange = true;
+    }
+    assert(rejected_mixed_exchange);
 }

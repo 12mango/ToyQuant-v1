@@ -37,6 +37,7 @@ set(COMMON_SOURCES
     src/market/csv_feed.cpp
     src/market/market_data_adapter.cpp
     src/market/market_data_validator.cpp
+    src/market/l2_replay_feed.cpp
     src/market/replay_feed.cpp
     src/legacy/tick_csv_parser.cpp
     src/backtest/performance.cpp
@@ -47,18 +48,22 @@ set(COMMON_SOURCES
 
 # Cross-platform threading library.
 find_package(Threads REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # ==================== toy_quant Executable ====================
 add_executable(toy_quant src/main.cpp src/app/app_config.cpp src/app/application.cpp
-    src/app/pipeline.cpp src/app/strategy_factory.cpp src/market/udp_feed.cpp ${COMMON_SOURCES})
+    src/app/pipeline.cpp src/app/strategy_factory.cpp src/market/udp_feed.cpp
+    src/orderbook/l2_orderbook.cpp ${COMMON_SOURCES})
 target_include_directories(toy_quant PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(toy_quant PRIVATE Threads::Threads)
+target_link_libraries(toy_quant PRIVATE ZLIB::ZLIB)
 set_target_properties(toy_quant PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ==================== backtest_main Executable ====================
 add_executable(backtest_main src/backtest/backtest_main.cpp src/backtest/backtest_driver.cpp ${COMMON_SOURCES})
 target_include_directories(backtest_main PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(backtest_main PRIVATE Threads::Threads)
+target_link_libraries(backtest_main PRIVATE ZLIB::ZLIB)
 set_target_properties(backtest_main PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ==================== Strategy benchmark ====================
@@ -66,6 +71,7 @@ add_executable(strategy_benchmark src/app/strategy_benchmark_main.cpp
     src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/strategy_factory.cpp ${COMMON_SOURCES})
 target_include_directories(strategy_benchmark PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(strategy_benchmark PRIVATE Threads::Threads)
+target_link_libraries(strategy_benchmark PRIVATE ZLIB::ZLIB)
 set_target_properties(strategy_benchmark PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ==================== Tests ====================
@@ -79,8 +85,24 @@ add_executable(orderbook_state_test tests/orderbook_state_test.cpp src/orderbook
 target_include_directories(orderbook_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME orderbook_state_test COMMAND orderbook_state_test)
 
+add_executable(l2_orderbook_test tests/l2_orderbook_test.cpp src/orderbook/l2_orderbook.cpp)
+target_include_directories(l2_orderbook_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME l2_orderbook_test COMMAND l2_orderbook_test)
+
+add_executable(l2_strategy_test tests/l2_strategy_test.cpp src/orderbook/l2_orderbook.cpp)
+target_include_directories(l2_strategy_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME l2_strategy_test COMMAND l2_strategy_test)
+
+add_executable(l2_replay_test tests/l2_replay_test.cpp
+    src/market/market_data_adapter.cpp src/market/market_data_validator.cpp
+    src/market/l2_replay_feed.cpp)
+target_include_directories(l2_replay_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(l2_replay_test PRIVATE ZLIB::ZLIB)
+add_test(NAME l2_replay_test COMMAND l2_replay_test)
+
 add_executable(matching_engine_test tests/matching_engine_test.cpp ${COMMON_SOURCES})
 target_include_directories(matching_engine_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(matching_engine_test PRIVATE ZLIB::ZLIB)
 add_test(NAME matching_engine_test COMMAND matching_engine_test)
 
 add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp src/legacy/tick_csv_parser.cpp)
@@ -91,6 +113,7 @@ add_executable(market_data_adapter_test tests/market_data_adapter_test.cpp
     src/market/market_data_adapter.cpp src/market/market_data_validator.cpp
     src/market/replay_feed.cpp)
 target_include_directories(market_data_adapter_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(market_data_adapter_test PRIVATE ZLIB::ZLIB)
 add_test(NAME market_data_adapter_test COMMAND market_data_adapter_test)
 
 add_executable(performance_test tests/performance_test.cpp src/backtest/performance.cpp)
@@ -104,10 +127,12 @@ add_test(NAME portfolio_test COMMAND portfolio_test)
 add_executable(pipeline_accounting_test tests/pipeline_accounting_test.cpp
     src/app/pipeline.cpp ${COMMON_SOURCES})
 target_include_directories(pipeline_accounting_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(pipeline_accounting_test PRIVATE ZLIB::ZLIB)
 add_test(NAME pipeline_accounting_test COMMAND pipeline_accounting_test)
 
 add_executable(strategy_benchmark_test tests/strategy_benchmark_test.cpp
     src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/strategy_factory.cpp
     ${COMMON_SOURCES})
 target_include_directories(strategy_benchmark_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(strategy_benchmark_test PRIVATE ZLIB::ZLIB)
 add_test(NAME strategy_benchmark_test COMMAND strategy_benchmark_test)

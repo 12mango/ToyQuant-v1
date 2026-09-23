@@ -17,6 +17,7 @@ struct MarketDataValidationSummary
     uint64_t events{};
     uint64_t trades{};
     uint64_t quotes{};
+    uint64_t depth_snapshots{};
     uint64_t trades_without_bbo{};
     uint64_t stale_trades{};
     uint64_t dislocated_trades{};
@@ -50,6 +51,7 @@ class MarketDataValidator
 
     void validate_trade(const MarketTrade& trade);
     void validate_quote(const BboQuote& quote);
+    void validate_depth_snapshot(const MarketDepthSnapshot& snapshot);
     static void validate_ordering(StreamState& state, uint64_t timestamp, uint64_t sequence,
                                   const std::string& stream_name);
 
@@ -59,5 +61,6 @@ class MarketDataValidator
     bool has_merged_timestamp_{false};
     std::unordered_map<std::string, StreamState> trade_streams_;
     std::unordered_map<std::string, StreamState> quote_streams_;
+    std::unordered_map<std::string, StreamState> depth_streams_;
     std::unordered_map<std::string, BboQuote> latest_quotes_;
 };

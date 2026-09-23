@@ -10,7 +10,7 @@ flowchart LR
     UDP[UdpFeed\nUDP packets] --> T
     T --> LT[legacy::TickPipeline]
     BA[Market data adapter\nBinance or future formats] --> RF[ReplayFeed\ntime merge]
-    RF --> MEV[MarketEvent\nTrade or BBO]
+    RF --> MEV[MarketEvent\nTrade, BBO, or L2 snapshot]
     LT --> P[Pipeline::process_legacy_tick]
     MEV --> PE[Pipeline::process_event]
     PE --> OB
@@ -45,7 +45,7 @@ The source map is:
 | Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
 | Market replay | `src/market/market_data_adapter.*`, `replay_feed.*` | `IMarketEventReader`, `ReplayFeed::run` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
-| Market view | `src/orderbook/orderbook.*` | `TopOfBook`, `OrderBook::market_top` |
+| Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
 | Strategy | `src/strategy/strategy.h`, `market_maker.h` | `Strategy`, three market makers |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
@@ -73,16 +73,22 @@ using TickCallback = std::function<void(const Tick&)>;
 }
 ```
 
-The legacy CSV and UDP paths retain this contract. Trades+BBO replay uses a richer boundary:
+The legacy CSV and UDP paths retain this contract. Trades+BBO replay and L2 snapshot input use a
+richer boundary:
 
 ```cpp
-using MarketEvent = std::variant<MarketTrade, BboQuote>;
+using MarketEvent = std::variant<MarketTrade, BboQuote, MarketDepthSnapshot>;
 ```
 
 `IMarketEventReader` isolates vendor schemas from replay. The Binance readers map aggregate trades
 and book ticker rows into these domain events; `ReplayFeed` only performs streaming timestamp
 merge. To support another vendor, implement readers for its files and add a factory branch in
 `make_market_data_readers` without changing `Pipeline`, the strategy, or matching code.
+
+Each v2 event carries an optional `exchange` identity. Binance L1 readers set it to `binance`,
+while the Deribit L2 snapshot reader preserves the source column. `Pipeline` locks to the first
+non-empty exchange and rejects later events from another exchange. This prevents Binance `BTCUSDT`
+L1 parameters from being silently combined with Deribit `BTC-PERPETUAL` L2 data.
 
 Before dispatch, `MarketDataValidator` rejects structural errors: non-positive or non-finite
 prices, zero quantities, unknown trade sides, crossed BBO, timestamp regression, and non-increasing
@@ -105,6 +111,12 @@ and drive matching. External Tick/BBO state is stored separately from local stra
 `market_top()` exposes only venue prices through `IOrderBook`. Strategy orders are owned only by
 `MatchingEngine`; there is intentionally no local or combined view in `OrderBook`, so strategy code
 cannot accidentally include its own orders in the market reference.
+
+`L2OrderBook` is a separate multi-level view for `MarketDepthSnapshot` events. It replaces the
+snapshot atomically, validates ordering and sequence, and can derive a `TopOfBook`; it does not
+modify the existing L1 `OrderBook` or invoke the current strategy. A future depth-aware strategy
+must receive an explicit market view after venue and instrument validation, rather than consuming
+raw vendor rows or combining Binance L1 with Deribit L2.
 
 The matching engine also retains the latest BBO liquidity for aggressive strategy orders. A buy
 limit at or above the best ask executes at the ask; a sell limit at or below the best bid executes

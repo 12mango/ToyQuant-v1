@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <vector>
 
@@ -28,6 +29,7 @@ int main()
     assert(trade.price > 0.0);
     assert(trade.quantity > 0);
     assert(trade.aggressor_side == Side::Buy || trade.aggressor_side == Side::Sell);
+    assert(trade.exchange == "binance");
 
     assert(readers.quotes->next(event));
     const auto& quote = std::get<BboQuote>(event);
@@ -36,6 +38,7 @@ int main()
     assert(quote.ask_price > quote.bid_price);
     assert(quote.bid_quantity > 0);
     assert(quote.ask_quantity > 0);
+    assert(quote.exchange == "binance");
 
     std::vector<uint64_t> timestamps;
     ReplayFeed feed(
@@ -81,4 +84,46 @@ int main()
         rejected_sequence_regression = true;
     }
     assert(rejected_sequence_regression);
+
+    const auto snapshot_path = std::filesystem::temp_directory_path() / "toy_quant_depth_snapshot.csv";
+    {
+        std::ofstream output(snapshot_path);
+        output << "exchange,symbol,timestamp,asks[0].price,asks[0].amount,bids[0].price,bids[0].amount,"
+                  "asks[1].price,asks[1].amount,bids[1].price,bids[1].amount\n"
+              "deribit,BTC-PERPETUAL,100,101.0,2,100.0,3,102.0,4,99.0,5\n"
+              "deribit,BTC-PERPETUAL,200,101.5,6,100.5,7,102.5,8,99.5,9\n";
+    }
+
+    auto snapshot_reader = make_deribit_book_snapshot_reader(snapshot_path.string());
+    MarketEvent snapshot_event;
+    assert(snapshot_reader->next(snapshot_event));
+    const auto& first_snapshot = std::get<MarketDepthSnapshot>(snapshot_event);
+    assert(first_snapshot.symbol == "BTC-PERPETUAL");
+    assert(first_snapshot.exchange == "deribit");
+    assert(first_snapshot.sequence == 1);
+    assert(first_snapshot.bids.size() == 2);
+    assert(first_snapshot.asks.size() == 2);
+    assert(first_snapshot.bids.front().price == 100.0);
+    assert(first_snapshot.asks.front().quantity == 2);
+    const auto first_timestamp = first_snapshot.ts;
+
+    assert(snapshot_reader->next(snapshot_event));
+    const auto& second_snapshot = std::get<MarketDepthSnapshot>(snapshot_event);
+    assert(second_snapshot.sequence == 2);
+    assert(second_snapshot.ts > first_timestamp);
+    assert(!snapshot_reader->next(snapshot_event));
+    std::filesystem::remove(snapshot_path);
+
+    const auto deribit_trades = root / "data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz";
+    auto deribit_trade_reader = make_deribit_trade_reader(deribit_trades.string());
+    MarketEvent deribit_trade_event;
+    assert(deribit_trade_reader->next(deribit_trade_event));
+    const auto& deribit_trade = std::get<MarketTrade>(deribit_trade_event);
+    assert(deribit_trade.exchange == "deribit");
+    assert(deribit_trade.symbol == "BTC-PERPETUAL");
+    assert(deribit_trade.ts > 0);
+    assert(deribit_trade.sequence == 70745369);
+    assert(deribit_trade.price == 6421.5);
+    assert(deribit_trade.quantity == 190);
+    assert(deribit_trade.aggressor_side == Side::Buy);
 }

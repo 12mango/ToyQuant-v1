@@ -45,7 +45,10 @@ void print_usage(const char* executable)
     std::cerr << "   or: " << executable
               << " replay <agg_trades_csv> <bbo_csv> <symbol> [ms_delay] [strategy] "
                  "[quantity_scale]\n";
-    std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1\n";
+     std::cerr << "   or: " << executable
+                  << " l2_replay <trades_csv[.gz]> <depth_snapshot_csv> <symbol> "
+                      "[ms_delay] [strategy] [quantity_scale]\n";
+    std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | l2_baseline | l2_depth | l2_micro | l2_flow\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -59,17 +62,19 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         cfg.mode = AppMode::LegacyUdp;
     else if (mode == "replay")
         cfg.mode = AppMode::Replay;
+    else if (mode == "l2_replay")
+        cfg.mode = AppMode::L2Replay;
     else
     {
-        error = "mode must be 'csv', 'udp', or 'replay'";
+        error = "mode must be 'csv', 'udp', 'replay', or 'l2_replay'";
         return false;
     }
 
-    if (cfg.mode == AppMode::Replay)
+    if (cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay)
     {
         if (argc < 5 || argc > 8)
         {
-            error = "replay requires trade file, BBO file, and symbol";
+            error = "replay requires trade file, market-state file, and symbol";
             return false;
         }
         cfg.path_or_port = argv[2];
@@ -99,7 +104,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         return false;
     }
 
-    if (cfg.mode != AppMode::Replay && argc >= 3) cfg.path_or_port = argv[2];
+    const bool is_replay_mode = cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay;
+    if (!is_replay_mode && argc >= 3) cfg.path_or_port = argv[2];
     if (cfg.mode == AppMode::LegacyCsv && cfg.path_or_port.empty())
     {
         error = "CSV path cannot be empty";
@@ -112,7 +118,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         return false;
     }
 
-    if (cfg.mode != AppMode::Replay && argc >= 4)
+    if (!is_replay_mode && argc >= 4)
     {
         if (cfg.mode == AppMode::LegacyUdp)
         {
@@ -124,14 +130,16 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             return false;
         }
     }
-    if (cfg.mode != AppMode::Replay && argc >= 5) cfg.strategy_name = argv[4];
+    if (!is_replay_mode && argc >= 5) cfg.strategy_name = argv[4];
 
     if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive" &&
         cfg.strategy_name != "l1" && cfg.strategy_name != "passive_l1" &&
         cfg.strategy_name != "inventory_aware_l1" && cfg.strategy_name != "flow_aware_l1" &&
-        cfg.strategy_name != "active_l1")
+        cfg.strategy_name != "active_l1" && cfg.strategy_name != "l2" &&
+        cfg.strategy_name != "l2_baseline" && cfg.strategy_name != "l2_depth" &&
+        cfg.strategy_name != "l2_micro" && cfg.strategy_name != "l2_flow")
     {
-        error = "strategy must be 'optimized', 'naive', 'l1', 'passive_l1', 'inventory_aware_l1', 'flow_aware_l1', or 'active_l1'";
+        error = "unsupported strategy name";
         return false;
     }
 

@@ -68,6 +68,34 @@ This command creates files such as:
 
 See the [User Guide](../docs/USER_GUIDE.md#scenarios) for the purpose of each scenario.
 
+## Slice L2 Snapshots
+
+Large L2 snapshot files should be sliced before tests. The slicer reads rows incrementally and
+does not load the source file into memory. Deribit snapshot timestamps are in microseconds:
+
+```bash
+python3 tools/slice_l2_snapshot.py \
+	data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+	/tmp/l2_tiny.csv \
+	--max-rows 100
+```
+
+Use an inclusive timestamp window or keep every Nth matching row when needed:
+
+```bash
+python3 tools/slice_l2_snapshot.py input.csv /tmp/l2_window.csv \
+	--start-ts 1585699200000000 --end-ts 1585699500000000 --every 10
+```
+
+The same tool accepts Tardis gzip-compressed trades files, so a small paired sample can be made
+without first extracting the full file:
+
+```bash
+python3 tools/slice_l2_snapshot.py \
+	data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+	/tmp/trades_tiny.csv --max-rows 1000
+```
+
 ## Runtime Output
 
 The application writes strategy orders and trades to:

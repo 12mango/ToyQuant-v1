@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "common/types.h"
+#include "strategy/l2_market_maker.h"
 #include "strategy/market_maker.h"
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
@@ -23,7 +24,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         return std::make_unique<NaiveMarketMaker>(order_size, spread, tick_size);
 
     const int64_t inventory_limit =
-        instrument ? static_cast<int64_t>(instrument->quantity_scale / 10) : 1000;
+        instrument ? std::max<int64_t>(1, static_cast<int64_t>(instrument->quantity_scale / 10))
+                   : 1000;
     if (strategy_name == "passive_l1")
         return std::make_unique<PassiveL1MarketMaker>(order_size, spread, inventory_limit,
                                                       tick_size);
@@ -36,6 +38,23 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     if (strategy_name == "active_l1")
         return std::make_unique<ActiveL1MarketMaker>(order_size, spread, inventory_limit,
                                                      tick_size);
+    if (strategy_name == "l2" || strategy_name == "l2_depth" ||
+        strategy_name == "l2_baseline" || strategy_name == "l2_micro" ||
+        strategy_name == "l2_flow")
+    {
+        L2SignalMode signal_mode = L2SignalMode::Depth;
+        if (strategy_name == "l2_baseline") signal_mode = L2SignalMode::Baseline;
+        if (strategy_name == "l2_micro") signal_mode = L2SignalMode::Micro;
+        if (strategy_name == "l2_flow") signal_mode = L2SignalMode::Flow;
+        return std::make_unique<L2MarketMaker>(L2MarketMakerConfig{
+            .order_size = order_size,
+            .base_spread = 2.0 * tick_size,
+            .inventory_limit = inventory_limit,
+            .tick_size = tick_size,
+            .imbalance_shift = 2.0 * tick_size,
+            .trade_imbalance_shift = tick_size,
+            .signal_mode = signal_mode});
+    }
     if (strategy_name == "l1")
     {
         L1MarketMakerConfig config;

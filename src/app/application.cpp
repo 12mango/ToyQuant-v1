@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #include "accounting/portfolio.h"
 #include "app/pipeline.h"
@@ -15,9 +16,11 @@
 #include "legacy/tick.h"
 #include "legacy/tick_pipeline.h"
 #include "market/csv_feed.h"
+#include "market/l2_replay_feed.h"
 #include "market/replay_feed.h"
 #include "market/udp_feed.h"
 #include "orderbook/orderbook.h"
+#include "orderbook/l2_orderbook.h"
 #include "utils/logger.h"
 
 Application::Application(const AppConfig& cfg) : cfg_(cfg) {}
@@ -61,6 +64,9 @@ int Application::run() const
             return 0;
         case AppMode::Replay:
             run_replay_mode();
+            return 0;
+        case AppMode::L2Replay:
+            run_l2_replay_mode();
             return 0;
     }
     return 1;
@@ -130,6 +136,59 @@ void Application::run_replay_mode() const
                " dislocated_trades=", validation.dislocated_trades,
                " max_bbo_age_ms=", validation.max_bbo_age_ms,
                " max_trade_deviation_bps=", validation.max_trade_deviation_bps);
+    logger.log(pipeline.summary().to_log_string());
+}
+
+void Application::run_l2_replay_mode() const
+{
+    if (cfg_.symbol != "BTC-PERPETUAL")
+        throw std::invalid_argument("no instrument specification for L2 replay symbol: " +
+                                    cfg_.symbol);
+
+    const InstrumentSpec instrument = deribit_btc_perpetual_spec();
+    const std::string trades_file = to_abs_path(cfg_.path_or_port);
+    const std::string depth_file = to_abs_path(cfg_.quotes_path);
+    Logger logger(to_abs_path("logs/toy_quant.log"));
+    logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
+               " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name);
+
+    const std::string source = "deribit;trades=" + trades_file + ";depth=" + depth_file +
+                               ";symbol=" + cfg_.symbol +
+                               ";tick_size=" + std::to_string(instrument.tick_size);
+    auto output_files = open_output_files(source, "source_l2_market_data");
+    OrderBook execution_book(instrument.tick_size);
+    L2OrderBook l2_book;
+    auto strategy = make_strategy(cfg_.strategy_name, &instrument);
+    MatchingEngine engine(&logger, instrument.tick_size,
+                          FeeSchedule{.maker_rate = instrument.maker_fee_rate,
+                                      .taker_rate = instrument.taker_fee_rate,
+                                      .quantity_scale = instrument.quantity_scale});
+    Portfolio portfolio(instrument.quantity_scale);
+    Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
+                      portfolio, logger);
+    L2ReplayFeed feed(
+        make_deribit_trade_reader(trades_file), make_deribit_book_snapshot_reader(depth_file),
+        [&](const MarketEvent& event)
+        {
+            std::visit(
+                [&](const auto& value)
+                {
+                    using Event = std::decay_t<decltype(value)>;
+                    if constexpr (std::is_same_v<Event, MarketTrade>)
+                        pipeline.process_l2_market_trade(value);
+                    else if constexpr (std::is_same_v<Event, MarketDepthSnapshot>)
+                    {
+                        l2_book.apply_snapshot(value);
+                        pipeline.process_l2_market_view(l2_book.market_view());
+                    }
+                },
+                event);
+        },
+        cfg_.delay);
+    feed.run();
+    const auto& validation = feed.validation_summary();
+    logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
+               " depth_snapshots=", validation.depth_snapshots);
     logger.log(pipeline.summary().to_log_string());
 }
 

@@ -102,6 +102,15 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
 
 void Pipeline::process_event(const MarketEvent& event, bool enable_print)
 {
+    const auto exchange = std::visit([](const auto& value) { return value.exchange; }, event);
+    if (!exchange.empty())
+    {
+        if (market_exchange_.empty())
+            market_exchange_ = exchange;
+        else if (market_exchange_ != exchange)
+            throw std::invalid_argument("market event exchange does not match pipeline source");
+    }
+
     std::visit(
         [this, enable_print](const auto& value)
         {
@@ -125,7 +134,7 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
                 strategy_.on_market_trade(value, &quote);
                 engine_.process_market_trade(value);
             }
-            else
+            else if constexpr (std::is_same_v<Event, BboQuote>)
             {
                 latest_quotes_[value.symbol] = value;
                 order_book_.on_bbo(value);
@@ -152,6 +161,10 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
                     std::max(execution_quality_.max_abs_inventory, std::abs(position_));
                 process_top_of_book(value.symbol, value.ts, top, enable_print);
             }
+            else
+            {
+                return;
+            }
         },
         event);
 }
@@ -163,6 +176,26 @@ void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const
         logger_.debug("[TOP] symbol=", symbol, " ts=", ts, " bid=", top.bid_price, "@",
                       top.bid_size, " ask=", top.ask_price, "@", top.ask_size);
     submit_strategy_actions(symbol, ts, top);
+}
+
+void Pipeline::process_l2_market_view(const L2MarketView& view, bool enable_print)
+{
+    if (enable_print)
+        logger_.debug("[L2] symbol=", view.symbol, " ts=", view.ts, " bid=",
+                      view.top.bid_price, " ask=", view.top.ask_price,
+                      " imbalance=", view.depth_imbalance, " micro=", view.micro_price);
+    if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
+    {
+        last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
+        ++quote_cycle_;
+    }
+    submit_strategy_actions(view.symbol, view.ts, strategy_.on_l2_market_view(view));
+}
+
+void Pipeline::process_l2_market_trade(const MarketTrade& trade)
+{
+    strategy_.on_market_trade(trade);
+    engine_.process_market_trade(trade);
 }
 
 RunSummary Pipeline::summary() const
@@ -183,7 +216,13 @@ RunSummary Pipeline::summary() const
 
 void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top)
 {
-    auto orders = strategy_.on_top_of_book(symbol, top);
+    submit_strategy_actions(symbol, ts, strategy_.on_top_of_book(symbol, top));
+}
+
+void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
+                                       std::vector<StrategyOrder> orders)
+{
+    (void)symbol;
 
     for (uint64_t order_id : strategy_.cancel_requests())
     {

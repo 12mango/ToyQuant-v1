@@ -6,6 +6,7 @@
 #include "common/types.h"
 #include "exchange/execution_report.h"
 #include "market/market_event.h"
+#include "orderbook/l2_market_view.h"
 #include "orderbook/orderbook.h"
 
 struct StrategyOrder
@@ -72,6 +73,11 @@ class Strategy
     // Called on a top-of-book update; returns orders to submit.
     virtual std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                                       const TopOfBook& tob) = 0;
+
+    virtual std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view)
+    {
+        return on_top_of_book(view.symbol, view.top);
+    }
 
     // Called for venue trades before the next strategy decision.
     virtual void on_market_trade(const MarketTrade& trade)

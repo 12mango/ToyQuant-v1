@@ -41,8 +41,10 @@ void MarketDataValidator::validate(const MarketEvent& event)
             using Event = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<Event, MarketTrade>)
                 validate_trade(value);
-            else
+            else if constexpr (std::is_same_v<Event, BboQuote>)
                 validate_quote(value);
+            else
+                validate_depth_snapshot(value);
         },
         event);
 }
@@ -90,4 +92,33 @@ void MarketDataValidator::validate_quote(const BboQuote& quote)
 
     ++summary_.quotes;
     latest_quotes_[quote.symbol] = quote;
+}
+
+void MarketDataValidator::validate_depth_snapshot(const MarketDepthSnapshot& snapshot)
+{
+    validate_ordering(depth_streams_[snapshot.symbol], snapshot.ts, snapshot.sequence,
+                      "depth stream '" + snapshot.symbol + "'");
+    if (snapshot.symbol.empty()) throw std::invalid_argument("depth symbol cannot be empty");
+    if (snapshot.bids.empty() || snapshot.asks.empty())
+        throw std::invalid_argument("depth snapshot must contain both sides");
+
+    for (std::size_t index = 0; index < snapshot.bids.size(); ++index)
+    {
+        const auto& level = snapshot.bids[index];
+        require_positive_finite(level.price, "depth bid price");
+        if (level.quantity == 0) throw std::invalid_argument("depth bid quantity must be positive");
+        if (index > 0 && level.price >= snapshot.bids[index - 1].price)
+            throw std::invalid_argument("depth bids must be strictly descending");
+    }
+    for (std::size_t index = 0; index < snapshot.asks.size(); ++index)
+    {
+        const auto& level = snapshot.asks[index];
+        require_positive_finite(level.price, "depth ask price");
+        if (level.quantity == 0) throw std::invalid_argument("depth ask quantity must be positive");
+        if (index > 0 && level.price <= snapshot.asks[index - 1].price)
+            throw std::invalid_argument("depth asks must be strictly ascending");
+    }
+    if (snapshot.bids.front().price > snapshot.asks.front().price)
+        throw std::invalid_argument("depth bid price exceeds ask price");
+    ++summary_.depth_snapshots;
 }

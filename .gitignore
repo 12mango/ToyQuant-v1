@@ -60,10 +60,10 @@ data/trades.csv
 data/runtime/*
 !data/runtime/.gitkeep
 
-# Large Binance replay datasets; keep the small test_* fixtures tracked.
-data/v2/BTCUSDT-aggTrades-*.csv
-data/v2/BTCUSDT-bookTicker-*.csv
-data/v2/*.csv:Zone.Identifier
+# Large L2 market data snapshots and incremental feeds
+data/v2/
+
+
 
 # Visualization reports: keep the README example image and ignore other outputs
 reports/*

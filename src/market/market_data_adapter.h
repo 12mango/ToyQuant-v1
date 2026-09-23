@@ -25,3 +25,8 @@ MarketDataReaders make_market_data_readers(const std::string& format,
                                            const std::string& trades_path,
                                            const std::string& quotes_path,
                                            const InstrumentSpec& instrument);
+
+std::unique_ptr<IMarketEventReader> make_deribit_book_snapshot_reader(
+    const std::string& path);
+
+std::unique_ptr<IMarketEventReader> make_deribit_trade_reader(const std::string& path);
