@@ -105,6 +105,64 @@ Use `l1` when you want the BBO-aware strategy:
   BTCUSDT 0 l1 1000000
 ```
 
+### L2 strategies and validation
+
+Use Deribit trades and reconstructed top-25 depth snapshots with the L2 replay mode. The available
+strategy names are:
+
+| Name | Role |
+|---|---|
+| `passive_l2` | Depth-aware reference baseline |
+| `inventory_aware_l2` | Inventory-control comparison |
+| `flow_aware_l2` | Flow/depth comparison |
+| `active_l2` | Comprehensive L2 mainline |
+| `adaptive_l2` | Compatibility alias for `active_l2` |
+
+Run the standard benchmark with a fixed window and `depth_every=1`:
+
+Use the same benchmark configuration for every candidate strategy:
+
+```bash
+python3 tools/benchmark_l2_strategies.py \
+  --binary build/toy_quant \
+  --trades data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  --symbol BTC-PERPETUAL \
+  --start-ts 1585699200000000 \
+  --end-ts 1585699500000000 \
+  --depth-every 1
+```
+
+The main comparison metrics are:
+
+- `net_pnl` — final outcome metric
+- `fill_rate` and `cancel_rate` — execution quality and churn control
+- `queue_ahead_consumed` — L2 market volume consumed ahead of newly resting maker orders
+- `buy_markout_20` and `sell_markout_20` — directional fill quality
+- `price_refresh_count`, `age_refresh_count`, `risk_pause_count` — cancellation causes
+- `avg_markout_20` — whether fills are taken at favorable markout
+- `avg_quote_age_us` — quote freshness and turnover
+- `against_depth` and `against_flow` — directional quality of fills
+
+A candidate must remain competitive across at least two moderate windows; a one-window PnL win is
+not sufficient. Use `analyze_l2_windows.py` for repeated 15-minute windows:
+
+```bash
+python3 tools/analyze_l2_windows.py \
+  --binary build/toy_quant \
+  --trades data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  --symbol BTC-PERPETUAL \
+  --start-ts 1585699200000000 \
+  --end-ts 1585715400000000 \
+  --window-minutes 15 \
+  --depth-every 1 \
+  --csv reports/l2_windows.csv
+```
+
+The Deribit benchmark uses `0.02%` maker and `0.05%` taker fee assumptions. Results are
+educational replay measurements, not profitability claims. No artificial cancel latency is used.
+
 ### Replay strategy choices
 
 The replay command accepts these strategy names:
@@ -147,7 +205,9 @@ The replay demo is complete for strategy comparison and learning. The current ro
 - `l1`: defensive mainline with inventory, flow, volatility, fee-aware spread, and execution-quality metrics;
 - `active_l1`: separate higher-activity experiment focused on inventory rotation;
 - `flow_aware_l1`: bounded order-flow experiment and comparison baseline;
-- `passive_l1` and `inventory_aware_l1`: simple reference baselines.
+- `passive_l1` and `inventory_aware_l1`: simple reference baselines;
+- `active_l2`: comprehensive L2 mainline for depth-aware replay;
+- `passive_l2`, `inventory_aware_l2`, and `flow_aware_l2`: L2 comparison baselines.
 
 Replay trades without a usable BBO, or with a price more than 5 bps from the latest BBO midpoint,
 are counted as `filtered` and are not sent to matching. This keeps data-alignment problems from
@@ -164,8 +224,8 @@ captured edge, adverse selection, inventory, markouts, and quote lifetime. `net_
 result for cost-aware comparisons;
 `gross_pnl` and `fees` explain why it changed.
 
-The five replay strategies are intentionally different teaching baselines, not five production
-algorithms. `l1` is the mainline strategy; `flow_aware_l1` is an experimental transition strategy
+The replay strategies are intentionally different teaching baselines, not production algorithms.
+`l1` is the L1 mainline; `flow_aware_l1` is an experimental transition strategy
 whose useful bounded behavior has partly been incorporated into `l1`. `active_l1` is a separate
 experiment that produces more observable activity and inventory rotation while accepting more
 adverse-selection risk. After a fill it rebuilds quotes around the new inventory on the next BBO

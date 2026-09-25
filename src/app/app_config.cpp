@@ -48,7 +48,7 @@ void print_usage(const char* executable)
      std::cerr << "   or: " << executable
                   << " l2_replay <trades_csv[.gz]> <depth_snapshot_csv> <symbol> "
                       "[ms_delay] [strategy] [quantity_scale]\n";
-    std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | l2_baseline | l2_depth | l2_micro | l2_flow\n";
+    std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | l2\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -136,6 +136,9 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         cfg.strategy_name != "l1" && cfg.strategy_name != "passive_l1" &&
         cfg.strategy_name != "inventory_aware_l1" && cfg.strategy_name != "flow_aware_l1" &&
         cfg.strategy_name != "active_l1" && cfg.strategy_name != "l2" &&
+        cfg.strategy_name != "passive_l2" && cfg.strategy_name != "inventory_aware_l2" &&
+        cfg.strategy_name != "flow_aware_l2" && cfg.strategy_name != "adaptive_l2" &&
+        cfg.strategy_name != "active_l2" &&
         cfg.strategy_name != "l2_baseline" && cfg.strategy_name != "l2_depth" &&
         cfg.strategy_name != "l2_micro" && cfg.strategy_name != "l2_flow")
     {

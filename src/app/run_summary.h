@@ -25,6 +25,7 @@ struct RunSummary
     uint64_t cancel_requests{0};
     uint64_t trade_reports{0};
     uint64_t trade_report_quantity{0};
+    uint64_t queue_ahead_consumed{0};
     uint64_t filtered_market_trades{0};
     double fill_rate{0.0};
     double cancel_rate{0.0};
@@ -41,6 +42,7 @@ struct RunSummary
                << " cancel_requests=" << cancel_requests << " trade_reports=" << trade_reports
                << " fill_rate=" << fill_rate << " cancel_rate=" << cancel_rate
                << " trade_report_quantity=" << trade_report_quantity
+               << " queue_ahead_consumed=" << queue_ahead_consumed
                << " filtered_market_trades=" << filtered_market_trades
                << " working_orders=" << working_orders << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string();

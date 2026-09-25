@@ -186,6 +186,13 @@ void Pipeline::process_l2_market_view(const L2MarketView& view, bool enable_prin
                       " imbalance=", view.depth_imbalance, " micro=", view.micro_price);
     if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
     {
+        engine_.process_l2_top(BboQuote{.ts = view.ts,
+                        .symbol = view.symbol,
+                        .bid_price = view.top.bid_price,
+                        .bid_quantity = view.top.bid_size,
+                        .ask_price = view.top.ask_price,
+                        .ask_quantity = view.top.ask_size,
+                        .exchange = {}});
         last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
         ++quote_cycle_;
     }
@@ -205,6 +212,7 @@ RunSummary Pipeline::summary() const
             .cancel_requests = cancel_requests_,
             .trade_reports = trade_reports_,
             .trade_report_quantity = trade_report_quantity_,
+            .queue_ahead_consumed = engine_.queue_ahead_consumed(),
             .filtered_market_trades = filtered_market_trades_,
             .fill_rate = metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_),
             .cancel_rate = metrics::compute_cancel_rate(submitted_orders_, cancel_requests_),

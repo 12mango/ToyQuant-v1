@@ -46,12 +46,42 @@ The same input and parameters produce deterministic runtime CSV output for this 
 ```
 
 - **Four current modes** — legacy CSV scenarios, legacy UDP ticks, Binance Trade+BBO replay, and Deribit L2 trade+depth replay.
-- **L2 strategy variants** — `l2_baseline`, `l2_depth`, `l2_micro`, and `l2_flow` separate simple baseline, depth, micro-price, and trade-flow experiments behind the same execution lifecycle.
+- **L2 strategy line** — `passive_l2` is the conservative baseline, `inventory_aware_l2` emphasizes position control, `flow_aware_l2` isolates flow behavior, and `active_l2` is the comprehensive mainline combining depth, micro-price, trade flow, inventory limits, toxicity protection, weak-flow protection, and volatility adaptation. `adaptive_l2` remains a compatibility alias for `active_l2`.
 - **One v2 event path** — Binance replay uses `MarketEvent`; CSV and UDP remain compatibility inputs for the older `Tick` model.
 - **Price–time priority matching** with self-trade prevention and partial fills.
 - **Stateful execution reports** — position and working orders update from trade, cancel, and fill events.
 - **Deterministic backtests** — realized/unrealized PnL and a reusable drawdown calculation.
 - **Small toolchain** — CMake, a C++20 compiler, and Python 3 for the optional scenario and report tools.
+
+## Evaluation and Validation Protocol
+
+ToyQuant now uses a fixed benchmark regime for strategy comparison. The benchmark is designed to avoid false signals from overly short windows and from churn-based strategies that submit many orders without generating durable execution quality.
+
+Primary metrics:
+
+- `net_pnl` for outcome comparison
+- `fill_rate` and `cancel_rate` for execution quality
+- `queue_ahead_consumed` for L2 top-level queue-position diagnostics
+- `fees_paid` and `fee_ratio` for fee-adjusted results
+- `realized`, `unrealized`, `equity`, and `gross_pnl` for completeness
+- `avg_markout_20`, `avg_quote_age_us`, `against_depth`, and `against_flow` for regime diagnostics
+
+Recommended workflow:
+
+```bash
+cmake --build build --target l2_strategy_test
+ctest --test-dir build --output-on-failure -R l2_strategy_test
+python3 tools/benchmark_l2_strategies.py \
+  --binary build/toy_quant \
+  --trades data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  --symbol BTC-PERPETUAL \
+  --start-ts 1585699200000000 \
+  --end-ts 1585699500000000 \
+  --depth-every 1
+```
+
+Do not treat a one-window win as final. Tune only if the candidate remains competitive across at least two moderate windows and keeps the cancel rate and markout profile reasonable.
 
 ## Quick Start
 
@@ -93,7 +123,7 @@ python3 tools/slice_l2_snapshot.py \
   /tmp/deribit_depth.csv --start-ts 1585699200000000 --every 5 --max-rows 300
 ./out/build/linux-debug/toy_quant l2_replay \
   data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  /tmp/deribit_depth.csv BTC-PERPETUAL 0 l2_flow 1
+  /tmp/deribit_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1
 ```
 
 **Analyze legacy generated order and trade records**:

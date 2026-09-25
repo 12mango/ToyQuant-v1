@@ -41,6 +41,9 @@ struct StrategyMetrics
     double average_abs_inventory{0.0};
     int64_t max_abs_inventory{0};
     uint64_t inventory_sign_changes{0};
+    uint64_t price_refresh_count{0};
+    uint64_t age_refresh_count{0};
+    uint64_t risk_pause_count{0};
     bool available{false};
 
     std::string to_log_string() const
@@ -60,7 +63,10 @@ struct StrategyMetrics
                << " max_quote_lifetime=" << max_quote_lifetime
                << " avg_abs_inventory=" << average_abs_inventory
                << " max_abs_inventory=" << max_abs_inventory
-               << " inventory_sign_changes=" << inventory_sign_changes;
+               << " inventory_sign_changes=" << inventory_sign_changes
+               << " price_refresh_count=" << price_refresh_count
+               << " age_refresh_count=" << age_refresh_count
+               << " risk_pause_count=" << risk_pause_count;
         return stream.str();
     }
 };

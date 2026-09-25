@@ -2,6 +2,21 @@
 
 ToyQuant is a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. This page explains the implementation by source file; [User Guide](USER_GUIDE.md) contains the commands, scenarios, and experiment workflow.
 
+## How to read this document
+
+| You want to understand... | Start here |
+|---|---|
+| End-to-end event flow | [System Map](#1-system-map) |
+| Input formats and validation | [Shared Types and Input Boundary](#2-shared-types-and-input-boundary) |
+| Object ownership and callbacks | [Application Coordinator](#3-application-coordinator) |
+| External book versus strategy orders | [OrderBook](#4-orderbook-external-market-view) and [MatchingEngine](#5-matchingengine-orders-queues-and-reports) |
+| How strategies make decisions | [Strategy](#6-strategy-the-main-decision-module) |
+| PnL and reusable metrics | [Backtest and Performance Metrics](#7-backtest-and-performance-metrics) |
+
+The diagrams show control flow. The tables show ownership and responsibilities. The code blocks
+show the smallest representative implementation surface; detailed prose explains only the design
+decisions that are not obvious from those views.
+
 ## 1. System Map
 
 ```mermaid
@@ -33,6 +48,24 @@ The v2 central path is intentionally short:
 MarketEvent -> OrderBook / MatchingEngine -> Strategy -> orders -> reports -> output
 ```
 
+```mermaid
+sequenceDiagram
+    participant D as Data reader
+    participant P as Pipeline
+    participant V as Market view
+    participant S as Strategy
+    participant M as MatchingEngine
+    D->>P: MarketEvent
+    P->>V: update external state
+    V-->>P: TopOfBook / L2MarketView
+    P->>S: strategy decision
+    S-->>P: orders + cancel requests
+    P->>M: cancel / submit
+    D->>M: external market trade
+    M-->>S: ExecutionReport
+    M-->>P: fills, fees, lifecycle
+```
+
 CSV and UDP remain compatibility inputs for the original Tick model. They enter through the
 `legacy` boundary and are not the v2 market-data contract.
 
@@ -47,7 +80,7 @@ The source map is:
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
-| Strategy | `src/strategy/strategy.h`, `market_maker.h` | `Strategy`, three market makers |
+| Strategy | `src/strategy/strategy.h`, `market_maker.h`, `l2_market_maker.h`, `active_l2_market_maker.h` | `Strategy`, L1 and L2 strategy families |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
@@ -99,9 +132,12 @@ the 5-basis-point deviation threshold before sending them to the strategy and ma
 preventing invalid alignment from creating synthetic fills.
 
 `InstrumentSpec` is shared by the market-data adapter, strategy, order book, and matching engine.
+Fee rates are carried in the specification and injected into the replay matching engine. The
+current Deribit BTC perpetual benchmark assumes a 0.02% maker fee and 0.05% taker fee; these are
+simulation assumptions, not account-tier guarantees.
 For BTCUSDT it defines a `0.10` price tick and `1000000` integer quantity units per BTC. The replay
 strategy therefore uses `0.001 BTC` base orders, a two-tick base spread, and a `0.1 BTC` inventory
-limit. Fee rates are carried in the specification and injected into the replay matching engine.
+limit.
 Execution reports then carry the liquidity role and fee for each MarketMaker fill; the current
 offline backtest can consume those recorded fees while retaining a fee-rate fallback for legacy
 six-column trade files.
@@ -113,10 +149,9 @@ and drive matching. External Tick/BBO state is stored separately from local stra
 cannot accidentally include its own orders in the market reference.
 
 `L2OrderBook` is a separate multi-level view for `MarketDepthSnapshot` events. It replaces the
-snapshot atomically, validates ordering and sequence, and can derive a `TopOfBook`; it does not
-modify the existing L1 `OrderBook` or invoke the current strategy. A future depth-aware strategy
-must receive an explicit market view after venue and instrument validation, rather than consuming
-raw vendor rows or combining Binance L1 with Deribit L2.
+snapshot atomically, validates ordering and sequence, and derives an `L2MarketView`. The L2 replay
+path passes that view explicitly to the selected strategy after venue and instrument validation;
+raw vendor rows never enter strategy code, and Binance L1 data is not combined with Deribit L2.
 
 The matching engine also retains the latest BBO liquidity for aggressive strategy orders. A buy
 limit at or above the best ask executes at the ask; a sell limit at or below the best bid executes
@@ -148,12 +183,12 @@ drops the incoming tick by design.
 
 ## 3. Application Coordinator
 
-### Files: `src/app/application.*`, `src/app/pipeline.*`
+**Files:** `src/app/application.*`, `src/app/pipeline.*`
 
 `main.cpp` is only the process bootstrap. `Application` wires concrete objects together. The
-`LegacyCsv` and `LegacyUdp` modes create a legacy Tick adapter, while `Replay` creates a
-`MarketEvent` feed. `Pipeline` owns the v2 domain sequence. These are the current three modes;
-the application intentionally does not introduce separate runner abstractions yet.
+`LegacyCsv` and `LegacyUdp` modes create a legacy Tick adapter, `Replay` creates a Trades+BBO
+event feed, and `L2Replay` creates a trade+depth feed. `Pipeline` owns the v2 domain sequence; the
+application intentionally does not introduce separate runner abstractions yet.
 
 ```mermaid
 sequenceDiagram
@@ -388,6 +423,9 @@ The main matching rules are:
 - External ticks become `Market` orders, so they consume strategy liquidity but are never rested.
 - Each price level uses FIFO order and matches the best executable price first.
 - Owner normalization prevents `MarketMaker` from trading with itself.
+- In L2 replay, a maker order submitted at the displayed best price joins behind the displayed
+    top-level quantity. Subsequent market trades consume this `external_queue_ahead` before local
+    FIFO orders become eligible to fill. Ordinary L1 replay keeps its existing BBO semantics.
 
 The matching algorithm is a direct price-time implementation:
 
@@ -447,6 +485,40 @@ class Strategy
 `main.cpp` selects an implementation with `std::make_unique`; the pipeline then uses the common
 interface without knowing which strategy is active. The virtual destructor makes polymorphic
 ownership safe.
+
+### Strategy lifecycle at a glance
+
+```mermaid
+flowchart LR
+    MV[Market view] --> D[Strategy decision]
+    D --> Q[Candidate quotes]
+    D --> C[Cancel requests]
+    Q --> P[Pipeline assigns IDs]
+    C --> P
+    P --> E[MatchingEngine]
+    E --> R[ExecutionReport]
+    R --> S[Strategy state update]
+    R --> A[Portfolio and metrics]
+```
+
+| Callback | Direction | Responsibility |
+|---|---|---|
+| `on_top_of_book` / `on_l2_market_view` | Pipeline -> strategy | Produce the next candidate quote set |
+| `on_market_trade` | Pipeline -> strategy | Update aggressor-flow state |
+| `on_order_submitted` | Pipeline -> strategy | Record exchange-assigned working orders |
+| `cancel_requests` | Strategy -> pipeline | Return stale or unsafe order IDs |
+| `on_order_update` | MatchingEngine -> strategy | Apply fills, cancellations, and partial fills |
+
+The strategy chooses intent. The pipeline owns sequencing and IDs. The matching engine owns actual
+working orders. This separation is the key invariant for every strategy family below.
+
+### Strategy family map
+
+| Family | Input view | Main purpose | Execution model |
+|---|---|---|---|
+| Legacy | `Tick` | Compatibility and simple demonstrations | Legacy tick pipeline |
+| L1 replay | `TopOfBook` + trades | BBO-aware quoting | Trades+BBO matching |
+| L2 replay | `L2MarketView` + trades | Depth-aware quoting and queue diagnostics | Queue-aware L2 matching |
 
 ### 6.1 NaiveMarketMaker: baseline quote
 
@@ -550,7 +622,123 @@ metrics are execution diagnostics: `captured_edge` is an immediate midpoint comp
 `adverse_selection` is a later markout after `markout_horizon_quotes` BBO cycles. Neither includes
 fees or constitutes a complete portfolio PnL calculation.
 
-### 6.4 Strategy comparison
+### 6.4 ActiveL2MarketMaker: L2 mainline
+
+The L2 strategy receives an explicit `L2MarketView` from `L2OrderBook`. The view contains the
+top of book, micro-price, aggregated depth, depth imbalance, symbol, and snapshot timestamp. L2
+strategy state is separate from the L1 `OrderBook`; it never consumes raw vendor rows.
+
+```mermaid
+flowchart TD
+    V[L2MarketView] --> F[Fair price]
+    V --> I[Depth imbalance]
+    T[Recent aggressor trades] --> F
+    T --> X[Flow toxicity]
+    P[Position] --> R[Inventory reservation]
+    F --> R
+    I --> R
+    X --> G[Quantity and side gates]
+    R --> G
+    G --> Q[Tick-rounded passive quotes]
+    Q --> L[Refresh / cancel lifecycle]
+    L --> M[Queue-aware matching]
+```
+
+| Production setting | Value | Used for |
+|---|---:|---|
+| Signal mode | `Flow` | Combines micro-price, depth, and trades |
+| Trade window | `16` events | Recent aggressor-flow estimate |
+| Imbalance shift | `2 * tick_size` | Depth contribution to fair price |
+| Trade shift | `1 * tick_size` | Flow contribution to fair price |
+| Refresh threshold | `2` ticks | Repricing trigger |
+| Maximum quote age | `50` L2 decisions | Stale-quote fallback |
+| Toxicity threshold | `0.65` | Disables the threatened side |
+| Weak-flow threshold | `0.9` | Activates extreme-flow protection |
+| Volatility alpha | `0.25` | Active-L2 EWMA smoothing |
+| Pause threshold | `9` ticks/second | Extreme-volatility risk gate |
+
+#### 6.4.1 Fair-price construction
+
+`L2MarketMaker` supports `Baseline`, `Depth`, `Micro`, and `Flow` signal modes. The production
+factory selects `Flow` with a 16-trade FIFO window. In that mode the fair price is:
+
+```text
+fair = micro_price
+    + depth_imbalance * imbalance_shift
+    + trade_imbalance * trade_imbalance_shift
+```
+
+`depth_imbalance` is the normalized bid-versus-ask quantity across the configured visible levels.
+`trade_imbalance` is the normalized aggressor buy-versus-sell volume in the recent trade window.
+The micro-price uses top-level quantities to move the reference toward the side with less displayed
+liquidity. These signals shift the reservation price; they do not authorize crossing the spread.
+
+#### 6.4.2 Inventory and toxicity controls
+
+The base engine computes:
+
+```text
+inventory_ratio = clamp(position / inventory_limit, -1, 1)
+inventory_shift = inventory_ratio * base_spread
+```
+
+Long inventory moves the reservation price down and makes additional buys less attractive; short
+inventory applies the symmetric behavior. At the hard inventory limit, the risk-increasing side is
+disabled.
+
+For flow toxicity, the configured threshold is `0.65`. A strongly positive flow disables the sell
+side; a strongly negative flow disables the buy side. When flow magnitude exceeds `0.9` while
+inventory is already materially imbalanced, weak-flow protection halves both quote quantities and
+moves both prices one tick farther from the center. The name `weak_flow` refers to weakening the
+quotes, not to weak market flow.
+
+#### 6.4.3 Passive quote construction and lifecycle
+
+Prices are tick-rounded around the fair price, inventory shift, and weak-flow shift. A final passive
+clip enforces:
+
+```text
+bid <= external_best_bid
+ask >= external_best_ask
+```
+
+This keeps the L2 strategies maker-only. When orders are working, a fair-price move of two ticks
+or a maximum quote age of 50 L2 decisions requests cancellation. The pipeline processes the cancel
+request before allowing the next quote cycle to submit replacements. The active strategy records
+price refreshes, age refreshes, and risk pauses separately.
+
+#### 6.4.4 Active risk overlay
+
+`ActiveL2MarketMaker` composes `L2MarketMaker`; it does not duplicate its inventory or flow logic.
+It maintains a time-normalized midpoint-movement EWMA:
+
+```text
+volatility = alpha * normalized_move + (1 - alpha) * previous_volatility
+```
+
+The production value is `alpha = 0.25`. Ordinary volatility does not widen quotes. When the EWMA
+reaches `9` ticks per second, active L2 requests cancellation of all working orders and pauses new
+submissions. This is a tail-risk gate, not a continuous spread signal. The historical
+`adaptive_l2` name is accepted only at the factory boundary and constructs this same class.
+
+#### 6.4.5 Execution and queue model
+
+Before L2 strategy decisions, `Pipeline::process_l2_market_view` sends the snapshot top of book to
+`MatchingEngine::process_l2_top`. If a maker order joins the displayed best price, the displayed
+quantity is stored as `external_queue_ahead`. Subsequent market trades consume that quantity before
+the local FIFO order. This prevents a new order from receiving queue-first fills.
+
+The engine exposes `queue_ahead_consumed` in the run summary. Fees are calculated at execution time
+from `InstrumentSpec`; the current Deribit BTC perpetual benchmark assumes maker `0.02%` and taker
+`0.05%`. The L2 replay is therefore evaluated on net PnL, fees, maker/taker role, queue consumption,
+markout, inventory, and refresh-cause metrics together.
+
+The current active L2 implementation is intentionally a conservative research mainline. Its
+18-window in-sample baseline and four-window 2020-05-01 sample-out-of-time check remain negative
+after fees. The strategy is structurally complete for this simulator, but those results do not
+establish live profitability.
+
+### 6.5 Strategy families and comparison
 
 For the same `sample_ticks.csv` run, the two legacy Tick strategies diverge immediately:
 
@@ -565,7 +753,7 @@ The table uses an initial capital of `1000.0`. It shows the core difference: `na
 comparison. Its additional runtime measurements are useful for explaining quote safety and
 execution quality, but they are not yet folded into the offline PnL report.
 
-The replay path has four additional strategy variants. They share the same `Strategy` interface,
+The Trades+BBO replay path has an L1 strategy family. These variants share the same `Strategy` interface,
 instrument scale, matching engine, and fee model, so the comparison isolates decision behavior:
 
 | Strategy | Main idea | Strength | Limitation | Role in this demo |
@@ -606,6 +794,21 @@ trade-off, not a replacement for the defensive mainline. A fill immediately mark
 stale, so the next BBO cycle can cancel and rebuild around the updated inventory. Its benchmark
 metrics include submitted and filled quantity, quote count, captured edge, fees, average and peak
 inventory, inventory sign changes, and quote lifetime.
+
+The L2 replay family uses the separate `L2MarketView` contract described in section 6.4:
+
+| Strategy | Main idea | Role |
+|---|---|---|
+| `passive_l2` | Baseline depth-aware quoting | Reference baseline |
+| `inventory_aware_l2` | Adds an outer inventory adjustment layer | Inventory experiment |
+| `flow_aware_l2` | Flow/depth fair-price behavior | Signal comparison |
+| `active_l2` | Flow L2 engine plus volatility risk gate | L2 mainline |
+| `adaptive_l2` | Compatibility name for `active_l2` | Legacy alias |
+
+Unlike the L1 family, L2 decisions receive depth snapshots and use the queue-aware matching path.
+L2 comparisons therefore include `queue_ahead_consumed`, maker/taker role, side-specific markout,
+and refresh-cause metrics in addition to PnL and inventory. The detailed L2 decision sequence and
+execution boundary remain in section 6.4; this subsection only defines comparison roles.
 
 For the current BTCUSDT replay demo, the benchmark prints `gross_pnl`, `net_pnl`, `fees`,
 `fee_ratio`, filtered market trades, filled quantity, final position, captured edge, adverse
@@ -665,6 +868,7 @@ The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 | `adverse_selection` | Delayed fill markout accumulated after a quote horizon | L1 runtime summary |
 | `average_abs_inventory` | Average absolute effective inventory at quote decisions | L1 runtime summary |
 | `quote_lifetime` | Number of BBO decision cycles before fill or cancel | L1 runtime summary |
+| `queue_ahead_consumed` | L2 market volume absorbed ahead of local maker orders | L2 runtime and benchmark summary |
 
 The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating formulas in `main.cpp`.
 

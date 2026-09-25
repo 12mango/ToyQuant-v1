@@ -42,12 +42,12 @@ int main()
     assert(cancelled_aggressor);
 
     reports.clear();
-    engine.process_market_trade({3, "EURUSD", 1.10000, 40, Side::Sell, 0});
+    engine.process_market_trade({3, "EURUSD", 1.10000, 40, Side::Sell, 0, "test"});
     assert(has_report(reports, 1, ExecType::Trade, 40));
     assert(has_report(reports, 1, ExecType::PartialFill, 60));
 
     reports.clear();
-    engine.process_market_trade({4, "EURUSD", 1.10000, 60, Side::Sell, 0});
+    engine.process_market_trade({4, "EURUSD", 1.10000, 60, Side::Sell, 0, "test"});
     assert(has_report(reports, 1, ExecType::Trade, 60));
     assert(has_report(reports, 1, ExecType::Filled, 0));
 
@@ -121,7 +121,7 @@ int main()
                                     { tick_reports.push_back(report); });
     tick_engine.send_order({40, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 0.1 + 0.2,
                             10, 10, 1, "LiquidityProvider"});
-    tick_engine.process_market_trade({2, "TEST", 0.3, 10, Side::Sell, 0});
+    tick_engine.process_market_trade({2, "TEST", 0.3, 10, Side::Sell, 0, "test"});
     assert(std::any_of(tick_reports.begin(), tick_reports.end(),
                        [](const ExecutionReport& report)
                        {
@@ -133,7 +133,7 @@ int main()
     std::vector<ExecutionReport> bbo_reports;
     bbo_engine.set_report_callback([&bbo_reports](const ExecutionReport& report)
                                    { bbo_reports.push_back(report); });
-    bbo_engine.process_bbo({10, "BTCUSDT", 100.0, 50, 100.1, 40, 1});
+    bbo_engine.process_bbo({10, "BTCUSDT", 100.0, 50, 100.1, 40, 1, "test"});
     bbo_engine.send_order({50, "BTCUSDT", exchange::Side::Buy, exchange::OrderType::Limit, 100.2,
                            70, 70, 11, "MarketMaker"});
     assert(has_report(bbo_reports, 50, ExecType::Trade, 40));
@@ -147,9 +147,35 @@ int main()
                         { return report.exec_type == ExecType::Trade; }));
 
     bbo_reports.clear();
-    bbo_engine.process_market_trade({13, "BTCUSDT", 100.2, 30, Side::Sell, 0});
+    bbo_engine.process_market_trade({13, "BTCUSDT", 100.2, 30, Side::Sell, 0, "test"});
     assert(has_report(bbo_reports, 50, ExecType::Trade, 30));
     assert(has_report(bbo_reports, 50, ExecType::Filled, 0));
+
+    MatchingEngine queued_engine(nullptr, 0.1);
+    std::vector<ExecutionReport> queued_reports;
+    queued_engine.set_report_callback([&queued_reports](const ExecutionReport& report)
+                                      { queued_reports.push_back(report); });
+    queued_engine.process_l2_top({20, "BTCUSDT", 100.0, 50, 100.1, 40, 2, "test"});
+    queued_engine.send_order({52, "BTCUSDT", exchange::Side::Buy,
+                              exchange::OrderType::Limit, 100.0, 20, 20, 21,
+                              "MarketMaker"});
+    queued_reports.clear();
+    queued_engine.process_market_trade({22, "BTCUSDT", 100.0, 40, Side::Sell, 0, "test"});
+    assert(!has_report(queued_reports, 52, ExecType::Trade, 20));
+    queued_reports.clear();
+    queued_engine.process_market_trade({23, "BTCUSDT", 100.0, 15, Side::Sell, 0, "test"});
+    assert(has_report(queued_reports, 52, ExecType::Trade, 5));
+    assert(has_report(queued_reports, 52, ExecType::PartialFill, 15));
+
+    queued_reports.clear();
+    queued_engine.cancel_order(52);
+    queued_engine.send_order({53, "BTCUSDT", exchange::Side::Buy,
+                              exchange::OrderType::Limit, 100.0, 10, 10, 24,
+                              "MarketMaker"});
+    queued_reports.clear();
+    queued_engine.process_market_trade({25, "BTCUSDT", 100.0, 1, Side::Sell, 0, "test"});
+    assert(has_report(queued_reports, 53, ExecType::Trade, 1));
+    assert(has_report(queued_reports, 53, ExecType::PartialFill, 9));
 
     MatchingEngine fee_engine(
         nullptr, 0.1, FeeSchedule{.maker_rate = 0.001, .taker_rate = 0.002, .quantity_scale = 100});
@@ -158,7 +184,7 @@ int main()
                                    { fee_reports.push_back(report); });
     fee_engine.send_order({60, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 10.0, 100,
                            100, 20, "MarketMaker"});
-    fee_engine.process_market_trade({21, "TEST", 10.0, 100, Side::Sell, 0});
+    fee_engine.process_market_trade({21, "TEST", 10.0, 100, Side::Sell, 0, "test"});
     const auto fee_trade =
         std::find_if(fee_reports.begin(), fee_reports.end(), [](const ExecutionReport& report)
                      { return report.exec_type == ExecType::Trade && report.order_id == 60; });
@@ -167,7 +193,7 @@ int main()
     assert(std::abs(fee_trade->fee - 0.01) < 1e-12);
 
     fee_reports.clear();
-    fee_engine.process_bbo({30, "TEST", 9.9, 100, 10.0, 100, 2});
+    fee_engine.process_bbo({30, "TEST", 9.9, 100, 10.0, 100, 2, "test"});
     fee_engine.send_order({61, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 10.0, 100,
                            100, 31, "MarketMaker"});
     const auto taker_trade =

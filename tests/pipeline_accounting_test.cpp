@@ -7,6 +7,7 @@
 #include "app/pipeline.h"
 #include "exchange/matching_engine.h"
 #include "orderbook/orderbook.h"
+#include "strategy/l2_market_maker.h"
 #include "strategy/market_maker.h"
 #include "utils/logger.h"
 
@@ -60,4 +61,45 @@ int main()
         rejected_mixed_exchange = true;
     }
     assert(rejected_mixed_exchange);
+
+    std::ofstream l2_orders("/tmp/pipeline_l2_queue_orders.csv");
+    std::ofstream l2_trades("/tmp/pipeline_l2_queue_trades.csv");
+    L2MarketMaker l2_strategy(L2MarketMakerConfig{.order_size = 10,
+                                                   .base_spread = 0.5,
+                                                   .inventory_limit = 100,
+                                                   .tick_size = 1.0,
+                                                   .signal_mode = L2SignalMode::Baseline});
+    OrderBook l2_execution_book(1.0);
+    MatchingEngine l2_engine(nullptr, 1.0);
+    Portfolio l2_portfolio;
+    Pipeline l2_pipeline(l2_orders, l2_trades, l2_execution_book, l2_strategy, l2_engine,
+                         l2_portfolio, logger);
+    l2_pipeline.process_l2_market_view(L2MarketView{.symbol = "L2",
+                                                    .ts = 10,
+                                                    .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                    .micro_price = 100.5});
+    assert(l2_pipeline.summary().submitted_orders == 2);
+    l2_pipeline.process_l2_market_trade(
+        MarketTrade{11, "L2", 100.0, 50, Side::Sell, 1, "deribit"});
+    assert(l2_pipeline.summary().trade_reports == 0);
+    l2_pipeline.process_l2_market_trade(
+        MarketTrade{12, "L2", 100.0, 60, Side::Sell, 2, "deribit"});
+    assert(l2_pipeline.summary().trade_reports == 1);
+    assert(l2_pipeline.summary().trade_report_quantity == 10);
+    assert(l2_pipeline.summary().queue_ahead_consumed == 100);
+
+    MatchingEngine deribit_fee_engine(
+        nullptr, 0.5, FeeSchedule{.maker_rate = 0.0002, .taker_rate = 0.0005, .quantity_scale = 1});
+    std::ofstream fee_orders("/tmp/pipeline_deribit_fee_orders.csv");
+    std::ofstream fee_trades("/tmp/pipeline_deribit_fee_trades.csv");
+    NaiveMarketMaker fee_strategy(1, 0.0, 0.5);
+    OrderBook fee_book(0.5);
+    Portfolio fee_portfolio(1);
+    Pipeline fee_pipeline(fee_orders, fee_trades, fee_book, fee_strategy, deribit_fee_engine,
+                          fee_portfolio, logger);
+    fee_pipeline.process_event(BboQuote{20, "BTC-PERPETUAL", 99.0, 100, 101.0, 100, 1,
+                                        "deribit"});
+    fee_pipeline.process_event(
+        MarketTrade{21, "BTC-PERPETUAL", 100.0, 1, Side::Sell, 2, "deribit"});
+    assert(std::abs(fee_portfolio.metrics().fees_paid - 0.02) < 1e-12);
 }

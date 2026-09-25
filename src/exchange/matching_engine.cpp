@@ -54,6 +54,40 @@ void MatchingEngine::process_bbo(const BboQuote& quote)
         return;
     }
     external_bbo_[quote.symbol] = quote;
+
+    if (!queue_ahead_symbols_.contains(quote.symbol)) return;
+    const auto book_it = books_.find(quote.symbol);
+    if (book_it == books_.end()) return;
+    const auto bid_it = book_it->second.bids.find(to_price_tick(quote.bid_price, tick_size_));
+    if (bid_it != book_it->second.bids.end())
+        bid_it->second.external_queue_ahead =
+            std::min(bid_it->second.external_queue_ahead, quote.bid_quantity);
+    const auto ask_it = book_it->second.asks.find(to_price_tick(quote.ask_price, tick_size_));
+    if (ask_it != book_it->second.asks.end())
+        ask_it->second.external_queue_ahead =
+            std::min(ask_it->second.external_queue_ahead, quote.ask_quantity);
+}
+
+void MatchingEngine::process_l2_top(const BboQuote& quote)
+{
+    queue_ahead_symbols_.insert(quote.symbol);
+    process_bbo(quote);
+}
+
+uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
+{
+    if (!queue_ahead_symbols_.contains(order.symbol)) return 0;
+    const auto quote_it = external_bbo_.find(order.symbol);
+    if (quote_it == external_bbo_.end()) return 0;
+
+    const auto& quote = quote_it->second;
+    if (order.side == exchange::Side::Buy &&
+        to_price_tick(order.price, tick_size_) == to_price_tick(quote.bid_price, tick_size_))
+        return quote.bid_quantity;
+    if (order.side == exchange::Side::Sell &&
+        to_price_tick(order.price, tick_size_) == to_price_tick(quote.ask_price, tick_size_))
+        return quote.ask_quantity;
+    return 0;
 }
 
 void MatchingEngine::match_external_bbo(Order& order)
@@ -96,6 +130,22 @@ void MatchingEngine::match_external_bbo(Order& order)
 
 void MatchingEngine::process_market_trade(const MarketTrade& trade)
 {
+    const auto quote_it = external_bbo_.find(trade.symbol);
+    if (quote_it != external_bbo_.end() && queue_ahead_symbols_.contains(trade.symbol))
+    {
+        auto& quote = quote_it->second;
+        if (trade.aggressor_side == Side::Sell &&
+            to_price_tick(trade.price, tick_size_) == to_price_tick(quote.bid_price, tick_size_))
+            quote.bid_quantity = quote.bid_quantity > trade.quantity
+                                     ? quote.bid_quantity - trade.quantity
+                                     : 0;
+        else if (trade.aggressor_side == Side::Buy &&
+                 to_price_tick(trade.price, tick_size_) ==
+                     to_price_tick(quote.ask_price, tick_size_))
+            quote.ask_quantity = quote.ask_quantity > trade.quantity
+                                     ? quote.ask_quantity - trade.quantity
+                                     : 0;
+    }
     process_market_order(trade.symbol, trade.aggressor_side, trade.price, trade.quantity, trade.ts);
 }
 
@@ -180,6 +230,16 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
 
             if (incoming_price < best_price) break;
 
+            if (new_order.owner == "Market" && best_ask_it->second.external_queue_ahead > 0)
+            {
+                const uint64_t consumed =
+                    std::min(qty, best_ask_it->second.external_queue_ahead);
+                qty -= consumed;
+                best_ask_it->second.external_queue_ahead -= consumed;
+                queue_ahead_consumed_ += consumed;
+                if (qty == 0) break;
+            }
+
             auto& ask_queue = best_ask_it->second.orders;
             while (qty > 0 && !ask_queue.empty())
             {
@@ -241,8 +301,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
         // Rest any unfilled quantity in the bid book.
         if (qty > 0 && rest_incoming)
         {
-            book.bids[incoming_price].orders.push_back(new_order);
-            order_index_[new_order.id] = &book.bids[incoming_price].orders.back();
+            auto& level = book.bids[incoming_price];
+            if (level.orders.empty()) level.external_queue_ahead = displayed_quantity_ahead(new_order);
+            level.orders.push_back(new_order);
+            order_index_[new_order.id] = &level.orders.back();
 
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,
@@ -271,6 +333,16 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
             PriceTick best_price = best_bid_it->first;
 
             if (incoming_price > best_price) break;
+
+            if (new_order.owner == "Market" && best_bid_it->second.external_queue_ahead > 0)
+            {
+                const uint64_t consumed =
+                    std::min(qty, best_bid_it->second.external_queue_ahead);
+                qty -= consumed;
+                best_bid_it->second.external_queue_ahead -= consumed;
+                queue_ahead_consumed_ += consumed;
+                if (qty == 0) break;
+            }
 
             auto& bid_queue = best_bid_it->second.orders;
             while (qty > 0 && !bid_queue.empty())
@@ -333,8 +405,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
         // Rest any unfilled quantity in the ask book.
         if (qty > 0 && rest_incoming)
         {
-            book.asks[incoming_price].orders.push_back(new_order);
-            order_index_[new_order.id] = &book.asks[incoming_price].orders.back();
+            auto& level = book.asks[incoming_price];
+            if (level.orders.empty()) level.external_queue_ahead = displayed_quantity_ahead(new_order);
+            level.orders.push_back(new_order);
+            order_index_[new_order.id] = &level.orders.back();
 
             report(ExecutionReport{.order_id = new_order.id,
                                    .side = new_order.side,

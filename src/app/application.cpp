@@ -166,6 +166,7 @@ void Application::run_l2_replay_mode() const
     Portfolio portfolio(instrument.quantity_scale);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
                       portfolio, logger);
+    double final_mid = 0.0;
     L2ReplayFeed feed(
         make_deribit_trade_reader(trades_file), make_deribit_book_snapshot_reader(depth_file),
         [&](const MarketEvent& event)
@@ -179,13 +180,16 @@ void Application::run_l2_replay_mode() const
                     else if constexpr (std::is_same_v<Event, MarketDepthSnapshot>)
                     {
                         l2_book.apply_snapshot(value);
-                        pipeline.process_l2_market_view(l2_book.market_view());
+                        const auto view = l2_book.market_view();
+                        final_mid = (view.top.bid_price + view.top.ask_price) / 2.0;
+                        pipeline.process_l2_market_view(view);
                     }
                 },
                 event);
         },
         cfg_.delay);
     feed.run();
+    if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     const auto& validation = feed.validation_summary();
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
                " depth_snapshots=", validation.depth_snapshots);

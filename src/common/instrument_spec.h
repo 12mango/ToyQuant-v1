@@ -35,6 +35,6 @@ inline InstrumentSpec deribit_btc_perpetual_spec()
                           .quantity_scale = 1,
                           .lot_size = 1,
                           .min_order_quantity = 1,
-                          .maker_fee_rate = 0.0,
-                          .taker_fee_rate = 0.0};
+                          .maker_fee_rate = 0.0002,
+                          .taker_fee_rate = 0.0005};
 }

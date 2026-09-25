@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "common/types.h"
 #include "execution_report.h"
@@ -23,6 +24,7 @@ struct FeeSchedule
 struct PriceLevel
 {
     std::list<exchange::Order> orders;
+    uint64_t external_queue_ahead{0};
 };
 
 struct MEOrderBook
@@ -39,9 +41,17 @@ class IMatchingEngine
 
     virtual void send_order(const exchange::Order& order) = 0;
     virtual void process_bbo(const BboQuote& quote) = 0;
+    virtual void process_l2_top(const BboQuote& quote)
+    {
+        process_bbo(quote);
+    }
     virtual void process_market_trade(const MarketTrade& trade) = 0;
     virtual void cancel_order(uint64_t order_id) = 0;
     virtual void set_report_callback(ReportCallback cb) = 0;
+    virtual uint64_t queue_ahead_consumed() const
+    {
+        return 0;
+    }
 };
 
 class MatchingEngine : public IMatchingEngine
@@ -57,8 +67,14 @@ class MatchingEngine : public IMatchingEngine
 
     void send_order(const exchange::Order& order) override;
     void process_bbo(const BboQuote& quote) override;
+    void process_l2_top(const BboQuote& quote) override;
     void process_market_trade(const MarketTrade& trade) override;
     void cancel_order(uint64_t order_id) override;
+
+    uint64_t queue_ahead_consumed() const override
+    {
+        return queue_ahead_consumed_;
+    }
 
     void set_report_callback(ReportCallback cb) override
     {
@@ -84,6 +100,7 @@ class MatchingEngine : public IMatchingEngine
     }
 
     void match_external_bbo(exchange::Order& order);
+    uint64_t displayed_quantity_ahead(const exchange::Order& order) const;
     void process_market_order(const std::string& symbol, Side side, double price,
                               uint64_t quantity, uint64_t ts);
     void match(MEOrderBook& book, const exchange::Order& incoming, bool rest_incoming);
@@ -96,9 +113,11 @@ class MatchingEngine : public IMatchingEngine
 
     std::unordered_map<std::string, MEOrderBook> books_;
     std::unordered_map<std::string, BboQuote> external_bbo_;
+    std::unordered_set<std::string> queue_ahead_symbols_;
     std::unordered_map<uint64_t, exchange::Order*> order_index_;
     ReportCallback report_cb_;
     Logger* logger_;
     double tick_size_;
     FeeSchedule fee_schedule_;
+    uint64_t queue_ahead_consumed_{0};
 };
