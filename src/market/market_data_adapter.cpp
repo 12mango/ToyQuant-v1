@@ -225,6 +225,145 @@ class DeribitBookSnapshotReader final : public IMarketEventReader
     uint64_t sequence_{};
 };
 
+class DeribitIncrementalBookReader final : public IMarketEventReader
+{
+   public:
+    explicit DeribitIncrementalBookReader(const std::string& path)
+    {
+        if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
+        {
+            gzip_input_ = gzopen(path.c_str(), "rb");
+            if (!gzip_input_) throw std::runtime_error("failed to open incremental book: " + path);
+        }
+        else
+        {
+            plain_input_.open(path);
+            if (!plain_input_) throw std::runtime_error("failed to open incremental book: " + path);
+        }
+        std::string header;
+        if (!read_line(header)) throw std::invalid_argument("incremental book is missing a header");
+        const auto fields = split_csv(header);
+        for (std::size_t index = 0; index < fields.size(); ++index) columns_.emplace(fields[index], index);
+        exchange_column_ = require_column("exchange");
+        symbol_column_ = require_column("symbol");
+        timestamp_column_ = require_column("timestamp");
+        local_timestamp_column_ = require_column("local_timestamp");
+        snapshot_column_ = require_column("is_snapshot");
+        side_column_ = require_column("side");
+        price_column_ = require_column("price");
+        amount_column_ = require_column("amount");
+    }
+
+    ~DeribitIncrementalBookReader() override
+    {
+        if (gzip_input_) gzclose(gzip_input_);
+    }
+
+    bool next(MarketEvent& event) override
+    {
+        while (true)
+        {
+            if (!read_batch(event)) return false;
+            const auto& batch = std::get<IncrementalBookBatch>(event);
+            const bool contains_snapshot = std::any_of(
+                batch.updates.begin(), batch.updates.end(),
+                [](const auto& update) { return update.is_snapshot; });
+            if (started_ || contains_snapshot)
+            {
+                started_ = true;
+                return true;
+            }
+        }
+    }
+
+   private:
+    bool read_batch(MarketEvent& event)
+    {
+        std::vector<std::string> fields;
+        if (pending_.empty())
+        {
+            std::string row;
+            do
+            {
+                if (!read_line(row)) return false;
+            } while (row.empty());
+            pending_ = split_csv(row);
+        }
+        const uint64_t local_ts = std::stoull(pending_[local_timestamp_column_]);
+        IncrementalBookBatch batch{.ts = std::stoull(pending_[timestamp_column_]),
+                       .exchange_ts = std::stoull(pending_[timestamp_column_]),
+                                   .local_ts = local_ts,
+                                   .symbol = pending_[symbol_column_],
+                                   .updates = {},
+                                   .exchange = pending_[exchange_column_]};
+        append_update(batch, pending_);
+        pending_.clear();
+        std::string row;
+        while (read_line(row))
+        {
+            if (row.empty()) continue;
+            fields = split_csv(row);
+            if (std::stoull(fields[local_timestamp_column_]) != local_ts)
+            {
+                pending_ = std::move(fields);
+                break;
+            }
+            append_update(batch, fields);
+        }
+        event = std::move(batch);
+        return true;
+    }
+
+    void append_update(IncrementalBookBatch& batch, const std::vector<std::string>& fields)
+    {
+        const auto& side = fields[side_column_];
+        const Side parsed_side = side == "bid" ? Side::Buy : side == "ask" ? Side::Sell : Side::Unknown;
+        batch.updates.push_back(IncrementalBookUpdate{
+            .exchange_ts = std::stoull(fields[timestamp_column_]),
+            .local_ts = std::stoull(fields[local_timestamp_column_]),
+            .symbol = fields[symbol_column_],
+            .is_snapshot = parse_boolean(fields[snapshot_column_]),
+            .side = parsed_side,
+            .price = std::stod(fields[price_column_]),
+            .amount = snapshot_quantity(fields[amount_column_]),
+            .exchange = fields[exchange_column_]});
+    }
+
+    bool read_line(std::string& line)
+    {
+        line.clear();
+        if (gzip_input_)
+        {
+            char buffer[4096];
+            while (gzgets(gzip_input_, buffer, sizeof(buffer)))
+            {
+                line += buffer;
+                if (!line.empty() && line.back() == '\n') break;
+            }
+            if (line.empty()) return false;
+        }
+        else if (!std::getline(plain_input_, line)) return false;
+        if (!line.empty() && line.back() == '\n') line.pop_back();
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        return true;
+    }
+
+    std::size_t require_column(const std::string& name) const
+    {
+        const auto column = columns_.find(name);
+        if (column == columns_.end()) throw std::invalid_argument("missing incremental column: " + name);
+        return column->second;
+    }
+
+    gzFile gzip_input_{nullptr};
+    std::ifstream plain_input_;
+    std::unordered_map<std::string, std::size_t> columns_;
+    std::vector<std::string> pending_;
+    bool started_{false};
+    std::size_t exchange_column_{}, symbol_column_{}, timestamp_column_{}, local_timestamp_column_{};
+    std::size_t snapshot_column_{}, side_column_{}, price_column_{}, amount_column_{};
+};
+
 class DeribitTradeReader final : public IMarketEventReader
 {
    public:
@@ -353,6 +492,38 @@ MarketDataReaders make_market_data_readers(const std::string& format,
 std::unique_ptr<IMarketEventReader> make_deribit_book_snapshot_reader(const std::string& path)
 {
     return std::make_unique<DeribitBookSnapshotReader>(path);
+}
+
+std::unique_ptr<IMarketEventReader> make_deribit_incremental_book_reader(const std::string& path)
+{
+    return std::make_unique<DeribitIncrementalBookReader>(path);
+}
+
+std::unique_ptr<IMarketEventReader> make_deribit_depth_reader(const std::string& path)
+{
+    std::string header;
+    if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
+    {
+        gzFile input = gzopen(path.c_str(), "rb");
+        if (!input) throw std::runtime_error("failed to open Deribit depth file: " + path);
+        char buffer[4096];
+        if (!gzgets(input, buffer, sizeof(buffer)))
+        {
+            gzclose(input);
+            throw std::invalid_argument("Deribit depth file is missing a header");
+        }
+        header = buffer;
+        gzclose(input);
+    }
+    else
+    {
+        std::ifstream input(path);
+        if (!input || !std::getline(input, header))
+            throw std::invalid_argument("Deribit depth file is missing a header");
+    }
+    if (header.find("is_snapshot") != std::string::npos)
+        return make_deribit_incremental_book_reader(path);
+    return make_deribit_book_snapshot_reader(path);
 }
 
 std::unique_ptr<IMarketEventReader> make_deribit_trade_reader(const std::string& path)

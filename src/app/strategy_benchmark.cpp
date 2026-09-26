@@ -80,10 +80,12 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         MatchingEngine engine(nullptr, instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                           .taker_rate = instrument.taker_fee_rate,
-                                          .quantity_scale = instrument.quantity_scale});
+                                          .quantity_scale = instrument.quantity_scale},
+                              1);
         Portfolio portfolio(instrument.quantity_scale);
         Logger logger;
-        Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio, logger);
+        Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio, logger,
+                  instrument.tick_size);
 
         double final_mid = 0.0;
         uint64_t last_event_ts = 0;
@@ -170,6 +172,12 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         result.markout_count = quality.markout_count;
         result.total_quote_lifetime = quality.total_quote_lifetime;
         result.max_quote_lifetime = quality.max_quote_lifetime;
+        result.quote_observations = quality.quote_observations;
+        result.bbo_quote_observations = quality.bbo_quote_observations;
+        result.total_quote_distance = quality.total_quote_distance;
+        result.audited_cancelled_orders = quality.audited_cancelled_orders;
+        result.cancelled_before_fill_orders = quality.cancelled_before_fill_orders;
+        result.total_order_lifetime_cycles = quality.total_order_lifetime_cycles;
         result.working_orders = summary.working_orders;
         result.stale_trades = validation.stale_trades;
         result.dislocated_trades = validation.dislocated_trades;

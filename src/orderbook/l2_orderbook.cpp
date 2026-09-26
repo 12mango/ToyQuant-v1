@@ -50,13 +50,61 @@ void L2OrderBook::apply_snapshot(const MarketDepthSnapshot& snapshot)
     bids_ = std::move(next_bids);
     asks_ = std::move(next_asks);
     timestamp_ = snapshot.ts;
+    local_timestamp_ = 0;
     sequence_ = snapshot.sequence;
+}
+
+void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
+{
+    if (batch.updates.empty()) return;
+    if (batch.symbol.empty() || batch.exchange_ts == 0 || batch.local_ts == 0)
+        throw std::invalid_argument("invalid incremental L2 batch metadata");
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (symbol_.empty()) symbol_ = batch.symbol;
+    if (batch.symbol != symbol_) throw std::invalid_argument("L2 incremental symbol changed");
+    if (timestamp_ != 0 && batch.exchange_ts < timestamp_)
+        throw std::invalid_argument("L2 incremental timestamp moved backwards");
+    if (local_timestamp_ != 0 && batch.local_ts < local_timestamp_)
+        throw std::invalid_argument("L2 incremental local timestamp moved backwards");
+
+    const bool reset = std::any_of(
+        batch.updates.begin(), batch.updates.end(),
+        [](const auto& update) { return update.is_snapshot; });
+    if (reset && !snapshot_batch_active_)
+    {
+        bids_.clear();
+        asks_.clear();
+    }
+    snapshot_batch_active_ = reset;
+    for (const auto& update : batch.updates)
+    {
+        if (update.symbol != symbol_ || update.exchange_ts == 0 || update.local_ts != batch.local_ts ||
+            update.side == Side::Unknown || !std::isfinite(update.price) || update.price <= 0.0)
+            throw std::invalid_argument("invalid L2 incremental update");
+        if (update.side == Side::Buy)
+        {
+            if (update.amount == 0)
+                bids_.erase(update.price);
+            else
+                bids_[update.price] = update.amount;
+        }
+        else
+        {
+            if (update.amount == 0)
+                asks_.erase(update.price);
+            else
+                asks_[update.price] = update.amount;
+        }
+    }
+    timestamp_ = batch.exchange_ts;
+    local_timestamp_ = batch.local_ts;
+    sequence_++;
 }
 
 TopOfBook L2OrderBook::top_of_book() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (bids_.empty() || asks_.empty()) return {};
+    if (bids_.empty() || asks_.empty() || bids_.begin()->first >= asks_.begin()->first) return {};
     return TopOfBook{bids_.begin()->first, bids_.begin()->second, asks_.begin()->first,
                      asks_.begin()->second};
 }
@@ -67,7 +115,9 @@ L2MarketView L2OrderBook::market_view(std::size_t levels) const
     L2MarketView view{};
     view.symbol = symbol_;
     view.ts = timestamp_;
-    if (bids_.empty() || asks_.empty() || levels == 0) return view;
+    view.local_ts = local_timestamp_;
+    if (bids_.empty() || asks_.empty() || bids_.begin()->first >= asks_.begin()->first || levels == 0)
+        return view;
 
     view.top = TopOfBook{bids_.begin()->first, bids_.begin()->second, asks_.begin()->first,
                          asks_.begin()->second};

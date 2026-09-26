@@ -29,7 +29,8 @@ L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
 ActiveL2MarketMakerConfig make_active_l2_config(const L2MarketMakerConfig& base)
 {
     return ActiveL2MarketMakerConfig{
-        .base = base, .volatility_alpha = 0.25, .pause_after_ticks = 9.0};
+        .base = base, .volatility_alpha = 0.25, .pause_after_ticks = 9.0,
+        .warmup_trades = 16, .warmup_views = 2};
 }
 }  // namespace
 

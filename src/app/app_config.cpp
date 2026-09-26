@@ -38,17 +38,27 @@ bool parse_unsigned(const std::string& value, uint64_t& result)
     return parsed.ec == std::errc{} && parsed.ptr == end;
 }
 
+bool parse_queue_model(const std::string& value, QueueModel& result)
+{
+    if (value == "conservative") result = QueueModel::Conservative;
+    else if (value == "heuristic") result = QueueModel::Heuristic;
+    else if (value == "optimistic") result = QueueModel::Optimistic;
+    else return false;
+    return true;
+}
+
 void print_usage(const char* executable)
 {
     std::cerr << "Usage: " << executable << " csv [path_to_csv] [ms_delay] [strategy]\n";
     std::cerr << "   or: " << executable << " udp <port> [strategy]\n";
     std::cerr << "   or: " << executable
               << " replay <agg_trades_csv> <bbo_csv> <symbol> [ms_delay] [strategy] "
-                 "[quantity_scale]\n";
-     std::cerr << "   or: " << executable
-                  << " l2_replay <trades_csv[.gz]> <depth_snapshot_csv> <symbol> "
-                      "[ms_delay] [strategy] [quantity_scale]\n";
-    std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | l2\n";
+                      "[quantity_scale] [queue_model]\n";
+        std::cerr << "   or: " << executable
+                      << " l2_replay <trades_csv[.gz]> <depth_or_incremental_csv> <symbol> "
+                         "[ms_delay] [strategy] [quantity_scale] [queue_model]\n";
+        std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
+        std::cerr << "   queue_model: conservative (default) | heuristic | optimistic\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -72,7 +82,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
 
     if (cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay)
     {
-        if (argc < 5 || argc > 8)
+        if (argc < 5 || argc > 9)
         {
             error = "replay requires trade file, market-state file, and symbol";
             return false;
@@ -95,6 +105,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (argc >= 8 && (!parse_unsigned(argv[7], cfg.quantity_scale) || cfg.quantity_scale == 0))
         {
             error = "quantity scale must be a positive integer";
+            return false;
+        }
+        if (argc >= 9 && !parse_queue_model(argv[8], cfg.queue_model))
+        {
+            error = "queue model must be conservative, heuristic, or optimistic";
             return false;
         }
     }

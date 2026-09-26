@@ -12,6 +12,8 @@ struct ActiveL2MarketMakerConfig
     L2MarketMakerConfig base;
     double volatility_alpha{0.25};
     double pause_after_ticks{9.0};
+    uint64_t warmup_trades{0};
+    uint64_t warmup_views{0};
 };
 
 class ActiveL2MarketMaker final : public Strategy
@@ -33,6 +35,8 @@ class ActiveL2MarketMaker final : public Strategy
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override
     {
         update_volatility(view.top, view.ts);
+        if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0) ++valid_views_;
+        if (!warmup_complete()) return {};
         if (should_pause()) return pause();
         return base_.on_l2_market_view(view);
     }
@@ -40,6 +44,12 @@ class ActiveL2MarketMaker final : public Strategy
     void on_market_trade(const MarketTrade& trade) override
     {
         base_.on_market_trade(trade);
+        ++market_trades_;
+    }
+
+    void on_queue_activity(Side side, uint64_t consumed_quantity) override
+    {
+        base_.on_queue_activity(side, consumed_quantity);
     }
 
     void on_order_submitted(const StrategyOrder& order) override
@@ -85,6 +95,11 @@ class ActiveL2MarketMaker final : public Strategy
         return volatility_ticks_ >= config_.pause_after_ticks;
     }
 
+    bool warmup_complete() const
+    {
+        return market_trades_ >= config_.warmup_trades && valid_views_ >= config_.warmup_views;
+    }
+
     std::vector<StrategyOrder> pause()
     {
         if (base_.working_order_count() > 0) ++risk_pause_count_;
@@ -123,4 +138,6 @@ class ActiveL2MarketMaker final : public Strategy
     uint64_t last_ts_{0};
     double volatility_ticks_{0.0};
     uint64_t risk_pause_count_{0};
+    uint64_t market_trades_{0};
+    uint64_t valid_views_{0};
 };

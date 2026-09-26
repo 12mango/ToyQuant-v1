@@ -45,6 +45,8 @@ int main(int argc, char** argv)
         std::cout << std::left << std::setw(20) << "strategy" << std::setw(12) << "orders"
                   << std::setw(12) << "filled_qty" << std::setw(10) << "fills"
                   << std::setw(12) << "filtered" 
+                  << std::setw(10) << "bbo_pct" << std::setw(10) << "avg_gap"
+                  << std::setw(10) << "cancel_nf" << std::setw(10) << "avg_life"
                   << std::setw(12) << "position" << std::setw(14) << "gross_pnl"
                   << std::setw(14) << "net_pnl" << std::setw(12) << "fees"
                       << std::setw(12) << "fee_ratio" << std::setw(14) << "edge"
@@ -55,6 +57,22 @@ int main(int argc, char** argv)
             std::cout << std::left << std::setw(20) << r.strategy_name << std::setw(12)
                       << r.submitted_orders << std::setw(12) << r.filled_quantity << std::setw(10)
                       << r.trade_reports << std::setw(12) << r.filtered_market_trades
+                        << std::setw(10)
+                        << (r.quote_observations == 0
+                            ? 0.0
+                            : static_cast<double>(r.bbo_quote_observations) /
+                                static_cast<double>(r.quote_observations))
+                        << std::setw(10)
+                        << (r.quote_observations == 0
+                            ? 0.0
+                            : r.total_quote_distance /
+                                static_cast<double>(r.quote_observations))
+                        << std::setw(10) << r.cancelled_before_fill_orders
+                            << std::setw(10)
+                            << (r.quote_observations == 0
+                                ? 0.0
+                                : static_cast<double>(r.total_order_lifetime_cycles) /
+                                    static_cast<double>(r.quote_observations))
                       << std::setw(12) << r.net_position << std::setw(14)
                       << std::fixed << std::setprecision(6) << r.gross_pnl << std::setw(14)
                       << std::fixed << std::setprecision(6) << r.equity - 1000.0 << std::setw(12)

@@ -46,4 +46,27 @@ struct MarketDepthSnapshot
     std::string exchange;
 };
 
-using MarketEvent = std::variant<MarketTrade, BboQuote, MarketDepthSnapshot>;
+struct IncrementalBookUpdate
+{
+    uint64_t exchange_ts{};
+    uint64_t local_ts{};
+    std::string symbol;
+    bool is_snapshot{false};
+    Side side{Side::Unknown};
+    double price{};
+    uint64_t amount{};
+    std::string exchange;
+};
+
+struct IncrementalBookBatch
+{
+    uint64_t ts{};
+    uint64_t exchange_ts{};
+    uint64_t local_ts{};
+    std::string symbol;
+    std::vector<IncrementalBookUpdate> updates;
+    std::string exchange;
+};
+
+using MarketEvent =
+    std::variant<MarketTrade, BboQuote, MarketDepthSnapshot, IncrementalBookBatch>;

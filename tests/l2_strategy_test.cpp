@@ -73,6 +73,52 @@ int main()
     assert(refreshable.on_l2_market_view(moved_view).empty());
     assert(refreshable.cancel_requests().size() == 2);
 
+    L2MarketMaker depth_only_updates(L2MarketMakerConfig{.order_size = 1,
+                                                         .base_spread = 1.0,
+                                                         .inventory_limit = 100,
+                                                         .tick_size = 0.5,
+                                                         .signal_mode = L2SignalMode::Baseline,
+                                                         .max_quote_age = 2});
+    const auto depth_only_orders = depth_only_updates.on_l2_market_view(view);
+    assert(depth_only_orders.size() == 2);
+    depth_only_updates.on_order_submitted(
+        StrategyOrder{Side::Buy, view.symbol, depth_only_orders[0].price, 1, 33});
+    depth_only_updates.on_order_submitted(
+        StrategyOrder{Side::Sell, view.symbol, depth_only_orders[1].price, 1, 34});
+    L2MarketView same_top = view;
+    same_top.depth_imbalance = -view.depth_imbalance;
+    assert(depth_only_updates.on_l2_market_view(same_top).empty());
+    assert(depth_only_updates.cancel_requests().empty());
+
+    L2MarketMaker queue_patient(L2MarketMakerConfig{.order_size = 1,
+                                                     .base_spread = 1.0,
+                                                     .inventory_limit = 100,
+                                                     .tick_size = 0.5,
+                                                     .signal_mode = L2SignalMode::Baseline,
+                                                     .refresh_price_ticks = 2,
+                                                     .max_quote_age = 1});
+    const auto queue_orders = queue_patient.on_l2_market_view(view);
+    assert(queue_orders.size() == 2);
+    queue_patient.on_order_submitted(
+        StrategyOrder{Side::Buy, view.symbol, queue_orders[0].price, 1, 51});
+    queue_patient.on_order_submitted(
+        StrategyOrder{Side::Sell, view.symbol, queue_orders[1].price, 1, 52});
+    queue_patient.on_queue_activity(Side::Buy, 100);
+    L2MarketView queue_move = view;
+    queue_move.top.bid_price += 0.5;
+    queue_move.top.ask_price += 0.5;
+    assert(queue_patient.on_l2_market_view(queue_move).empty());
+    assert(queue_patient.cancel_requests().empty());
+    for (int hold = 0; hold < 2; ++hold)
+    {
+        queue_patient.on_queue_activity(Side::Buy, 100);
+        assert(queue_patient.on_l2_market_view(queue_move).empty());
+        assert(queue_patient.cancel_requests().empty());
+    }
+    queue_patient.on_queue_activity(Side::Buy, 100);
+    assert(queue_patient.on_l2_market_view(queue_move).empty());
+    assert(queue_patient.cancel_requests().size() == 2);
+
     L2MarketMaker guarded_buy_flow(L2MarketMakerConfig{.order_size = 1,
                                                         .base_spread = 1.0,
                                                         .inventory_limit = 100,
@@ -158,6 +204,20 @@ int main()
     }
     assert(paused);
     assert(active.volatility_ticks() >= 8.0);
+
+    ActiveL2MarketMaker warming(ActiveL2MarketMakerConfig{
+        .base = L2MarketMakerConfig{.order_size = 1,
+                                     .base_spread = 1.0,
+                                     .inventory_limit = 100,
+                                     .tick_size = 0.5,
+                                     .signal_mode = L2SignalMode::Flow,
+                                     .toxicity_flow_threshold = 0.65},
+        .warmup_trades = 2,
+        .warmup_views = 2});
+    assert(warming.on_l2_market_view(view).empty());
+    warming.on_market_trade(MarketTrade{101, view.symbol, 6421.5, 1, Side::Buy, 1});
+    warming.on_market_trade(MarketTrade{102, view.symbol, 6421.5, 1, Side::Sell, 2});
+    assert(warming.on_l2_market_view(view).size() == 2);
 
     ActiveL2MarketMaker time_aware(ActiveL2MarketMakerConfig{
         .base = L2MarketMakerConfig{.order_size = 2,

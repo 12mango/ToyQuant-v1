@@ -52,6 +52,22 @@ class IMatchingEngine
     {
         return 0;
     }
+    virtual uint64_t queue_ahead_consumed(Side side) const
+    {
+        (void)side;
+        return 0;
+    }
+
+    virtual uint64_t queue_ahead_levels_cleared(Side side) const
+    {
+        (void)side;
+        return 0;
+    }
+    virtual uint64_t queue_ahead_from_quantity_changes(Side side) const
+    {
+        (void)side;
+        return 0;
+    }
 };
 
 class MatchingEngine : public IMatchingEngine
@@ -60,8 +76,17 @@ class MatchingEngine : public IMatchingEngine
     using ReportCallback = std::function<void(const ExecutionReport&)>;
 
     explicit MatchingEngine(Logger* logger = nullptr, double tick_size = PRICE_TICK_SIZE,
-                            FeeSchedule fee_schedule = {})
-        : logger_(logger), tick_size_(tick_size), fee_schedule_(fee_schedule)
+                             FeeSchedule fee_schedule = {}, uint64_t cancel_delay_events = 0,
+                             QueueModel queue_model = QueueModel::Conservative,
+                             double heuristic_cancel_ahead_ratio = 0.5,
+                             double heuristic_max_reduction_fraction = 0.25)
+                : logger_(logger),
+                    tick_size_(tick_size),
+                    fee_schedule_(fee_schedule),
+                    queue_model_(queue_model),
+                    heuristic_cancel_ahead_ratio_(heuristic_cancel_ahead_ratio),
+                    heuristic_max_reduction_fraction_(heuristic_max_reduction_fraction),
+                    cancel_delay_events_(cancel_delay_events)
     {
     }
 
@@ -74,6 +99,22 @@ class MatchingEngine : public IMatchingEngine
     uint64_t queue_ahead_consumed() const override
     {
         return queue_ahead_consumed_;
+    }
+
+    uint64_t queue_ahead_consumed(Side side) const override
+    {
+        return side == Side::Buy ? buy_queue_ahead_consumed_ : sell_queue_ahead_consumed_;
+    }
+
+    uint64_t queue_ahead_levels_cleared(Side side) const override
+    {
+        return side == Side::Buy ? buy_queue_ahead_cleared_ : sell_queue_ahead_cleared_;
+    }
+
+    uint64_t queue_ahead_from_quantity_changes(Side side) const override
+    {
+        return side == Side::Buy ? buy_queue_from_quantity_changes_
+                                 : sell_queue_from_quantity_changes_;
     }
 
     void set_report_callback(ReportCallback cb) override
@@ -100,6 +141,8 @@ class MatchingEngine : public IMatchingEngine
     }
 
     void match_external_bbo(exchange::Order& order);
+    void cancel_order_immediate(uint64_t order_id);
+    void apply_pending_cancels();
     uint64_t displayed_quantity_ahead(const exchange::Order& order) const;
     void process_market_order(const std::string& symbol, Side side, double price,
                               uint64_t quantity, uint64_t ts);
@@ -113,6 +156,9 @@ class MatchingEngine : public IMatchingEngine
 
     std::unordered_map<std::string, MEOrderBook> books_;
     std::unordered_map<std::string, BboQuote> external_bbo_;
+    std::unordered_map<std::string, uint64_t> last_bid_trade_ts_;
+    std::unordered_map<std::string, uint64_t> last_ask_trade_ts_;
+    std::unordered_map<std::string, BboQuote> l2_top_bbo_;
     std::unordered_set<std::string> queue_ahead_symbols_;
     std::unordered_map<uint64_t, exchange::Order*> order_index_;
     ReportCallback report_cb_;
@@ -120,4 +166,16 @@ class MatchingEngine : public IMatchingEngine
     double tick_size_;
     FeeSchedule fee_schedule_;
     uint64_t queue_ahead_consumed_{0};
+    uint64_t buy_queue_ahead_consumed_{0};
+    uint64_t sell_queue_ahead_consumed_{0};
+    uint64_t buy_queue_ahead_cleared_{0};
+    uint64_t sell_queue_ahead_cleared_{0};
+    uint64_t buy_queue_from_quantity_changes_{0};
+    uint64_t sell_queue_from_quantity_changes_{0};
+    QueueModel queue_model_{QueueModel::Conservative};
+    double heuristic_cancel_ahead_ratio_{0.5};
+    double heuristic_max_reduction_fraction_{0.25};
+    uint64_t event_counter_{0};
+    std::unordered_map<uint64_t, uint64_t> pending_cancels_;
+    uint64_t cancel_delay_events_{0};
 };

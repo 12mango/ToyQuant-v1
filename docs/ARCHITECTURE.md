@@ -153,6 +153,17 @@ snapshot atomically, validates ordering and sequence, and derives an `L2MarketVi
 path passes that view explicitly to the selected strategy after venue and instrument validation;
 raw vendor rows never enter strategy code, and Binance L1 data is not combined with Deribit L2.
 
+The incremental L2 path uses `IncrementalBookBatch` events. The reader groups rows sharing a
+`local_timestamp`, skips buffered updates before the first snapshot, and preserves snapshot-batch
+reset boundaries. Each update sets an absolute level amount; amount zero removes the level. After
+the batch is applied, the same `L2MarketView` interface is emitted, so strategies do not depend on
+whether the source was a reconstructed snapshot or an incremental feed.
+
+The validator enforces monotonic exchange and local timestamps and counts snapshot/reset batches
+as reconnect diagnostics. The current normalized CSV schema does not expose Deribit
+`prev_change_id`, so a true exchange sequence-gap check is intentionally not claimed; a future
+adapter can add that field without changing the strategy interface.
+
 The matching engine also retains the latest BBO liquidity for aggressive strategy orders. A buy
 limit at or above the best ask executes at the ask; a sell limit at or below the best bid executes
 at the bid. Execution is capped by the displayed BBO quantity, which is consumed across subsequent
@@ -703,9 +714,22 @@ ask >= external_best_ask
 ```
 
 This keeps the L2 strategies maker-only. When orders are working, a fair-price move of two ticks
-or a maximum quote age of 50 L2 decisions requests cancellation. The pipeline processes the cancel
-request before allowing the next quote cycle to submit replacements. The active strategy records
-price refreshes, age refreshes, and risk pauses separately.
+requests cancellation. The active mainline counts quote age only when the external top-of-book
+midpoint moves by at least one tick; depth-only updates do not consume quote lifetime. This avoids
+treating incremental feed granularity as market movement. The fallback maximum age remains 50
+market-price decisions. The pipeline processes cancellation before allowing replacement, and the
+active strategy records price refreshes, age refreshes, and risk pauses separately.
+
+This behavior is specifically important for incremental input: many updates change displayed
+quantity without moving the best price. Counting every such update as quote age creates artificial
+refresh churn. The retained rule removes that data-resolution artifact without changing the fair
+price, inventory, toxicity, or passive-price logic.
+
+The pipeline also reports consumed queue volume back to the strategy. If a quote reaches its age
+limit while the queue ahead is actively being consumed and fair price has not changed, L2 retains
+the quote and resets its age instead of cancelling and losing time priority. A price change or risk
+pause still takes precedence. The preservation is bounded to three holds before a stale quote must
+be reconsidered. This is a queue-preservation rule, not a profitability assumption.
 
 #### 6.4.4 Active risk overlay
 
@@ -721,6 +745,13 @@ reaches `9` ticks per second, active L2 requests cancellation of all working ord
 submissions. This is a tail-risk gate, not a continuous spread signal. The historical
 `adaptive_l2` name is accepted only at the factory boundary and constructs this same class.
 
+For both snapshot and incremental batches, the EWMA uses exchange event time so strategy signals are
+normalized against market time rather than file or network processing cadence. Incremental
+`local_ts` remains available in `L2MarketView` for future latency diagnostics, but does not alter
+the current trading decision. The same market period can still produce different quote-cycle counts
+because incremental data contains more update batches; that execution-resolution difference must be
+measured before comparing PnL.
+
 #### 6.4.5 Execution and queue model
 
 Before L2 strategy decisions, `Pipeline::process_l2_market_view` sends the snapshot top of book to
@@ -728,15 +759,39 @@ Before L2 strategy decisions, `Pipeline::process_l2_market_view` sends the snaps
 quantity is stored as `external_queue_ahead`. Subsequent market trades consume that quantity before
 the local FIFO order. This prevents a new order from receiving queue-first fills.
 
-The engine exposes `queue_ahead_consumed` in the run summary. Fees are calculated at execution time
+The engine exposes `queue_ahead_consumed` in the run summary. Queue-clear diagnostics count price
+levels whose external queue reaches zero; they do not measure cleared quantity. Fees are calculated at execution time
 from `InstrumentSpec`; the current Deribit BTC perpetual benchmark assumes maker `0.02%` and taker
 `0.05%`. The L2 replay is therefore evaluated on net PnL, fees, maker/taker role, queue consumption,
 markout, inventory, and refresh-cause metrics together.
+
+The matching engine supports three queue interpretations. `Conservative` (the default) advances
+the local queue only when a public trade matches the price; an aggregated displayed-quantity
+reduction is treated as ambiguous and does not create a fill. `Heuristic` advances a configurable
+fraction of such reductions, while `Optimistic` advances the full reduction. The latter two are
+sensitivity models, not claims about order-level truth. Run summaries report trade-driven queue
+consumption, quantity-change-driven consumption, and queue-clear counts separately so L2 results
+can be compared as a bounded execution range rather than as one unexplained fill rate.
+
+The C++ replay path supports both source types. The Python benchmark reconstructs a compact top-five
+timeline from grouped incremental updates so execution and markout fields use the same report shape
+for both sources. This is a top-five comparison timeline, not an order-level queue reconstruction.
 
 The current active L2 implementation is intentionally a conservative research mainline. Its
 18-window in-sample baseline and four-window 2020-05-01 sample-out-of-time check remain negative
 after fees. The strategy is structurally complete for this simulator, but those results do not
 establish live profitability.
+
+Every L2 replay records its queue model. `conservative` is the mainline result: only public
+trades advance the queue. `heuristic` and `optimistic` are sensitivity bounds for information
+lost by aggregated L2 data, not proof of live fill probability. A strategy comparison is useful
+only when its behavior remains reasonable across multiple windows, dates, and queue models.
+
+The L2 replay applies a fixed one-market-event cancellation delay. Legacy CSV/UDP and ordinary
+snapshot replay use the configured delay path; this delay is event-count based, not milliseconds.
+The run summary also records `audited_orders`, `audited_filled_orders`,
+`audited_cancelled_orders`, `cancelled_after_fill_orders`, `cancelled_before_fill_orders`, and
+`total_order_lifetime_cycles`. The last field counts quote decision cycles, not elapsed time.
 
 ### 6.5 Strategy families and comparison
 
@@ -869,6 +924,10 @@ The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 | `average_abs_inventory` | Average absolute effective inventory at quote decisions | L1 runtime summary |
 | `quote_lifetime` | Number of BBO decision cycles before fill or cancel | L1 runtime summary |
 | `queue_ahead_consumed` | L2 market volume absorbed ahead of local maker orders | L2 runtime and benchmark summary |
+| `buy_queue_ahead_levels_cleared`, `sell_queue_ahead_levels_cleared` | Number of price levels whose external queue reached zero | L2 runtime and benchmark summary |
+| `audited_orders`, `audited_filled_orders`, `audited_cancelled_orders` | Order lifecycle terminal-state counts | Runtime summary |
+| `cancelled_after_fill_orders`, `cancelled_before_fill_orders` | Cancelled orders split by whether they had a fill | Runtime summary |
+| `total_order_lifetime_cycles` | Sum of quote-cycle lifetimes for audited orders | Runtime summary |
 
 The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating formulas in `main.cpp`.
 

@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 
+#include "common/types.h"
+
 enum class AppMode
 {
     LegacyCsv,
@@ -20,6 +22,7 @@ struct AppConfig
     int delay = 0;
     std::string strategy_name = "optimized";
     uint64_t quantity_scale = 1000000;
+    QueueModel queue_model = QueueModel::Conservative;
 };
 
 std::string to_abs_path(const std::string& input_path);

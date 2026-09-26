@@ -3,12 +3,22 @@
 #include <chrono>
 #include <stdexcept>
 #include <thread>
+#include <type_traits>
 
 namespace
 {
 uint64_t event_timestamp(const MarketEvent& event)
 {
-    return std::visit([](const auto& value) { return value.ts; }, event);
+    return std::visit(
+        [](const auto& value)
+        {
+            using Event = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
+                return value.exchange_ts;
+            else
+                return value.ts;
+        },
+        event);
 }
 }  // namespace
 

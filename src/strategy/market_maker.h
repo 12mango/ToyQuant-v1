@@ -796,7 +796,7 @@ class L1MarketMaker : public Strategy
           flow_price_threshold(config.flow_price_threshold),
           flow_quantity_threshold(config.flow_quantity_threshold),
           flow_max_quantity_reduction(config.flow_max_quantity_reduction),
-          flow_price_ticks(config.flow_price_ticks)
+                    flow_price_ticks(config.flow_price_ticks)
     {
     }
 
@@ -898,7 +898,8 @@ class L1MarketMaker : public Strategy
         const double adverse_shift = (std::abs(imbalance) * base_spread * 0.5) +
                                      (std::abs(book_imbalance) * base_spread * 0.25);
         const double fee_spread_unit = mid * maker_fee_rate * 2.0;
-        const double fee_offset = fee_spread_unit * fee_spread_multiplier / 2.0;
+        const double fee_offset = std::min(fee_spread_unit * fee_spread_multiplier / 2.0,
+                           market_spread / 2.0);
         const double effective_spread = dynamic_spread(tob);
 
         double raw_bid = reservation_mid - effective_spread / 2.0 - adverse_shift - fee_offset;
@@ -1120,7 +1121,9 @@ class L1MarketMaker : public Strategy
         double average_mid_change = 0.0;
         for (double change : recent_mid_changes) average_mid_change += change;
         if (!recent_mid_changes.empty()) average_mid_change /= recent_mid_changes.size();
-        return std::max(base_spread, market_spread) + 2.0 * average_mid_change;
+        const double volatility_buffer = std::min(2.0 * average_mid_change,
+                                                   std::max(2.0 * tick_size, market_spread));
+        return std::max(base_spread, market_spread) + volatility_buffer;
     }
 
     double tob_imbalance(const TopOfBook& tob) const
@@ -1188,13 +1191,13 @@ class L1MarketMaker : public Strategy
         if (open_orders.empty()) return true;
         if (last_quote_mid == 0.0) return true;
 
-        const bool minor_movement = std::abs(mid - last_quote_mid) < 2.0 * tick_size &&
-                                    std::abs(bid_price - last_bid_price) < tick_size &&
-                                    std::abs(ask_price - last_ask_price) < tick_size;
+         const bool minor_movement = std::abs(mid - last_quote_mid) < 2.0 * tick_size &&
+                         std::abs(bid_price - last_bid_price) < tick_size &&
+                         std::abs(ask_price - last_ask_price) < tick_size;
         if (minor_movement && quote_age < max_quote_age) return false;
 
-        return std::abs(mid - last_quote_mid) >= 2.0 * tick_size || bid_price != last_bid_price ||
-               ask_price != last_ask_price || quote_age >= max_quote_age;
+         return std::abs(mid - last_quote_mid) >= 2.0 * tick_size || bid_price != last_bid_price ||
+             ask_price != last_ask_price || quote_age >= max_quote_age;
     }
 };
 

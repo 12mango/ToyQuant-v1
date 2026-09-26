@@ -39,6 +39,55 @@ int main()
     assert(book.depth(Side::Buy) == 1);
     assert(book.top_of_book().bid_size == 30);
 
+    book.apply_incremental_batch(IncrementalBookBatch{
+        .ts = 300,
+        .exchange_ts = 300,
+        .local_ts = 301,
+        .symbol = "BTC-PERPETUAL",
+        .updates = {{.exchange_ts = 300, .local_ts = 301, .symbol = "BTC-PERPETUAL",
+                     .is_snapshot = true, .side = Side::Buy, .price = 98.0, .amount = 35},
+                    {.exchange_ts = 300, .local_ts = 301, .symbol = "BTC-PERPETUAL",
+                     .is_snapshot = true, .side = Side::Sell, .price = 99.0, .amount = 31}},
+        .exchange = "deribit"});
+    assert(book.top_of_book().bid_price == 98.0);
+    assert(book.top_of_book().bid_size == 35);
+    assert(book.top_of_book().ask_price == 99.0);
+    assert(book.top_of_book().ask_size == 31);
+    book.apply_incremental_batch(IncrementalBookBatch{
+        .ts = 302,
+        .exchange_ts = 302,
+        .local_ts = 303,
+        .symbol = "BTC-PERPETUAL",
+        .updates = {{.exchange_ts = 302, .local_ts = 303, .symbol = "BTC-PERPETUAL",
+                     .is_snapshot = true, .side = Side::Buy, .price = 97.0, .amount = 20},
+                    {.exchange_ts = 302, .local_ts = 303, .symbol = "BTC-PERPETUAL",
+                     .is_snapshot = true, .side = Side::Sell, .price = 100.0, .amount = 20}},
+        .exchange = "deribit"});
+    assert(book.top_of_book().bid_price == 98.0);
+    assert(book.top_of_book().ask_price == 99.0);
+
+    bool rejected_incremental_time = false;
+    try
+    {
+        book.apply_incremental_batch(IncrementalBookBatch{
+            .ts = 299,
+            .exchange_ts = 299,
+            .local_ts = 300,
+            .symbol = "BTC-PERPETUAL",
+            .updates = {{.exchange_ts = 299,
+                         .local_ts = 300,
+                         .symbol = "BTC-PERPETUAL",
+                         .side = Side::Buy,
+                         .price = 98.0,
+                         .amount = 1}},
+            .exchange = "deribit"});
+    }
+    catch (const std::invalid_argument&)
+    {
+        rejected_incremental_time = true;
+    }
+    assert(rejected_incremental_time);
+
     bool rejected_sequence = false;
     try
     {

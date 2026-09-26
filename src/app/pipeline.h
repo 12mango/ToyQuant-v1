@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "app/run_summary.h"
@@ -19,7 +20,8 @@ class Pipeline
 {
    public:
     Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-             Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio, Logger& logger);
+             Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio, Logger& logger,
+             double tick_size = PRICE_TICK_SIZE);
 
     void process_event(const MarketEvent& event, bool enable_print = false);
     void process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top,
@@ -50,6 +52,7 @@ class Pipeline
     IMatchingEngine& engine_;
     Portfolio& portfolio_;
     Logger& logger_;
+    double tick_size_;
     std::unordered_map<std::string, BboQuote> latest_quotes_;
     std::string market_exchange_;
     std::atomic<uint64_t> next_order_id_{1};
@@ -58,13 +61,13 @@ class Pipeline
     uint64_t cancel_requests_{0};
     uint64_t trade_reports_{0};
     uint64_t trade_report_quantity_{0};
+    uint64_t last_buy_queue_ahead_consumed_{0};
+    uint64_t last_sell_queue_ahead_consumed_{0};
     uint64_t filtered_market_trades_{0};
     ExecutionQualityMetrics execution_quality_;
     int64_t position_{0};
     uint64_t quote_cycle_{0};
     double last_mid_{0.0};
-    bool has_inventory_sign_{false};
-    int inventory_sign_{0};
     uint64_t inventory_samples_{0};
     struct FillObservation
     {
@@ -74,4 +77,11 @@ class Pipeline
     };
     std::deque<FillObservation> pending_markouts_;
     std::unordered_map<uint64_t, uint64_t> order_start_cycles_;
+    struct OrderAudit
+    {
+        uint64_t start_cycle{0};
+        bool filled{false};
+    };
+    std::unordered_map<uint64_t, OrderAudit> order_audit_;
+    std::unordered_set<uint64_t> pending_cancel_orders_;
 };

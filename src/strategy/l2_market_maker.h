@@ -34,6 +34,7 @@ struct L2MarketMakerConfig
     double weak_flow_threshold{0.9};
     double weak_flow_quote_scale{0.5};
     double weak_flow_spread_shift_ticks{1.0};
+    bool quote_at_best_when_neutral{false};
 };
 
 class L2MarketMaker final : public Strategy
@@ -91,11 +92,28 @@ class L2MarketMaker final : public Strategy
         }
     }
 
+    void on_queue_activity(Side side, uint64_t consumed_quantity) override
+    {
+        queue_activity_ += consumed_quantity;
+        if (side == Side::Buy)
+        {
+            metrics_.buy_queue_consumed += consumed_quantity;
+        }
+        else if (side == Side::Sell)
+        {
+            metrics_.sell_queue_consumed += consumed_quantity;
+        }
+    }
+
     void on_order_submitted(const StrategyOrder& order) override
     {
         open_orders_[order.order_id] = order;
         metrics_.submitted_quantity += order.quantity;
         ++metrics_.quote_count;
+        if (order.side == Side::Buy)
+            ++metrics_.buy_quote_count;
+        else if (order.side == Side::Sell)
+            ++metrics_.sell_quote_count;
     }
 
     std::vector<uint64_t> cancel_requests() override
@@ -143,13 +161,17 @@ class L2MarketMaker final : public Strategy
         auto order = open_orders_.find(report.order_id);
         if (order == open_orders_.end()) return;
         position_ += report.side == exchange::Side::Buy
-                         ? static_cast<int64_t>(report.quantity)
-                         : -static_cast<int64_t>(report.quantity);
-        metrics_.filled_quantity += report.quantity;
+                 ? static_cast<int64_t>(report.executed_quantity())
+                 : -static_cast<int64_t>(report.executed_quantity());
+        metrics_.filled_quantity += report.executed_quantity();
         ++metrics_.fill_count;
         metrics_.fees_paid += report.fee;
-        order->second.quantity = order->second.quantity > report.quantity
-                                     ? order->second.quantity - report.quantity
+        if (report.side == exchange::Side::Buy)
+            ++metrics_.buy_fill_count;
+        else
+            ++metrics_.sell_fill_count;
+        order->second.quantity = order->second.quantity > report.executed_quantity()
+                         ? order->second.quantity - report.executed_quantity()
                                      : 0;
         if (order->second.quantity == 0) open_orders_.erase(order);
     }
@@ -175,17 +197,32 @@ class L2MarketMaker final : public Strategy
 
         if (!open_orders_.empty())
         {
-            ++quote_age_;
+            const double market_mid = (top.bid_price + top.ask_price) / 2.0;
+            const bool market_moved = last_market_mid_ <= 0.0 ||
+                                      std::abs(market_mid - last_market_mid_) >=
+                                          config_.tick_size;
+            if (market_moved) ++quote_age_;
             const bool price_changed = last_fair_price_ <= 0.0 ||
                                        std::abs(fair_price - last_fair_price_) >=
                                            static_cast<double>(config_.refresh_price_ticks) *
                                                config_.tick_size;
+            if (quote_age_ >= config_.max_quote_age && queue_activity_ > 0 && !price_changed)
+            {
+                if (queue_hold_count_ < 3)
+                {
+                    ++queue_hold_count_;
+                    quote_age_ = 0;
+                    queue_activity_ = 0;
+                    return orders;
+                }
+            }
             if (quote_age_ < config_.max_quote_age && !price_changed) return orders;
             if (price_changed)
                 ++metrics_.price_refresh_count;
             else
                 ++metrics_.age_refresh_count;
             cancel_pending_ = true;
+            last_market_mid_ = market_mid;
             return orders;
         }
 
@@ -233,8 +270,14 @@ class L2MarketMaker final : public Strategy
             std::floor(top.bid_price / config_.tick_size) * config_.tick_size;
         const double passive_ask =
             std::ceil(top.ask_price / config_.tick_size) * config_.tick_size;
-        const double bid_price = std::min(raw_bid_price, passive_bid);
-        const double ask_price = std::max(raw_ask_price, passive_ask);
+        double bid_price = std::min(raw_bid_price, passive_bid);
+        double ask_price = std::max(raw_ask_price, passive_ask);
+        if (config_.quote_at_best_when_neutral && std::abs(inventory_ratio) < 0.25 &&
+            std::abs(trade_imbalance()) < config_.toxicity_flow_threshold)
+        {
+            bid_price = passive_bid;
+            ask_price = passive_ask;
+        }
         if (!std::isfinite(bid_price) || !std::isfinite(ask_price) || bid_price >= ask_price)
             return orders;
 
@@ -243,7 +286,10 @@ class L2MarketMaker final : public Strategy
         if (!orders.empty())
         {
             last_fair_price_ = fair_price;
+            last_market_mid_ = (top.bid_price + top.ask_price) / 2.0;
             quote_age_ = 0;
+            queue_activity_ = 0;
+            queue_hold_count_ = 0;
         }
         return orders;
     }
@@ -263,5 +309,8 @@ class L2MarketMaker final : public Strategy
     bool cancel_pending_{false};
     uint64_t quote_age_{0};
     double last_fair_price_{0.0};
+    double last_market_mid_{0.0};
+    uint64_t queue_activity_{0};
+    uint64_t queue_hold_count_{0};
     StrategyMetrics metrics_;
 };

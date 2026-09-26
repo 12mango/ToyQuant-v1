@@ -47,31 +47,110 @@ void MatchingEngine::send_order(const exchange::Order& order)
 
 void MatchingEngine::process_bbo(const BboQuote& quote)
 {
+    ++event_counter_;
+    apply_pending_cancels();
     if (quote.symbol.empty() || quote.bid_price <= 0.0 || quote.ask_price <= 0.0 ||
         quote.bid_price > quote.ask_price)
     {
         external_bbo_.erase(quote.symbol);
         return;
     }
+    const auto previous_quote = external_bbo_.find(quote.symbol);
+    const bool has_previous = previous_quote != external_bbo_.end();
+    const bool same_bid = has_previous &&
+                          to_price_tick(previous_quote->second.bid_price, tick_size_) ==
+                              to_price_tick(quote.bid_price, tick_size_);
+    const bool same_ask = has_previous &&
+                          to_price_tick(previous_quote->second.ask_price, tick_size_) ==
+                              to_price_tick(quote.ask_price, tick_size_);
+    const uint64_t bid_reduction = same_bid &&
+                                           previous_quote->second.bid_quantity > quote.bid_quantity
+                                       ? previous_quote->second.bid_quantity - quote.bid_quantity
+                                       : 0;
+    const uint64_t ask_reduction = same_ask &&
+                                           previous_quote->second.ask_quantity > quote.ask_quantity
+                                       ? previous_quote->second.ask_quantity - quote.ask_quantity
+                                       : 0;
+    const bool bid_has_public_trade =
+        last_bid_trade_ts_[quote.symbol] > (has_previous ? previous_quote->second.ts : 0);
+    const bool ask_has_public_trade =
+        last_ask_trade_ts_[quote.symbol] > (has_previous ? previous_quote->second.ts : 0);
     external_bbo_[quote.symbol] = quote;
 
     if (!queue_ahead_symbols_.contains(quote.symbol)) return;
     const auto book_it = books_.find(quote.symbol);
     if (book_it == books_.end()) return;
-    const auto bid_it = book_it->second.bids.find(to_price_tick(quote.bid_price, tick_size_));
-    if (bid_it != book_it->second.bids.end())
-        bid_it->second.external_queue_ahead =
-            std::min(bid_it->second.external_queue_ahead, quote.bid_quantity);
-    const auto ask_it = book_it->second.asks.find(to_price_tick(quote.ask_price, tick_size_));
-    if (ask_it != book_it->second.asks.end())
-        ask_it->second.external_queue_ahead =
-            std::min(ask_it->second.external_queue_ahead, quote.ask_quantity);
+    if (queue_model_ == QueueModel::Conservative) return;
+
+    const auto advance_quantity = [this](uint64_t reduction, uint64_t previous_quantity)
+    {
+        if (queue_model_ == QueueModel::Optimistic) return reduction;
+        const uint64_t bounded_reduction = std::min(
+            reduction, static_cast<uint64_t>(std::llround(
+                           static_cast<double>(previous_quantity) *
+                           std::clamp(heuristic_max_reduction_fraction_, 0.0, 1.0))));
+        return static_cast<uint64_t>(std::llround(
+            static_cast<double>(bounded_reduction) *
+            std::clamp(heuristic_cancel_ahead_ratio_, 0.0, 1.0)));
+    };
+    const auto apply_quantity_change = [&](Side side, PriceTick price, uint64_t reduction,
+                                           uint64_t previous_quantity)
+    {
+        if (reduction == 0) return;
+        uint64_t* queue_ahead = nullptr;
+        if (side == Side::Buy)
+        {
+            const auto level = book_it->second.bids.find(price);
+            if (level != book_it->second.bids.end())
+                queue_ahead = &level->second.external_queue_ahead;
+        }
+        else
+        {
+            const auto level = book_it->second.asks.find(price);
+            if (level != book_it->second.asks.end())
+                queue_ahead = &level->second.external_queue_ahead;
+        }
+        if (queue_ahead == nullptr || *queue_ahead == 0) return;
+        const uint64_t inferred = std::min(*queue_ahead,
+                           advance_quantity(reduction, previous_quantity));
+        *queue_ahead -= inferred;
+        if (side == Side::Buy)
+            buy_queue_from_quantity_changes_ += inferred;
+        else
+            sell_queue_from_quantity_changes_ += inferred;
+    };
+    if (!bid_has_public_trade)
+        apply_quantity_change(Side::Buy, to_price_tick(quote.bid_price, tick_size_), bid_reduction,
+                              has_previous ? previous_quote->second.bid_quantity : 0);
+    if (!ask_has_public_trade)
+        apply_quantity_change(Side::Sell, to_price_tick(quote.ask_price, tick_size_), ask_reduction,
+                              has_previous ? previous_quote->second.ask_quantity : 0);
 }
 
 void MatchingEngine::process_l2_top(const BboQuote& quote)
 {
     queue_ahead_symbols_.insert(quote.symbol);
+    const auto previous = l2_top_bbo_.find(quote.symbol);
+    const bool bid_moved = previous == l2_top_bbo_.end() ||
+                           to_price_tick(previous->second.bid_price, tick_size_) !=
+                               to_price_tick(quote.bid_price, tick_size_);
+    const bool ask_moved = previous == l2_top_bbo_.end() ||
+                           to_price_tick(previous->second.ask_price, tick_size_) !=
+                               to_price_tick(quote.ask_price, tick_size_);
+    l2_top_bbo_[quote.symbol] = quote;
     process_bbo(quote);
+    auto book_it = books_.find(quote.symbol);
+    if (book_it == books_.end()) return;
+    if (bid_moved)
+    {
+        const auto level = book_it->second.bids.find(to_price_tick(quote.bid_price, tick_size_));
+        if (level != book_it->second.bids.end()) level->second.external_queue_ahead = quote.bid_quantity;
+    }
+    if (ask_moved)
+    {
+        const auto level = book_it->second.asks.find(to_price_tick(quote.ask_price, tick_size_));
+        if (level != book_it->second.asks.end()) level->second.external_queue_ahead = quote.ask_quantity;
+    }
 }
 
 uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
@@ -130,6 +209,11 @@ void MatchingEngine::match_external_bbo(Order& order)
 
 void MatchingEngine::process_market_trade(const MarketTrade& trade)
 {
+    ++event_counter_;
+    if (trade.aggressor_side == Side::Sell)
+        last_bid_trade_ts_[trade.symbol] = std::max(last_bid_trade_ts_[trade.symbol], trade.ts);
+    else if (trade.aggressor_side == Side::Buy)
+        last_ask_trade_ts_[trade.symbol] = std::max(last_ask_trade_ts_[trade.symbol], trade.ts);
     const auto quote_it = external_bbo_.find(trade.symbol);
     if (quote_it != external_bbo_.end() && queue_ahead_symbols_.contains(trade.symbol))
     {
@@ -147,6 +231,7 @@ void MatchingEngine::process_market_trade(const MarketTrade& trade)
                                      : 0;
     }
     process_market_order(trade.symbol, trade.aggressor_side, trade.price, trade.quantity, trade.ts);
+    apply_pending_cancels();
 }
 
 void MatchingEngine::process_market_order(const std::string& symbol, Side side, double price,
@@ -170,6 +255,32 @@ void MatchingEngine::process_market_order(const std::string& symbol, Side side, 
 }
 
 void MatchingEngine::cancel_order(uint64_t order_id)
+{
+    if (cancel_delay_events_ > 0)
+    {
+        if (order_index_.contains(order_id))
+            pending_cancels_[order_id] = event_counter_ + cancel_delay_events_;
+        return;
+    }
+    cancel_order_immediate(order_id);
+}
+
+void MatchingEngine::apply_pending_cancels()
+{
+    for (auto it = pending_cancels_.begin(); it != pending_cancels_.end();)
+    {
+        if (it->second > event_counter_)
+        {
+            ++it;
+            continue;
+        }
+        const uint64_t order_id = it->first;
+        it = pending_cancels_.erase(it);
+        cancel_order_immediate(order_id);
+    }
+}
+
+void MatchingEngine::cancel_order_immediate(uint64_t order_id)
 {
     auto it = order_index_.find(order_id);
     if (it == order_index_.end()) return;
@@ -237,6 +348,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                 qty -= consumed;
                 best_ask_it->second.external_queue_ahead -= consumed;
                 queue_ahead_consumed_ += consumed;
+                sell_queue_ahead_consumed_ += consumed;
+                if (best_ask_it->second.external_queue_ahead == 0 &&
+                    !best_ask_it->second.orders.empty())
+                    ++sell_queue_ahead_cleared_;
                 if (qty == 0) break;
             }
 
@@ -341,6 +456,10 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                 qty -= consumed;
                 best_bid_it->second.external_queue_ahead -= consumed;
                 queue_ahead_consumed_ += consumed;
+                buy_queue_ahead_consumed_ += consumed;
+                if (best_bid_it->second.external_queue_ahead == 0 &&
+                    !best_bid_it->second.orders.empty())
+                    ++buy_queue_ahead_cleared_;
                 if (qty == 0) break;
             }
 

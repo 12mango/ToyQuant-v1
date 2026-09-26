@@ -44,6 +44,12 @@ struct StrategyMetrics
     uint64_t price_refresh_count{0};
     uint64_t age_refresh_count{0};
     uint64_t risk_pause_count{0};
+    uint64_t buy_queue_consumed{0};
+    uint64_t sell_queue_consumed{0};
+    uint64_t buy_fill_count{0};
+    uint64_t sell_fill_count{0};
+    uint64_t buy_quote_count{0};
+    uint64_t sell_quote_count{0};
     bool available{false};
 
     std::string to_log_string() const
@@ -67,6 +73,12 @@ struct StrategyMetrics
                << " price_refresh_count=" << price_refresh_count
                << " age_refresh_count=" << age_refresh_count
                << " risk_pause_count=" << risk_pause_count;
+            stream << " buy_queue_consumed=" << buy_queue_consumed
+                   << " sell_queue_consumed=" << sell_queue_consumed
+                   << " buy_fill_count=" << buy_fill_count
+                   << " sell_fill_count=" << sell_fill_count
+                   << " buy_quote_count=" << buy_quote_count
+                   << " sell_quote_count=" << sell_quote_count;
         return stream.str();
     }
 };
@@ -89,6 +101,12 @@ class Strategy
     virtual void on_market_trade(const MarketTrade& trade)
     {
         (void)trade;
+    }
+
+    virtual void on_queue_activity(Side side, uint64_t consumed_quantity)
+    {
+        (void)side;
+        (void)consumed_quantity;
     }
 
     // Called with the latest BBO when the coordinator has one for this symbol.

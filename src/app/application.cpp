@@ -120,7 +120,8 @@ void Application::run_replay_mode() const
     MatchingEngine engine(&logger, instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
-                                      .quantity_scale = instrument.quantity_scale});
+                                      .quantity_scale = instrument.quantity_scale},
+                          1, cfg_.queue_model);
     Portfolio portfolio(instrument.quantity_scale);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, logger);
@@ -150,7 +151,8 @@ void Application::run_l2_replay_mode() const
     const std::string depth_file = to_abs_path(cfg_.quotes_path);
     Logger logger(to_abs_path("logs/toy_quant.log"));
     logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
-               " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name);
+               " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
+               " queue_model=", queue_model_name(cfg_.queue_model));
 
     const std::string source = "deribit;trades=" + trades_file + ";depth=" + depth_file +
                                ";symbol=" + cfg_.symbol +
@@ -162,13 +164,15 @@ void Application::run_l2_replay_mode() const
     MatchingEngine engine(&logger, instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
-                                      .quantity_scale = instrument.quantity_scale});
+                                      .quantity_scale = instrument.quantity_scale},
+                          1, cfg_.queue_model);
     Portfolio portfolio(instrument.quantity_scale);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
-                      portfolio, logger);
+                      portfolio, logger, instrument.tick_size);
     double final_mid = 0.0;
     L2ReplayFeed feed(
-        make_deribit_trade_reader(trades_file), make_deribit_book_snapshot_reader(depth_file),
+        make_deribit_trade_reader(trades_file),
+        make_deribit_depth_reader(depth_file),
         [&](const MarketEvent& event)
         {
             std::visit(
@@ -184,6 +188,13 @@ void Application::run_l2_replay_mode() const
                         final_mid = (view.top.bid_price + view.top.ask_price) / 2.0;
                         pipeline.process_l2_market_view(view);
                     }
+                    else if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
+                    {
+                        l2_book.apply_incremental_batch(value);
+                        const auto view = l2_book.market_view();
+                        final_mid = (view.top.bid_price + view.top.ask_price) / 2.0;
+                        pipeline.process_l2_market_view(view);
+                    }
                 },
                 event);
         },
@@ -192,7 +203,9 @@ void Application::run_l2_replay_mode() const
     if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     const auto& validation = feed.validation_summary();
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
-               " depth_snapshots=", validation.depth_snapshots);
+               " depth_snapshots=", validation.depth_snapshots,
+               " incremental_batches=", validation.incremental_batches,
+               " incremental_snapshot_batches=", validation.incremental_snapshot_batches);
     logger.log(pipeline.summary().to_log_string());
 }
 

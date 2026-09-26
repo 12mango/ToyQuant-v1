@@ -28,7 +28,16 @@ void MarketDataValidator::validate_ordering(StreamState& state, uint64_t timesta
 
 void MarketDataValidator::validate(const MarketEvent& event)
 {
-    const uint64_t timestamp = std::visit([](const auto& value) { return value.ts; }, event);
+    const uint64_t timestamp = std::visit(
+        [](const auto& value)
+        {
+            using Event = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
+                return value.exchange_ts;
+            else
+                return value.ts;
+        },
+        event);
     if (has_merged_timestamp_ && timestamp < last_merged_timestamp_)
         throw std::invalid_argument("merged market event timestamp moved backwards");
     last_merged_timestamp_ = timestamp;
@@ -43,10 +52,34 @@ void MarketDataValidator::validate(const MarketEvent& event)
                 validate_trade(value);
             else if constexpr (std::is_same_v<Event, BboQuote>)
                 validate_quote(value);
+            else if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
+                validate_incremental_batch(value);
             else
                 validate_depth_snapshot(value);
         },
         event);
+}
+
+void MarketDataValidator::validate_incremental_batch(const IncrementalBookBatch& batch)
+{
+    if (batch.symbol.empty() || batch.updates.empty())
+        throw std::invalid_argument("incremental L2 batch is empty");
+    validate_ordering(incremental_streams_[batch.symbol], batch.exchange_ts,
+                      incremental_streams_[batch.symbol].sequence + 1,
+                      "incremental stream '" + batch.symbol + "'");
+    for (const auto& update : batch.updates)
+    {
+        if (update.symbol != batch.symbol || update.exchange_ts == 0 || update.local_ts != batch.local_ts ||
+            update.side == Side::Unknown || !std::isfinite(update.price) || update.price <= 0.0)
+            throw std::invalid_argument("invalid incremental L2 update");
+    }
+    ++summary_.incremental_batches;
+    const bool snapshot = std::any_of(
+        batch.updates.begin(), batch.updates.end(),
+        [](const auto& update) { return update.is_snapshot; });
+    if (snapshot && !incremental_snapshot_active_[batch.symbol])
+        ++summary_.incremental_snapshot_batches;
+    incremental_snapshot_active_[batch.symbol] = snapshot;
 }
 
 void MarketDataValidator::validate_trade(const MarketTrade& trade)

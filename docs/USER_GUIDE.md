@@ -133,6 +133,35 @@ python3 tools/benchmark_l2_strategies.py \
   --depth-every 1
 ```
 
+To replay the connected incremental L2 file, pass it as the depth argument:
+
+```bash
+./build/toy_quant l2_replay \
+  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  BTC-PERPETUAL 0 active_l2 1
+```
+
+The reader groups rows by `local_timestamp` and emits one decision per update batch. Snapshot
+depth files remain supported through the original full-snapshot reader.
+
+When the benchmark is given an incremental file, the tool reconstructs a compact top-five timeline
+from the grouped updates and reports the same output fields. Python `markout_5/20` means the
+mid-price difference at the fifth/twentieth subsequent sampled depth record; it is not the same
+as the C++ runtime markout measured in quote cycles, and results with different `depth_every`
+values are not directly comparable. The reconstructed timeline is a comparison aid; it is not an
+order-level queue reconstruction.
+
+For incremental feeds, active L2 quote age advances only when the external best-price midpoint
+moves by at least one tick. Depth-only quantity updates do not consume quote lifetime. In four
+valid direct 15-minute windows on the 2020-04-01 incremental file, active L2 reached `-172.15` net
+PnL versus `-218.82` for `flow_aware_l2`; this is a relative improvement, not a profitability claim.
+
+When the queue ahead is actively being consumed and fair price has not changed, active L2 also
+preserves the quote through the normal age limit instead of cancelling and losing queue priority.
+On four queue-aware incremental windows, this version measured `-133.55` versus `-148.21` for
+`flow_aware_l2`; both remain negative after fees.
+
 The main comparison metrics are:
 
 - `net_pnl` — final outcome metric
@@ -140,9 +169,18 @@ The main comparison metrics are:
 - `queue_ahead_consumed` — L2 market volume consumed ahead of newly resting maker orders
 - `buy_markout_20` and `sell_markout_20` — directional fill quality
 - `price_refresh_count`, `age_refresh_count`, `risk_pause_count` — cancellation causes
+- `buy_queue_consumed`, `sell_queue_consumed` — queue progress by quote side
+- `buy_queue_ahead_levels_cleared`, `sell_queue_ahead_levels_cleared` — price levels whose external queue reached zero
+- `buy_fill_count`, `sell_fill_count` — side-specific fill counts
+- `buy_fill_probability`, `sell_fill_probability` — fills divided by submitted quotes on each side
+- `buy_queue_per_quote`, `sell_queue_per_quote` — queue consumption per submitted quote
+- `incremental_snapshot_batches` — snapshot/reset batches observed in incremental input
 - `avg_markout_20` — whether fills are taken at favorable markout
 - `avg_quote_age_us` — quote freshness and turnover
 - `against_depth` and `against_flow` — directional quality of fills
+- `audited_orders`, `audited_filled_orders`, `audited_cancelled_orders` — runtime order lifecycle counts
+- `cancelled_after_fill_orders`, `cancelled_before_fill_orders` — cancellation outcome split
+- `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is
 not sufficient. Use `analyze_l2_windows.py` for repeated 15-minute windows:
@@ -161,7 +199,10 @@ python3 tools/analyze_l2_windows.py \
 ```
 
 The Deribit benchmark uses `0.02%` maker and `0.05%` taker fee assumptions. Results are
-educational replay measurements, not profitability claims. No artificial cancel latency is used.
+educational replay measurements, not profitability claims. L2 replay uses a fixed one-market-event
+cancellation delay; it is not a millisecond latency model. Queue model defaults to `conservative`;
+`heuristic` and `optimistic` are sensitivity analyses only. Pass `--queue-model` to
+`analyze_l2_windows.py` when comparing these assumptions.
 
 ### Replay strategy choices
 

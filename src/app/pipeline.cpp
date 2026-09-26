@@ -51,14 +51,15 @@ void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
 
 Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
                    Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio,
-                   Logger& logger)
+                   Logger& logger, double tick_size)
     : orders_out_(orders_out),
       trades_out_(trades_out),
       order_book_(order_book),
       strategy_(strategy),
       engine_(engine),
       portfolio_(portfolio),
-      logger_(logger)
+    logger_(logger),
+    tick_size_(tick_size)
 {
     engine_.set_report_callback(
         [this](const ExecutionReport& report)
@@ -67,8 +68,8 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
             if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
             {
                 position_ += report.side == exchange::Side::Buy
-                                 ? static_cast<int64_t>(report.quantity)
-                                 : -static_cast<int64_t>(report.quantity);
+                                 ? static_cast<int64_t>(report.executed_quantity())
+                                 : -static_cast<int64_t>(report.executed_quantity());
                 execution_quality_.captured_edge +=
                     report.side == exchange::Side::Buy ? last_mid_ - report.price
                                                        : report.price - last_mid_;
@@ -91,10 +92,37 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 }
             }
             strategy_.on_order_update(report);
+            if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+                pending_cancel_orders_.erase(report.order_id);
+            auto audit = order_audit_.find(report.order_id);
+            if (audit != order_audit_.end())
+            {
+                if (report.exec_type == ExecType::Trade) audit->second.filled = true;
+                if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+                {
+                    const uint64_t lifetime = quote_cycle_ >= audit->second.start_cycle
+                                                  ? quote_cycle_ - audit->second.start_cycle
+                                                  : 0;
+                    execution_quality_.total_order_lifetime_cycles += lifetime;
+                    if (report.exec_type == ExecType::Cancelled && audit->second.filled)
+                    {
+                        ++execution_quality_.cancelled_after_fill_orders;
+                    }
+                    else if (report.exec_type == ExecType::Cancelled)
+                    {
+                        ++execution_quality_.cancelled_before_fill_orders;
+                    }
+                    if (report.exec_type == ExecType::Filled)
+                        ++execution_quality_.audited_filled_orders;
+                    else
+                        ++execution_quality_.audited_cancelled_orders;
+                    order_audit_.erase(audit);
+                }
+            }
             if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
             {
                 ++trade_reports_;
-                trade_report_quantity_ += report.quantity;
+                trade_report_quantity_ += report.executed_quantity();
             }
             write_trade_csv_row(trades_out_, report);
         });
@@ -186,15 +214,29 @@ void Pipeline::process_l2_market_view(const L2MarketView& view, bool enable_prin
                       " imbalance=", view.depth_imbalance, " micro=", view.micro_price);
     if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
     {
-        engine_.process_l2_top(BboQuote{.ts = view.ts,
-                        .symbol = view.symbol,
-                        .bid_price = view.top.bid_price,
-                        .bid_quantity = view.top.bid_size,
-                        .ask_price = view.top.ask_price,
-                        .ask_quantity = view.top.ask_size,
-                        .exchange = {}});
+        const BboQuote quote{.ts = view.ts,
+                             .symbol = view.symbol,
+                             .bid_price = view.top.bid_price,
+                             .bid_quantity = view.top.bid_size,
+                             .ask_price = view.top.ask_price,
+                             .ask_quantity = view.top.ask_size,
+                             .exchange = {}};
+        latest_quotes_[view.symbol] = quote;
+        engine_.process_l2_top(quote);
         last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
         ++quote_cycle_;
+    }
+    const uint64_t buy_queue = engine_.queue_ahead_consumed(Side::Buy);
+    const uint64_t sell_queue = engine_.queue_ahead_consumed(Side::Sell);
+    if (buy_queue > last_buy_queue_ahead_consumed_)
+    {
+        strategy_.on_queue_activity(Side::Buy, buy_queue - last_buy_queue_ahead_consumed_);
+        last_buy_queue_ahead_consumed_ = buy_queue;
+    }
+    if (sell_queue > last_sell_queue_ahead_consumed_)
+    {
+        strategy_.on_queue_activity(Side::Sell, sell_queue - last_sell_queue_ahead_consumed_);
+        last_sell_queue_ahead_consumed_ = sell_queue;
     }
     submit_strategy_actions(view.symbol, view.ts, strategy_.on_l2_market_view(view));
 }
@@ -213,6 +255,12 @@ RunSummary Pipeline::summary() const
             .trade_reports = trade_reports_,
             .trade_report_quantity = trade_report_quantity_,
             .queue_ahead_consumed = engine_.queue_ahead_consumed(),
+            .buy_queue_ahead_levels_cleared = engine_.queue_ahead_levels_cleared(Side::Buy),
+            .sell_queue_ahead_levels_cleared = engine_.queue_ahead_levels_cleared(Side::Sell),
+            .buy_queue_from_quantity_changes =
+                engine_.queue_ahead_from_quantity_changes(Side::Buy),
+            .sell_queue_from_quantity_changes =
+                engine_.queue_ahead_from_quantity_changes(Side::Sell),
             .filtered_market_trades = filtered_market_trades_,
             .fill_rate = metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_),
             .cancel_rate = metrics::compute_cancel_rate(submitted_orders_, cancel_requests_),
@@ -234,6 +282,7 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
 
     for (uint64_t order_id : strategy_.cancel_requests())
     {
+        if (!pending_cancel_orders_.insert(order_id).second) continue;
         ++cancel_requests_;
         engine_.cancel_order(order_id);
     }
@@ -244,9 +293,25 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         auto exchange_order = to_exchange_order(order, ts, "MarketMaker");
         ++submitted_orders_;
         submitted_quantity_ += order.quantity;
+        const auto quote_it = latest_quotes_.find(order.symbol);
+        if (quote_it != latest_quotes_.end())
+        {
+            const BboQuote& quote = quote_it->second;
+            const double reference = order.side == Side::Buy ? quote.bid_price : quote.ask_price;
+            const double distance = order.side == Side::Buy ? reference - order.price
+                                                             : order.price - reference;
+            ++execution_quality_.quote_observations;
+            execution_quality_.total_quote_distance += std::max(0.0, distance);
+            execution_quality_.total_quote_distance_ticks +=
+                std::max(0.0, distance) / std::max(tick_size_, PRICE_TICK_SIZE);
+            if (distance <= 0.5 * std::max(tick_size_, PRICE_TICK_SIZE))
+                ++execution_quality_.bbo_quote_observations;
+        }
         write_order_csv_row(orders_out_, ts, order);
         strategy_.on_order_submitted(order);
         order_start_cycles_[order.order_id] = quote_cycle_;
+        order_audit_[order.order_id] = OrderAudit{quote_cycle_, false};
+        ++execution_quality_.audited_orders;
         engine_.send_order(exchange_order);
     }
 }

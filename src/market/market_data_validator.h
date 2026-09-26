@@ -18,6 +18,8 @@ struct MarketDataValidationSummary
     uint64_t trades{};
     uint64_t quotes{};
     uint64_t depth_snapshots{};
+    uint64_t incremental_batches{};
+    uint64_t incremental_snapshot_batches{};
     uint64_t trades_without_bbo{};
     uint64_t stale_trades{};
     uint64_t dislocated_trades{};
@@ -52,6 +54,7 @@ class MarketDataValidator
     void validate_trade(const MarketTrade& trade);
     void validate_quote(const BboQuote& quote);
     void validate_depth_snapshot(const MarketDepthSnapshot& snapshot);
+    void validate_incremental_batch(const IncrementalBookBatch& batch);
     static void validate_ordering(StreamState& state, uint64_t timestamp, uint64_t sequence,
                                   const std::string& stream_name);
 
@@ -62,5 +65,7 @@ class MarketDataValidator
     std::unordered_map<std::string, StreamState> trade_streams_;
     std::unordered_map<std::string, StreamState> quote_streams_;
     std::unordered_map<std::string, StreamState> depth_streams_;
+    std::unordered_map<std::string, StreamState> incremental_streams_;
+    std::unordered_map<std::string, bool> incremental_snapshot_active_;
     std::unordered_map<std::string, BboQuote> latest_quotes_;
 };

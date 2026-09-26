@@ -26,6 +26,27 @@ enum class ExecType : uint8_t
     Resting
 };
 
+enum class QueueModel : uint8_t
+{
+    Conservative,
+    Heuristic,
+    Optimistic
+};
+
+inline const char* queue_model_name(QueueModel model)
+{
+    switch (model)
+    {
+        case QueueModel::Conservative:
+            return "conservative";
+        case QueueModel::Heuristic:
+            return "heuristic";
+        case QueueModel::Optimistic:
+            return "optimistic";
+    }
+    return "unknown";
+}
+
 using PriceTick = int64_t;
 
 inline constexpr double PRICE_TICK_SIZE = 0.00001;

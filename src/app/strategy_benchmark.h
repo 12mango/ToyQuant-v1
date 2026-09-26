@@ -33,6 +33,12 @@ struct StrategyBenchmarkResult
     uint64_t taker_trade_count{0};
     uint64_t total_quote_lifetime{0};
     uint64_t max_quote_lifetime{0};
+    uint64_t quote_observations{0};
+    uint64_t bbo_quote_observations{0};
+    double total_quote_distance{0.0};
+    uint64_t audited_cancelled_orders{0};
+    uint64_t cancelled_before_fill_orders{0};
+    uint64_t total_order_lifetime_cycles{0};
     size_t working_orders{0};
     uint64_t stale_trades{0};
     uint64_t dislocated_trades{0};

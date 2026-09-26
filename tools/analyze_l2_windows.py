@@ -11,6 +11,7 @@ from benchmark_l2_strategies import (  # noqa: E402
     count_overlap,
     open_text,
     run_strategy,
+    slice_csv,
 )
 
 
@@ -62,6 +63,8 @@ def main():
     parser.add_argument("--window-minutes", type=int,
                         help="window width in minutes; overrides --window-hours")
     parser.add_argument("--depth-every", type=int, default=20)
+    parser.add_argument("--queue-model", choices=("conservative", "heuristic", "optimistic"),
+                        default="conservative")
     parser.add_argument("--csv", type=Path, required=True)
     args = parser.parse_args()
 
@@ -78,6 +81,7 @@ def main():
         "window_end_ts",
         "strategy",
         "depth_every",
+        "queue_model",
         "input_trades",
         "input_depth",
         "overlap_trades",
@@ -90,6 +94,16 @@ def main():
         "price_refresh_count",
         "age_refresh_count",
         "risk_pause_count",
+        "buy_queue_consumed",
+        "sell_queue_consumed",
+        "buy_fill_count",
+        "sell_fill_count",
+        "buy_quote_count",
+        "sell_quote_count",
+        "buy_fill_probability",
+        "sell_fill_probability",
+        "buy_queue_per_quote",
+        "sell_queue_per_quote",
         "working_orders",
         "fill_rate",
         "cancel_rate",
@@ -121,9 +135,24 @@ def main():
         temp_dir = Path(temp_name)
         trade_counts = split_csv(
             args.trades, temp_dir, "trades", args.start_ts, args.end_ts, window_us, 1)
-        depth_counts = split_csv(
-            args.depth, temp_dir, "depth", args.start_ts, args.end_ts, window_us,
-            args.depth_every)
+        with open_text(args.depth) as depth_source:
+            depth_reader = csv.DictReader(depth_source)
+            incremental_depth = "is_snapshot" in (depth_reader.fieldnames or [])
+        if incremental_depth:
+            depth_counts = {}
+            window_count = (args.end_ts - args.start_ts + window_us - 1) // window_us
+            for window in range(window_count):
+                depth_counts[window] = slice_csv(
+                    args.depth,
+                    temp_dir / f"depth_{window}.csv",
+                    args.start_ts + window * window_us,
+                    min(args.end_ts, args.start_ts + (window + 1) * window_us),
+                    every=args.depth_every,
+                )["rows"]
+        else:
+            depth_counts = split_csv(
+                args.depth, temp_dir, "depth", args.start_ts, args.end_ts, window_us,
+                args.depth_every)
         windows = sorted(set(trade_counts) & set(depth_counts))
         with args.csv.open("w", newline="", encoding="utf-8") as output:
             writer = csv.DictWriter(output, fieldnames=columns)
@@ -133,7 +162,8 @@ def main():
                 depth_path = temp_dir / f"depth_{window}.csv"
                 overlap = count_overlap(trade_path, depth_path)
                 for strategy in PRIMARY_STRATEGIES:
-                    result = run_strategy(args.binary, trade_path, depth_path, args.symbol, strategy, 1)
+                    result = run_strategy(args.binary, trade_path, depth_path, args.symbol, strategy,
+                                          1, args.queue_model)
                     row = {column: result.get(column, "") for column in columns}
                     row.update({
                         "window": window,
@@ -141,6 +171,7 @@ def main():
                         "window_end_ts": args.start_ts + (window + 1) * window_us,
                         "strategy": strategy,
                         "depth_every": args.depth_every,
+                        "queue_model": args.queue_model,
                         "input_trades": trade_counts[window],
                         "input_depth": depth_counts[window],
                         "overlap_trades": overlap,

@@ -39,7 +39,7 @@ void Portfolio::apply(const ExecutionReport& report)
     cash_ += report.side == exchange::Side::Buy ? -notional - fee : notional - fee;
     realized_pnl_ -= fee;
 
-    int64_t remaining_quantity = static_cast<int64_t>(report.quantity);
+    int64_t remaining_quantity = static_cast<int64_t>(report.executed_quantity());
     if (report.side == exchange::Side::Buy)
     {
         if (position.quantity < 0)

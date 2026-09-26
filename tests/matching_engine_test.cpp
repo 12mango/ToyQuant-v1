@@ -162,10 +162,57 @@ int main()
     queued_reports.clear();
     queued_engine.process_market_trade({22, "BTCUSDT", 100.0, 40, Side::Sell, 0, "test"});
     assert(!has_report(queued_reports, 52, ExecType::Trade, 20));
+    assert(queued_engine.queue_ahead_consumed(Side::Buy) == 40);
+    assert(queued_engine.queue_ahead_levels_cleared(Side::Buy) == 0);
     queued_reports.clear();
     queued_engine.process_market_trade({23, "BTCUSDT", 100.0, 15, Side::Sell, 0, "test"});
     assert(has_report(queued_reports, 52, ExecType::Trade, 5));
     assert(has_report(queued_reports, 52, ExecType::PartialFill, 15));
+    assert(queued_engine.queue_ahead_consumed(Side::Buy) == 50);
+    assert(queued_engine.queue_ahead_levels_cleared(Side::Buy) == 1);
+
+    MatchingEngine conservative_queue_engine(nullptr, 0.1, {}, 0, QueueModel::Conservative);
+    std::vector<ExecutionReport> conservative_queue_reports;
+    conservative_queue_engine.set_report_callback(
+        [&conservative_queue_reports](const ExecutionReport& report)
+        { conservative_queue_reports.push_back(report); });
+    conservative_queue_engine.process_l2_top(
+        {24, "CONSERVATIVE", 100.0, 50, 100.1, 40, 2, "test"});
+    conservative_queue_engine.send_order({80, "CONSERVATIVE", exchange::Side::Buy,
+                                          exchange::OrderType::Limit, 100.0, 10, 10, 25,
+                                          "MarketMaker"});
+    conservative_queue_engine.process_l2_top(
+        {26, "CONSERVATIVE", 100.0, 10, 100.1, 40, 3, "test"});
+    conservative_queue_reports.clear();
+    conservative_queue_engine.process_market_trade(
+        {27, "CONSERVATIVE", 100.0, 10, Side::Sell, 0, "test"});
+    assert(!has_report(conservative_queue_reports, 80, ExecType::Trade, 10));
+    assert(conservative_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 0);
+
+    MatchingEngine optimistic_queue_engine(nullptr, 0.1, {}, 0, QueueModel::Optimistic);
+    std::vector<ExecutionReport> optimistic_queue_reports;
+    optimistic_queue_engine.set_report_callback(
+        [&optimistic_queue_reports](const ExecutionReport& report)
+        { optimistic_queue_reports.push_back(report); });
+    optimistic_queue_engine.process_l2_top(
+        {30, "OPTIMISTIC", 100.0, 50, 100.1, 40, 2, "test"});
+    optimistic_queue_engine.send_order({81, "OPTIMISTIC", exchange::Side::Buy,
+                                        exchange::OrderType::Limit, 100.0, 10, 10, 31,
+                                        "MarketMaker"});
+    optimistic_queue_engine.process_l2_top(
+        {32, "OPTIMISTIC", 100.0, 0, 100.1, 40, 3, "test"});
+    optimistic_queue_engine.process_market_trade(
+        {33, "OPTIMISTIC", 100.0, 10, Side::Sell, 0, "test"});
+    assert(has_report(optimistic_queue_reports, 81, ExecType::Trade, 10));
+    assert(optimistic_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 50);
+
+    MatchingEngine heuristic_queue_engine(nullptr, 0.1, {}, 0, QueueModel::Heuristic, 0.5);
+    heuristic_queue_engine.process_l2_top({34, "HEURISTIC", 100.0, 50, 100.1, 40, 2, "test"});
+    heuristic_queue_engine.send_order({82, "HEURISTIC", exchange::Side::Buy,
+                                       exchange::OrderType::Limit, 100.0, 10, 10, 35,
+                                       "MarketMaker"});
+    heuristic_queue_engine.process_l2_top({36, "HEURISTIC", 100.0, 0, 100.1, 40, 3, "test"});
+    assert(heuristic_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) <= 13);
 
     queued_reports.clear();
     queued_engine.cancel_order(52);
@@ -176,6 +223,64 @@ int main()
     queued_engine.process_market_trade({25, "BTCUSDT", 100.0, 1, Side::Sell, 0, "test"});
     assert(has_report(queued_reports, 53, ExecType::Trade, 1));
     assert(has_report(queued_reports, 53, ExecType::PartialFill, 9));
+
+    MatchingEngine delayed_cancel_engine(nullptr, 0.1, {}, 1);
+    std::vector<ExecutionReport> delayed_cancel_reports;
+    delayed_cancel_engine.set_report_callback(
+        [&delayed_cancel_reports](const ExecutionReport& report)
+        { delayed_cancel_reports.push_back(report); });
+    delayed_cancel_engine.process_bbo({30, "DELAY", 100.0, 10, 100.1, 10, 1, "test"});
+    delayed_cancel_engine.send_order({70, "DELAY", exchange::Side::Buy,
+                                      exchange::OrderType::Limit, 100.0, 10, 10, 31,
+                                      "MarketMaker"});
+    delayed_cancel_engine.cancel_order(70);
+    delayed_cancel_engine.cancel_order(70);
+    delayed_cancel_reports.clear();
+    delayed_cancel_engine.process_market_trade({32, "DELAY", 100.0, 10, Side::Sell, 0, "test"});
+    assert(has_report(delayed_cancel_reports, 70, ExecType::Trade, 10));
+    assert(has_report(delayed_cancel_reports, 70, ExecType::Filled, 0));
+    assert(std::count_if(delayed_cancel_reports.begin(), delayed_cancel_reports.end(),
+                         [](const ExecutionReport& report)
+                         { return report.exec_type == ExecType::Cancelled; }) == 0);
+
+    MatchingEngine cancel_engine(nullptr, 0.1, {}, 2);
+    std::vector<ExecutionReport> cancel_reports;
+    cancel_engine.set_report_callback([&cancel_reports](const ExecutionReport& report)
+                                      { cancel_reports.push_back(report); });
+    cancel_engine.process_bbo({40, "CANCEL", 100.0, 10, 100.1, 10, 1, "test"});
+    cancel_engine.send_order({71, "CANCEL", exchange::Side::Buy,
+                              exchange::OrderType::Limit, 100.0, 10, 10, 41,
+                              "MarketMaker"});
+    cancel_engine.cancel_order(71);
+    cancel_engine.cancel_order(71);
+    cancel_engine.process_bbo({42, "CANCEL", 100.0, 10, 100.1, 10, 2, "test"});
+    assert(std::none_of(cancel_reports.begin(), cancel_reports.end(),
+                        [](const ExecutionReport& report)
+                        { return report.exec_type == ExecType::Cancelled; }));
+    cancel_engine.process_bbo({43, "CANCEL", 100.0, 10, 100.1, 10, 3, "test"});
+    assert(std::count_if(cancel_reports.begin(), cancel_reports.end(),
+                         [](const ExecutionReport& report)
+                         { return report.exec_type == ExecType::Cancelled; }) == 1);
+    cancel_engine.cancel_order(71);
+    assert(std::count_if(cancel_reports.begin(), cancel_reports.end(),
+                         [](const ExecutionReport& report)
+                         { return report.exec_type == ExecType::Cancelled; }) == 1);
+
+    const auto trade_report = std::find_if(queued_reports.begin(), queued_reports.end(),
+                                           [](const ExecutionReport& report)
+                                           { return report.exec_type == ExecType::Trade; });
+    assert(trade_report != queued_reports.end());
+    assert(trade_report->executed_quantity() == trade_report->quantity);
+    assert(trade_report->remaining_quantity() == 0);
+
+    queued_reports.clear();
+    queued_engine.process_l2_top({26, "BTCUSDT", 99.0, 30, 100.1, 40, 3, "test"});
+    queued_engine.send_order({54, "BTCUSDT", exchange::Side::Buy,
+                              exchange::OrderType::Limit, 99.0, 10, 10, 27,
+                              "MarketMaker"});
+    queued_reports.clear();
+    queued_engine.process_market_trade({28, "BTCUSDT", 99.0, 30, Side::Sell, 0, "test"});
+    assert(!has_report(queued_reports, 54, ExecType::Trade, 10));
 
     MatchingEngine fee_engine(
         nullptr, 0.1, FeeSchedule{.maker_rate = 0.001, .taker_rate = 0.002, .quantity_scale = 100});

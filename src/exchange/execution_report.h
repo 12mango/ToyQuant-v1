@@ -26,4 +26,14 @@ struct ExecutionReport
     std::string owner;
     LiquidityRole liquidity_role{LiquidityRole::Unknown};
     double fee{0.0};
+
+    uint64_t executed_quantity() const
+    {
+        return exec_type == ExecType::Trade ? quantity : 0;
+    }
+
+    uint64_t remaining_quantity() const
+    {
+        return exec_type == ExecType::Trade ? 0 : quantity;
+    }
 };
