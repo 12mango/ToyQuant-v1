@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "app/strategy_factory.h"
+#include "legacy/l1_market_maker.h"
 #include "strategy/market_maker.h"
 
 uint64_t quantity_for_side(const std::vector<StrategyOrder>& orders, Side side)

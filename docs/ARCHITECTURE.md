@@ -80,7 +80,7 @@ The source map is:
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
-| Strategy | `src/strategy/strategy.h`, `market_maker.h`, `l2_market_maker.h`, `active_l2_market_maker.h` | `Strategy`, L1 and L2 strategy families |
+| Strategy | `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, active L2 family |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
@@ -474,7 +474,7 @@ aggressor. `Trade.quantity` is executed quantity; lifecycle quantities are remai
 
 ## 6. Strategy: The Main Decision Module
 
-**Files:** `src/strategy/strategy.h`, `src/strategy/market_maker.h`
+**Files:** `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/legacy/l1_market_maker.h`
 
 The strategy is the decision layer, not the matching layer. It sees `TopOfBook`, keeps its own working-order and position state, and returns candidate `StrategyOrder` values. The pipeline later assigns IDs and converts them to `exchange::Order`.
 
@@ -595,6 +595,10 @@ In short: observations create quotes, submitted IDs become working state, execut
 quantities and position, and stale quotes are cancelled before replacement.
 
 ### 6.3 L1MarketMaker: BBO-aware quoting
+
+L1 strategies are frozen compatibility implementations. Their CLI names remain available for
+reproducing earlier L1 replay and benchmark results; new strategy work belongs to the L2 path.
+The archived implementations are in `src/legacy/l1_market_maker.h`.
 
 `L1MarketMaker` is the replay-oriented single-level strategy. It consumes BBO updates for quoting
 and venue trades for order-flow information. Its behavior is intentionally layered so each risk

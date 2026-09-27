@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen)](tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[User Guide](docs/USER_GUIDE.md) · [Architecture](docs/ARCHITECTURE.md) · [Data Formats](data/README.md)
+[User Guide](docs/USER_GUIDE.md) · [Architecture](docs/ARCHITECTURE.md) · [Performance Baseline](docs/PERFORMANCE_BASELINE.md) · [Data Formats](data/README.md)
 
 </div>
 
@@ -183,6 +183,7 @@ ToyQuant deliberately excludes real exchange connectivity, FIX, a risk gateway, 
 |---|---|
 | [User Guide](docs/USER_GUIDE.md) | CLI reference, scenarios, experiments, data contracts, and troubleshooting |
 | [Architecture](docs/ARCHITECTURE.md) | Data flow, module responsibilities, matching rules, order lifecycle |
+| [Performance Baseline](docs/PERFORMANCE_BASELINE.md) | Reproducible pre-optimization workload, timing, and profiling prerequisites |
 | [Data Files](data/README.md) | Tick CSV format, runtime outputs, typical workflow |
 
 ## Contributing

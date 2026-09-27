@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "strategy/market_maker.h"
+#include "legacy/l1_market_maker_config.h"
 
 struct StrategyBenchmarkResult
 {

@@ -206,7 +206,9 @@ cancellation delay; it is not a millisecond latency model. Queue model defaults 
 
 ### Replay strategy choices
 
-The replay command accepts these strategy names:
+The replay command continues to accept these frozen L1 strategy names for compatibility and
+historical result reproduction. They are not an active development target; the current strategy
+mainline is `active_l2`.
 
 | Name | Use when you want to demonstrate |
 |---|---|
@@ -241,13 +243,13 @@ replacement for this continuous timeline.
 
 ### Current demo status
 
-The replay demo is complete for strategy comparison and learning. The current roles are:
+The replay demo retains historical L1 and current L2 roles:
 
-- `l1`: defensive mainline with inventory, flow, volatility, fee-aware spread, and execution-quality metrics;
+- `l1`: frozen L1 replay reference with inventory, flow, volatility, and fee-aware spread controls;
 - `active_l1`: separate higher-activity experiment focused on inventory rotation;
 - `flow_aware_l1`: bounded order-flow experiment and comparison baseline;
 - `passive_l1` and `inventory_aware_l1`: simple reference baselines;
-- `active_l2`: comprehensive L2 mainline for depth-aware replay;
+- `active_l2`: current L2 mainline for depth-aware replay;
 - `passive_l2`, `inventory_aware_l2`, and `flow_aware_l2`: L2 comparison baselines.
 
 Replay trades without a usable BBO, or with a price more than 5 bps from the latest BBO midpoint,
@@ -266,7 +268,7 @@ result for cost-aware comparisons;
 `gross_pnl` and `fees` explain why it changed.
 
 The replay strategies are intentionally different teaching baselines, not production algorithms.
-`l1` is the L1 mainline; `flow_aware_l1` is an experimental transition strategy
+L1 implementations are frozen; `flow_aware_l1` is an experimental transition strategy
 whose useful bounded behavior has partly been incorporated into `l1`. `active_l1` is a separate
 experiment that produces more observable activity and inventory rotation while accepting more
 adverse-selection risk. After a fill it rebuilds quotes around the new inventory on the next BBO

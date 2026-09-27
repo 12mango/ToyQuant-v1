@@ -4,7 +4,7 @@
 #include <string>
 
 #include "common/instrument_spec.h"
-#include "strategy/market_maker.h"
+#include "legacy/l1_market_maker_config.h"
 #include "strategy/strategy.h"
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
