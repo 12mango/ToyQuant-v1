@@ -51,12 +51,12 @@ void print_usage(const char* executable)
 {
     std::cerr << "Usage: " << executable << " csv [path_to_csv] [ms_delay] [strategy]\n";
     std::cerr << "   or: " << executable << " udp <port> [strategy]\n";
-    std::cerr << "   or: " << executable
+        std::cerr << "   or: " << executable
               << " replay <agg_trades_csv> <bbo_csv> <symbol> [ms_delay] [strategy] "
-                      "[quantity_scale] [queue_model]\n";
+                  "[quantity_scale] [queue_model] [--no-output] [--fast-validation]\n";
         std::cerr << "   or: " << executable
                       << " l2_replay <trades_csv[.gz]> <depth_or_incremental_csv> <symbol> "
-                         "[ms_delay] [strategy] [quantity_scale] [queue_model]\n";
+                         "[ms_delay] [strategy] [quantity_scale] [queue_model] [--no-output] [--fast-validation]\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
         std::cerr << "   queue_model: conservative (default) | heuristic | optimistic\n";
 }
@@ -82,7 +82,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
 
     if (cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay)
     {
-        if (argc < 5 || argc > 9)
+        if (argc < 5 || argc > 11)
         {
             error = "replay requires trade file, market-state file, and symbol";
             return false;
@@ -110,6 +110,24 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (argc >= 9 && !parse_queue_model(argv[8], cfg.queue_model))
         {
             error = "queue model must be conservative, heuristic, or optimistic";
+            return false;
+        }
+        for (int argument = 9; argument < argc; ++argument)
+        {
+            const std::string flag = argv[argument];
+            if (flag == "--no-output")
+                cfg.discard_output = true;
+            else if (flag == "--fast-validation")
+                cfg.fast_validation = true;
+            else
+            {
+                error = "optional replay flags must be --no-output or --fast-validation";
+                return false;
+            }
+        }
+        if (cfg.fast_validation && cfg.mode != AppMode::L2Replay)
+        {
+            error = "--fast-validation is only supported by l2_replay";
             return false;
         }
     }

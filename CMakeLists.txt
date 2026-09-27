@@ -59,6 +59,18 @@ target_link_libraries(toy_quant PRIVATE Threads::Threads)
 target_link_libraries(toy_quant PRIVATE ZLIB::ZLIB)
 set_target_properties(toy_quant PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+if(NOT MSVC)
+    add_executable(toy_quant_profile EXCLUDE_FROM_ALL src/main.cpp src/app/app_config.cpp
+        src/app/application.cpp src/app/pipeline.cpp src/app/strategy_factory.cpp
+        src/market/udp_feed.cpp src/orderbook/l2_orderbook.cpp ${COMMON_SOURCES})
+    target_include_directories(toy_quant_profile PRIVATE ${COMMON_INCLUDE_DIRS})
+    target_link_libraries(toy_quant_profile PRIVATE Threads::Threads ZLIB::ZLIB)
+    target_compile_options(toy_quant_profile PRIVATE -pg)
+    target_link_options(toy_quant_profile PRIVATE -pg)
+    set_target_properties(toy_quant_profile PROPERTIES
+        VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
 # ==================== backtest_main Executable ====================
 add_executable(backtest_main src/backtest/backtest_main.cpp src/backtest/backtest_driver.cpp ${COMMON_SOURCES})
 target_include_directories(backtest_main PRIVATE ${COMMON_INCLUDE_DIRS})

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "market/market_event.h"
@@ -10,6 +11,7 @@ struct MarketDataValidationConfig
 {
     uint64_t max_bbo_age_ms{1000};
     double max_trade_deviation_bps{5.0};
+    bool validate_incremental_update_fields{true};
 };
 
 struct MarketDataValidationSummary
@@ -56,7 +58,7 @@ class MarketDataValidator
     void validate_depth_snapshot(const MarketDepthSnapshot& snapshot);
     void validate_incremental_batch(const IncrementalBookBatch& batch);
     static void validate_ordering(StreamState& state, uint64_t timestamp, uint64_t sequence,
-                                  const std::string& stream_name);
+                                  std::string_view stream_type, const std::string& symbol);
 
     MarketDataValidationConfig config_;
     MarketDataValidationSummary summary_;

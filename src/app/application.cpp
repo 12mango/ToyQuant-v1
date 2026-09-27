@@ -23,7 +23,25 @@
 #include "orderbook/l2_orderbook.h"
 #include "utils/logger.h"
 
+namespace
+{
+std::string application_log_path(bool discard_output)
+{
+    if (!discard_output) return to_abs_path("logs/toy_quant.log");
+#ifdef _WIN32
+    return "NUL";
+#else
+    return "/dev/null";
+#endif
+}
+}  // namespace
+
 Application::Application(const AppConfig& cfg) : cfg_(cfg) {}
+
+void Application::configure_logger(Logger& logger) const
+{
+    if (cfg_.discard_output) logger.set_enabled(false);
+}
 
 Application::OutputFiles Application::open_output_files(const std::string& source,
                                                        const std::string& source_type) const
@@ -39,16 +57,33 @@ Application::OutputFiles Application::open_output_files(const std::string& sourc
                                  "': " + ec.message());
     }
 
-    OutputFiles files{std::ofstream(orders_file), std::ofstream(trades_file)};
+    const std::string output_target = cfg_.discard_output
+#ifdef _WIN32
+                                          ? "NUL"
+#else
+                                          ? "/dev/null"
+#endif
+                                          : orders_file;
+    const std::string trades_target = cfg_.discard_output
+#ifdef _WIN32
+                                          ? "NUL"
+#else
+                                          ? "/dev/null"
+#endif
+                                          : trades_file;
+    OutputFiles files{std::ofstream(output_target), std::ofstream(trades_target)};
     if (!files.orders.is_open() || !files.trades.is_open())
     {
         throw std::runtime_error("failed to open runtime output files in '" + output_dir.string() +
                                  "'");
     }
-    files.orders << "# " << source_type << "=" << source << "\n";
-    files.trades << "# " << source_type << "=" << source << "\n";
-    files.orders << "ts,symbol,side,price,quantity,order_id\n";
-    files.trades << "ts,symbol,side,price,quantity,order_id,liquidity_role,fee\n";
+    if (!cfg_.discard_output)
+    {
+        files.orders << "# " << source_type << "=" << source << "\n";
+        files.trades << "# " << source_type << "=" << source << "\n";
+        files.orders << "ts,symbol,side,price,quantity,order_id\n";
+        files.trades << "ts,symbol,side,price,quantity,order_id,liquidity_role,fee\n";
+    }
     return files;
 }
 
@@ -75,7 +110,8 @@ int Application::run() const
 void Application::run_legacy_csv_mode() const
 {
     const std::string csv_file = to_abs_path(cfg_.path_or_port);
-    Logger logger(to_abs_path("logs/toy_quant.log"));
+    Logger logger(application_log_path(cfg_.discard_output));
+    configure_logger(logger);
     logger.log("[Mode: Legacy CSV] Opening: ", csv_file, " (delay: ", cfg_.delay,
                "ms) strategy=", cfg_.strategy_name);
 
@@ -102,7 +138,8 @@ void Application::run_replay_mode() const
     const InstrumentSpec instrument = btc_usdt_spec(cfg_.quantity_scale);
     const std::string trades_file = to_abs_path(cfg_.path_or_port);
     const std::string quotes_file = to_abs_path(cfg_.quotes_path);
-    Logger logger(to_abs_path("logs/toy_quant.log"));
+    Logger logger(application_log_path(cfg_.discard_output));
+    configure_logger(logger);
     logger.log("[Mode: Replay] trades=", trades_file, " quotes=", quotes_file,
                " symbol=", cfg_.symbol, " quantity_scale=", cfg_.quantity_scale,
                " strategy=", cfg_.strategy_name);
@@ -149,7 +186,8 @@ void Application::run_l2_replay_mode() const
     const InstrumentSpec instrument = deribit_btc_perpetual_spec();
     const std::string trades_file = to_abs_path(cfg_.path_or_port);
     const std::string depth_file = to_abs_path(cfg_.quotes_path);
-    Logger logger(to_abs_path("logs/toy_quant.log"));
+    Logger logger(application_log_path(cfg_.discard_output));
+    configure_logger(logger);
     logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
                " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
                " queue_model=", queue_model_name(cfg_.queue_model));
@@ -159,7 +197,7 @@ void Application::run_l2_replay_mode() const
                                ";tick_size=" + std::to_string(instrument.tick_size);
     auto output_files = open_output_files(source, "source_l2_market_data");
     OrderBook execution_book(instrument.tick_size);
-    L2OrderBook l2_book;
+    L2OrderBook l2_book(instrument.tick_size);
     auto strategy = make_strategy(cfg_.strategy_name, &instrument);
     MatchingEngine engine(&logger, instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
@@ -170,6 +208,8 @@ void Application::run_l2_replay_mode() const
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
                       portfolio, logger, instrument.tick_size);
     double final_mid = 0.0;
+    MarketDataValidationConfig validation_config;
+    validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
     L2ReplayFeed feed(
         make_deribit_trade_reader(trades_file),
         make_deribit_depth_reader(depth_file),
@@ -198,7 +238,7 @@ void Application::run_l2_replay_mode() const
                 },
                 event);
         },
-        cfg_.delay);
+        cfg_.delay, validation_config);
     feed.run();
     if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     const auto& validation = feed.validation_summary();
@@ -212,7 +252,8 @@ void Application::run_l2_replay_mode() const
 void Application::run_legacy_udp_mode() const
 {
     int port = std::stoi(cfg_.path_or_port);
-    Logger logger(to_abs_path("logs/toy_quant.log"));
+    Logger logger(application_log_path(cfg_.discard_output));
+    configure_logger(logger);
     logger.log("[Mode: Legacy UDP] Listening on UDP port: ", port,
                "... strategy=", cfg_.strategy_name);
 

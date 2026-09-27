@@ -42,18 +42,25 @@ void L2ReplayFeed::run()
     MarketEvent depth;
     bool has_trade = trades_->next(trade);
     bool has_depth = depth_->next(depth);
+    uint64_t trade_timestamp = has_trade ? event_timestamp(trade) : 0;
+    uint64_t depth_timestamp = has_depth ? event_timestamp(depth) : 0;
 
     while (has_trade || has_depth)
     {
-        const bool use_depth =
-            has_depth && (!has_trade || event_timestamp(depth) <= event_timestamp(trade));
+        const bool use_depth = has_depth && (!has_trade || depth_timestamp <= trade_timestamp);
         const MarketEvent& event = use_depth ? depth : trade;
         validator_.validate(event);
         callback_(event);
         if (use_depth)
+        {
             has_depth = depth_->next(depth);
+            if (has_depth) depth_timestamp = event_timestamp(depth);
+        }
         else
+        {
             has_trade = trades_->next(trade);
+            if (has_trade) trade_timestamp = event_timestamp(trade);
+        }
         if (ms_delay_ > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms_delay_));
     }
 

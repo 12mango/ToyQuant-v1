@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <variant>
@@ -50,12 +51,10 @@ struct IncrementalBookUpdate
 {
     uint64_t exchange_ts{};
     uint64_t local_ts{};
-    std::string symbol;
     bool is_snapshot{false};
     Side side{Side::Unknown};
     double price{};
     uint64_t amount{};
-    std::string exchange;
 };
 
 struct IncrementalBookBatch
@@ -66,6 +65,15 @@ struct IncrementalBookBatch
     std::string symbol;
     std::vector<IncrementalBookUpdate> updates;
     std::string exchange;
+    bool snapshot_metadata_valid{false};
+    bool contains_snapshot{false};
+
+    bool has_snapshot() const
+    {
+        if (snapshot_metadata_valid) return contains_snapshot;
+        return std::any_of(updates.begin(), updates.end(),
+                           [](const auto& update) { return update.is_snapshot; });
+    }
 };
 
 using MarketEvent =

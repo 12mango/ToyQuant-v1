@@ -5,6 +5,8 @@
 
 #include "app/app_config.h"
 
+class Logger;
+
 class Application
 {
    public:
@@ -20,6 +22,7 @@ class Application
 
     OutputFiles open_output_files(const std::string& source,
                                  const std::string& source_type = "source_ticks") const;
+    void configure_logger(Logger& logger) const;
     void run_legacy_csv_mode() const;
     void run_replay_mode() const;
     void run_l2_replay_mode() const;

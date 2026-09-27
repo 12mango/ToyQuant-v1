@@ -221,7 +221,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view, bool enable_prin
                              .ask_price = view.top.ask_price,
                              .ask_quantity = view.top.ask_size,
                              .exchange = {}};
-        latest_quotes_[view.symbol] = quote;
+        latest_quotes_.insert_or_assign(view.symbol, quote);
         engine_.process_l2_top(quote);
         last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
         ++quote_cycle_;
@@ -309,8 +309,8 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         }
         write_order_csv_row(orders_out_, ts, order);
         strategy_.on_order_submitted(order);
-        order_start_cycles_[order.order_id] = quote_cycle_;
-        order_audit_[order.order_id] = OrderAudit{quote_cycle_, false};
+        order_start_cycles_.insert_or_assign(order.order_id, quote_cycle_);
+        order_audit_.insert_or_assign(order.order_id, OrderAudit{quote_cycle_, false});
         ++execution_quality_.audited_orders;
         engine_.send_order(exchange_order);
     }

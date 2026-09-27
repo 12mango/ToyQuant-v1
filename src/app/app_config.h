@@ -23,6 +23,8 @@ struct AppConfig
     std::string strategy_name = "optimized";
     uint64_t quantity_scale = 1000000;
     QueueModel queue_model = QueueModel::Conservative;
+    bool discard_output = false;
+    bool fast_validation = false;
 };
 
 std::string to_abs_path(const std::string& input_path);

@@ -22,6 +22,7 @@ Logger::Logger(const std::string& file)
 
 void Logger::write(const std::string& message, std::ostream& console)
 {
+    if (!enabled_) return;
     console << message << std::endl;
     if (fout_.is_open()) fout_ << message << std::endl;
 }

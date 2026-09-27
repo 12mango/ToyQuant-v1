@@ -14,40 +14,44 @@ void require_positive_finite(double value, const char* field)
 }  // namespace
 
 void MarketDataValidator::validate_ordering(StreamState& state, uint64_t timestamp,
-                                            uint64_t sequence, const std::string& stream_name)
+                                            uint64_t sequence, std::string_view stream_type,
+                                            const std::string& symbol)
 {
-    if (timestamp == 0) throw std::invalid_argument(stream_name + " timestamp must be positive");
-    if (sequence == 0) throw std::invalid_argument(stream_name + " sequence must be positive");
+    const auto stream_name = [&]
+    {
+        return std::string(stream_type) + " '" + symbol + "'";
+    };
+    if (timestamp == 0)
+        throw std::invalid_argument(stream_name() + " timestamp must be positive");
+    if (sequence == 0)
+        throw std::invalid_argument(stream_name() + " sequence must be positive");
     if (state.initialized && timestamp < state.timestamp)
-        throw std::invalid_argument(stream_name + " timestamp moved backwards");
+        throw std::invalid_argument(stream_name() + " timestamp moved backwards");
     if (state.initialized && sequence <= state.sequence)
-        throw std::invalid_argument(stream_name + " sequence is not strictly increasing");
+        throw std::invalid_argument(stream_name() + " sequence is not strictly increasing");
 
     state = StreamState{timestamp, sequence, true};
 }
 
 void MarketDataValidator::validate(const MarketEvent& event)
 {
-    const uint64_t timestamp = std::visit(
-        [](const auto& value)
-        {
-            using Event = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
-                return value.exchange_ts;
-            else
-                return value.ts;
-        },
-        event);
-    if (has_merged_timestamp_ && timestamp < last_merged_timestamp_)
-        throw std::invalid_argument("merged market event timestamp moved backwards");
-    last_merged_timestamp_ = timestamp;
-    has_merged_timestamp_ = true;
-    ++summary_.events;
-
     std::visit(
         [this](const auto& value)
         {
             using Event = std::decay_t<decltype(value)>;
+            const uint64_t timestamp = [&]
+            {
+                if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
+                    return value.exchange_ts;
+                else
+                    return value.ts;
+            }();
+            if (has_merged_timestamp_ && timestamp < last_merged_timestamp_)
+                throw std::invalid_argument("merged market event timestamp moved backwards");
+            last_merged_timestamp_ = timestamp;
+            has_merged_timestamp_ = true;
+            ++summary_.events;
+
             if constexpr (std::is_same_v<Event, MarketTrade>)
                 validate_trade(value);
             else if constexpr (std::is_same_v<Event, BboQuote>)
@@ -64,28 +68,30 @@ void MarketDataValidator::validate_incremental_batch(const IncrementalBookBatch&
 {
     if (batch.symbol.empty() || batch.updates.empty())
         throw std::invalid_argument("incremental L2 batch is empty");
-    validate_ordering(incremental_streams_[batch.symbol], batch.exchange_ts,
-                      incremental_streams_[batch.symbol].sequence + 1,
-                      "incremental stream '" + batch.symbol + "'");
-    for (const auto& update : batch.updates)
+    auto& stream_state = incremental_streams_[batch.symbol];
+    validate_ordering(stream_state, batch.exchange_ts, stream_state.sequence + 1,
+                      "incremental stream", batch.symbol);
+    if (config_.validate_incremental_update_fields)
     {
-        if (update.symbol != batch.symbol || update.exchange_ts == 0 || update.local_ts != batch.local_ts ||
-            update.side == Side::Unknown || !std::isfinite(update.price) || update.price <= 0.0)
-            throw std::invalid_argument("invalid incremental L2 update");
+        for (const auto& update : batch.updates)
+        {
+            if (update.exchange_ts == 0 || update.local_ts != batch.local_ts ||
+                update.side == Side::Unknown || !std::isfinite(update.price) || update.price <= 0.0)
+                throw std::invalid_argument("invalid incremental L2 update");
+        }
     }
     ++summary_.incremental_batches;
-    const bool snapshot = std::any_of(
-        batch.updates.begin(), batch.updates.end(),
-        [](const auto& update) { return update.is_snapshot; });
-    if (snapshot && !incremental_snapshot_active_[batch.symbol])
+    const bool snapshot = batch.has_snapshot();
+    auto& snapshot_active = incremental_snapshot_active_[batch.symbol];
+    if (snapshot && !snapshot_active)
         ++summary_.incremental_snapshot_batches;
-    incremental_snapshot_active_[batch.symbol] = snapshot;
+    snapshot_active = snapshot;
 }
 
 void MarketDataValidator::validate_trade(const MarketTrade& trade)
 {
     validate_ordering(trade_streams_[trade.symbol], trade.ts, trade.sequence,
-                      "trade stream '" + trade.symbol + "'");
+                      "trade stream", trade.symbol);
     if (trade.symbol.empty()) throw std::invalid_argument("trade symbol cannot be empty");
     require_positive_finite(trade.price, "trade price");
     if (trade.quantity == 0) throw std::invalid_argument("trade quantity must be positive");
@@ -114,7 +120,7 @@ void MarketDataValidator::validate_trade(const MarketTrade& trade)
 void MarketDataValidator::validate_quote(const BboQuote& quote)
 {
     validate_ordering(quote_streams_[quote.symbol], quote.ts, quote.sequence,
-                      "BBO stream '" + quote.symbol + "'");
+                      "BBO stream", quote.symbol);
     if (quote.symbol.empty()) throw std::invalid_argument("BBO symbol cannot be empty");
     require_positive_finite(quote.bid_price, "BBO bid price");
     require_positive_finite(quote.ask_price, "BBO ask price");
@@ -124,13 +130,13 @@ void MarketDataValidator::validate_quote(const BboQuote& quote)
         throw std::invalid_argument("BBO bid price exceeds ask price");
 
     ++summary_.quotes;
-    latest_quotes_[quote.symbol] = quote;
+    latest_quotes_.insert_or_assign(quote.symbol, quote);
 }
 
 void MarketDataValidator::validate_depth_snapshot(const MarketDepthSnapshot& snapshot)
 {
     validate_ordering(depth_streams_[snapshot.symbol], snapshot.ts, snapshot.sequence,
-                      "depth stream '" + snapshot.symbol + "'");
+                      "depth stream", snapshot.symbol);
     if (snapshot.symbol.empty()) throw std::invalid_argument("depth symbol cannot be empty");
     if (snapshot.bids.empty() || snapshot.asks.empty())
         throw std::invalid_argument("depth snapshot must contain both sides");

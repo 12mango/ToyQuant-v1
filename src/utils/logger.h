@@ -15,6 +15,11 @@ class Logger
         verbose_ = enabled;
     }
 
+    void set_enabled(bool enabled)
+    {
+        enabled_ = enabled;
+    }
+
     template <typename... Args>
     void log(Args&&... args)
     {
@@ -45,4 +50,5 @@ class Logger
     void write(const std::string& message, std::ostream& console);
     std::ofstream fout_;
     bool verbose_{false};
+    bool enabled_{true};
 };

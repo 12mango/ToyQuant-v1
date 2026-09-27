@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 
 #include "orderbook/l2_orderbook.h"
 #include "strategy/active_l2_market_maker.h"
@@ -16,8 +17,8 @@ int main()
                                             .exchange = "deribit"});
 
     const L2MarketView view = book.market_view();
-    assert(view.top.bid_price == 6421.0);
-    assert(view.top.ask_price == 6421.5);
+    assert(std::abs(view.top.bid_price - 6421.0) < 1e-9);
+    assert(std::abs(view.top.ask_price - 6421.5) < 1e-9);
     assert(view.depth_imbalance > 0.0);
     assert(view.micro_price > view.top.bid_price);
 

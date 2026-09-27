@@ -1,12 +1,13 @@
 #include "market/market_data_adapter.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <fstream>
 #include <limits>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -14,44 +15,107 @@
 
 namespace
 {
+uint64_t parse_uint64(std::string_view value)
+{
+    uint64_t result = 0;
+    const char* begin = value.data();
+    const char* end = begin + value.size();
+    const auto parsed = std::from_chars(begin, end, result);
+    if (parsed.ec != std::errc{} || parsed.ptr != end)
+        throw std::invalid_argument("invalid unsigned integer: " + std::string(value));
+    return result;
+}
+
+double parse_double(std::string_view value)
+{
+    double result = 0.0;
+    const char* begin = value.data();
+    const char* end = begin + value.size();
+    const auto parsed = std::from_chars(begin, end, result, std::chars_format::general);
+    if (parsed.ec == std::errc{} && parsed.ptr == end) return result;
+    return std::stod(std::string(value));
+}
+
+void split_csv(const std::string& row, std::vector<std::string>& fields,
+               std::size_t expected_fields = 0)
+{
+    fields.clear();
+    const std::size_t reserve_count =
+        expected_fields > 0
+            ? expected_fields
+            : static_cast<std::size_t>(std::count(row.begin(), row.end(), ',')) + 1;
+    fields.reserve(reserve_count);
+    std::size_t field_start = 0;
+    while (field_start < row.size())
+    {
+        const std::size_t delimiter = row.find(',', field_start);
+        std::size_t field_end = delimiter == std::string::npos ? row.size() : delimiter;
+        if (field_end > field_start && row[field_end - 1] == '\r') --field_end;
+        std::size_t value_start = field_start;
+        if (fields.empty() && field_end - value_start >= 3 &&
+            static_cast<unsigned char>(row[value_start]) == 0xEF &&
+            static_cast<unsigned char>(row[value_start + 1]) == 0xBB &&
+            static_cast<unsigned char>(row[value_start + 2]) == 0xBF)
+            value_start += 3;
+        fields.emplace_back(row.data() + value_start, field_end - value_start);
+        if (delimiter == std::string::npos) break;
+        field_start = delimiter + 1;
+    }
+}
+
+void split_csv_views(std::string_view row, std::vector<std::string_view>& fields,
+                     std::size_t expected_fields)
+{
+    fields.clear();
+    fields.reserve(expected_fields);
+    std::size_t field_start = 0;
+    while (field_start < row.size())
+    {
+        const std::size_t delimiter = row.find(',', field_start);
+        std::size_t field_end = delimiter == std::string_view::npos ? row.size() : delimiter;
+        if (field_end > field_start && row[field_end - 1] == '\r') --field_end;
+        std::size_t value_start = field_start;
+        if (fields.empty() && field_end - value_start >= 3 &&
+            static_cast<unsigned char>(row[value_start]) == 0xEF &&
+            static_cast<unsigned char>(row[value_start + 1]) == 0xBB &&
+            static_cast<unsigned char>(row[value_start + 2]) == 0xBF)
+            value_start += 3;
+        fields.emplace_back(row.data() + value_start, field_end - value_start);
+        if (delimiter == std::string_view::npos) break;
+        field_start = delimiter + 1;
+    }
+}
+
 std::vector<std::string> split_csv(const std::string& row)
 {
     std::vector<std::string> fields;
-    std::istringstream stream(row);
-    std::string field;
-    while (std::getline(stream, field, ','))
-    {
-        if (!field.empty() && field.back() == '\r') field.pop_back();
-        if (fields.empty() && field.size() >= 3 &&
-            static_cast<unsigned char>(field[0]) == 0xEF &&
-            static_cast<unsigned char>(field[1]) == 0xBB &&
-            static_cast<unsigned char>(field[2]) == 0xBF)
-            field.erase(0, 3);
-        fields.push_back(field);
-    }
+    split_csv(row, fields);
     return fields;
 }
 
-uint64_t scaled_quantity(const std::string& value, uint64_t scale)
+uint64_t scaled_quantity(std::string_view value, uint64_t scale)
 {
-    const double quantity = std::stod(value);
+    const double quantity = parse_double(value);
     if (!std::isfinite(quantity) || quantity < 0.0)
         throw std::invalid_argument("quantity must be finite and non-negative");
     return static_cast<uint64_t>(std::llround(quantity * static_cast<double>(scale)));
 }
 
-uint64_t snapshot_quantity(const std::string& value)
+uint64_t snapshot_quantity(std::string_view value)
 {
-    const double quantity = std::stod(value);
+    const double quantity = parse_double(value);
     if (!std::isfinite(quantity) || quantity < 0.0 ||
         quantity > static_cast<double>(std::numeric_limits<uint64_t>::max()))
         throw std::invalid_argument("snapshot quantity must be finite and non-negative");
     return static_cast<uint64_t>(std::llround(quantity));
 }
 
-bool parse_boolean(const std::string& value)
+bool parse_boolean(std::string_view value)
 {
-    std::string normalized = value;
+    if (value == "true" || value == "TRUE" || value == "1") return true;
+    if (value == "false" || value == "FALSE" || value == "0") return false;
+
+    std::string normalized(value);
     normalized.erase(std::remove_if(normalized.begin(), normalized.end(),
                                     [](unsigned char character)
                                     { return std::isspace(character) || character == '"'; }),
@@ -60,7 +124,7 @@ bool parse_boolean(const std::string& value)
                    [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
     if (normalized == "true" || normalized == "1") return true;
     if (normalized == "false" || normalized == "0") return false;
-    throw std::invalid_argument("invalid boolean value: " + value);
+    throw std::invalid_argument("invalid boolean value: " + std::string(value));
 }
 
 class BinanceAggTradeReader final : public IMarketEventReader
@@ -85,12 +149,12 @@ class BinanceAggTradeReader final : public IMarketEventReader
             if (fields.size() < 7) throw std::invalid_argument("invalid Binance aggTrades row");
 
             const bool buyer_is_maker = parse_boolean(fields[6]);
-            event = MarketTrade{.ts = std::stoull(fields[5]),
+            event = MarketTrade{.ts = parse_uint64(fields[5]),
                                 .symbol = symbol_,
-                                .price = std::stod(fields[1]),
+                                .price = parse_double(fields[1]),
                                 .quantity = scaled_quantity(fields[2], quantity_scale_),
                                 .aggressor_side = buyer_is_maker ? Side::Sell : Side::Buy,
-                                .sequence = std::stoull(fields[0]),
+                                .sequence = parse_uint64(fields[0]),
                                 .exchange = "binance"};
             return true;
         }
@@ -121,13 +185,13 @@ class BinanceBookTickerReader final : public IMarketEventReader
             const auto fields = split_csv(row);
             if (fields.size() < 7) throw std::invalid_argument("invalid Binance bookTicker row");
 
-            event = BboQuote{.ts = std::stoull(fields[5]),
+            event = BboQuote{.ts = parse_uint64(fields[5]),
                              .symbol = symbol_,
-                             .bid_price = std::stod(fields[1]),
+                             .bid_price = parse_double(fields[1]),
                              .bid_quantity = scaled_quantity(fields[2], quantity_scale_),
-                             .ask_price = std::stod(fields[3]),
+                             .ask_price = parse_double(fields[3]),
                              .ask_quantity = scaled_quantity(fields[4], quantity_scale_),
-                             .sequence = std::stoull(fields[0]),
+                             .sequence = parse_uint64(fields[0]),
                              .exchange = "binance"};
             return true;
         }
@@ -178,21 +242,26 @@ class DeribitBookSnapshotReader final : public IMarketEventReader
         while (std::getline(input_, row))
         {
             if (row.empty()) continue;
-            const auto fields = split_csv(row);
+            std::vector<std::string_view> fields;
+            split_csv_views(row, fields, columns_.size());
             if (fields.size() < columns_.size())
                 throw std::invalid_argument("invalid Deribit book snapshot row");
 
-            MarketDepthSnapshot snapshot{.ts = std::stoull(fields[timestamp_column_]),
-                                         .symbol = fields[symbol_column_],
+            MarketDepthSnapshot snapshot{.ts = parse_uint64(fields[timestamp_column_]),
+                                         .symbol = std::string(fields[symbol_column_]),
                                          .sequence = ++sequence_,
-                                         .exchange = fields[exchange_column_]};
+                                         .bids = {},
+                                         .asks = {},
+                                         .exchange = std::string(fields[exchange_column_])};
+            snapshot.bids.reserve(bids_.size());
+            snapshot.asks.reserve(asks_.size());
             for (const auto& [price_column, quantity_column] : bids_)
                 snapshot.bids.push_back(
-                    DepthLevel{std::stod(fields[price_column]),
+                    DepthLevel{parse_double(fields[price_column]),
                                snapshot_quantity(fields[quantity_column])});
             for (const auto& [price_column, quantity_column] : asks_)
                 snapshot.asks.push_back(
-                    DepthLevel{std::stod(fields[price_column]),
+                    DepthLevel{parse_double(fields[price_column]),
                                snapshot_quantity(fields[quantity_column])});
             event = std::move(snapshot);
             return true;
@@ -265,10 +334,7 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         {
             if (!read_batch(event)) return false;
             const auto& batch = std::get<IncrementalBookBatch>(event);
-            const bool contains_snapshot = std::any_of(
-                batch.updates.begin(), batch.updates.end(),
-                [](const auto& update) { return update.is_snapshot; });
-            if (started_ || contains_snapshot)
+            if (started_ || batch.has_snapshot())
             {
                 started_ = true;
                 return true;
@@ -277,56 +343,106 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
     }
 
    private:
+    struct ParsedRow
+    {
+        std::string_view symbol;
+        std::string_view exchange;
+        uint64_t exchange_ts{};
+        uint64_t local_ts{};
+        bool is_snapshot{false};
+        Side side{Side::Unknown};
+        double price{};
+        uint64_t amount{};
+    };
+
+    ParsedRow parse_row(const std::string& row) const
+    {
+        ParsedRow parsed;
+        std::size_t field_start = 0;
+        std::size_t field_index = 0;
+        while (field_start < row.size())
+        {
+            const std::size_t delimiter = row.find(',', field_start);
+            std::size_t field_end = delimiter == std::string::npos ? row.size() : delimiter;
+            if (field_end > field_start && row[field_end - 1] == '\r') --field_end;
+            std::size_t value_start = field_start;
+            if (field_index == 0 && field_end - value_start >= 3 &&
+                static_cast<unsigned char>(row[value_start]) == 0xEF &&
+                static_cast<unsigned char>(row[value_start + 1]) == 0xBB &&
+                static_cast<unsigned char>(row[value_start + 2]) == 0xBF)
+                value_start += 3;
+            const std::string_view field(row.data() + value_start, field_end - value_start);
+            if (field_index == exchange_column_) parsed.exchange = field;
+            else if (field_index == symbol_column_) parsed.symbol = field;
+            else if (field_index == timestamp_column_) parsed.exchange_ts = parse_uint64(field);
+            else if (field_index == local_timestamp_column_) parsed.local_ts = parse_uint64(field);
+            else if (field_index == snapshot_column_) parsed.is_snapshot = parse_boolean(field);
+            else if (field_index == side_column_)
+                parsed.side = field == "bid" ? Side::Buy : field == "ask" ? Side::Sell : Side::Unknown;
+            else if (field_index == price_column_) parsed.price = parse_double(field);
+            else if (field_index == amount_column_) parsed.amount = snapshot_quantity(field);
+            if (delimiter == std::string::npos) break;
+            field_start = delimiter + 1;
+            ++field_index;
+        }
+        if (field_index + 1 < columns_.size())
+            throw std::invalid_argument("invalid incremental book row");
+        return parsed;
+    }
+
     bool read_batch(MarketEvent& event)
     {
-        std::vector<std::string> fields;
-        if (pending_.empty())
+        if (pending_row_.empty())
         {
             std::string row;
             do
             {
                 if (!read_line(row)) return false;
             } while (row.empty());
-            pending_ = split_csv(row);
+            pending_row_ = std::move(row);
         }
-        const uint64_t local_ts = std::stoull(pending_[local_timestamp_column_]);
-        IncrementalBookBatch batch{.ts = std::stoull(pending_[timestamp_column_]),
-                       .exchange_ts = std::stoull(pending_[timestamp_column_]),
+        const ParsedRow first = parse_row(pending_row_);
+        const uint64_t batch_timestamp = first.exchange_ts;
+        const uint64_t local_ts = first.local_ts;
+        IncrementalBookBatch batch{.ts = batch_timestamp,
+               .exchange_ts = batch_timestamp,
                                    .local_ts = local_ts,
-                                   .symbol = pending_[symbol_column_],
+                   .symbol = std::string(first.symbol),
                                    .updates = {},
-                                   .exchange = pending_[exchange_column_]};
-        append_update(batch, pending_);
-        pending_.clear();
+                   .exchange = std::string(first.exchange),
+                                   .snapshot_metadata_valid = true,
+                                   .contains_snapshot = false};
+        batch.updates.reserve(2);
+        append_update(batch, first);
+        pending_row_.clear();
         std::string row;
         while (read_line(row))
         {
             if (row.empty()) continue;
-            fields = split_csv(row);
-            if (std::stoull(fields[local_timestamp_column_]) != local_ts)
+            const ParsedRow parsed = parse_row(row);
+            if (parsed.local_ts != local_ts)
             {
-                pending_ = std::move(fields);
+                pending_row_ = std::move(row);
                 break;
             }
-            append_update(batch, fields);
+            append_update(batch, parsed);
         }
         event = std::move(batch);
         return true;
     }
 
-    void append_update(IncrementalBookBatch& batch, const std::vector<std::string>& fields)
+    void append_update(IncrementalBookBatch& batch, const ParsedRow& row)
     {
-        const auto& side = fields[side_column_];
-        const Side parsed_side = side == "bid" ? Side::Buy : side == "ask" ? Side::Sell : Side::Unknown;
+        if (row.symbol != batch.symbol)
+            throw std::invalid_argument("incremental update symbol changed");
+        batch.contains_snapshot = batch.contains_snapshot || row.is_snapshot;
         batch.updates.push_back(IncrementalBookUpdate{
-            .exchange_ts = std::stoull(fields[timestamp_column_]),
-            .local_ts = std::stoull(fields[local_timestamp_column_]),
-            .symbol = fields[symbol_column_],
-            .is_snapshot = parse_boolean(fields[snapshot_column_]),
-            .side = parsed_side,
-            .price = std::stod(fields[price_column_]),
-            .amount = snapshot_quantity(fields[amount_column_]),
-            .exchange = fields[exchange_column_]});
+            .exchange_ts = row.exchange_ts,
+            .local_ts = row.local_ts,
+            .is_snapshot = row.is_snapshot,
+            .side = row.side,
+            .price = row.price,
+            .amount = row.amount});
     }
 
     bool read_line(std::string& line)
@@ -358,7 +474,7 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
     gzFile gzip_input_{nullptr};
     std::ifstream plain_input_;
     std::unordered_map<std::string, std::size_t> columns_;
-    std::vector<std::string> pending_;
+    std::string pending_row_;
     bool started_{false};
     std::size_t exchange_column_{}, symbol_column_{}, timestamp_column_{}, local_timestamp_column_{};
     std::size_t snapshot_column_{}, side_column_{}, price_column_{}, amount_column_{};
@@ -416,12 +532,12 @@ class DeribitTradeReader final : public IMarketEventReader
             if (aggressor_side == Side::Unknown)
                 throw std::invalid_argument("invalid Deribit trade side: " + side);
 
-            event = MarketTrade{.ts = std::stoull(fields[timestamp_column_]),
+            event = MarketTrade{.ts = parse_uint64(fields[timestamp_column_]),
                                 .symbol = fields[symbol_column_],
-                                .price = std::stod(fields[price_column_]),
+                                .price = parse_double(fields[price_column_]),
                                 .quantity = snapshot_quantity(fields[amount_column_]),
                                 .aggressor_side = aggressor_side,
-                                .sequence = std::stoull(fields[id_column_]),
+                                .sequence = parse_uint64(fields[id_column_]),
                                 .exchange = fields[exchange_column_]};
             return true;
         }
