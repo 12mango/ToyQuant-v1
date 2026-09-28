@@ -18,34 +18,39 @@ void L2OrderBook::apply_snapshot(const MarketDepthSnapshot& snapshot)
     if (timestamp_ != 0 && snapshot.ts < timestamp_)
         throw std::invalid_argument("L2 snapshot timestamp moved backwards");
 
-    BidLevels next_bids(&level_memory_);
-    AskLevels next_asks(&level_memory_);
-    PriceTick previous_bid = 0;
+    // Built aside and swapped in, so a snapshot that fails validation leaves the live book as it
+    // was. Each ladder sizes its range around the levels it is given.
+    TickLadder next_bids(true);
+    TickLadder next_asks(false);
+    PriceTick previous = 0;
+    bool have_previous = false;
     for (const auto& level : snapshot.bids)
     {
         if (!std::isfinite(level.price) || level.price <= 0.0 || level.quantity == 0)
             throw std::invalid_argument("invalid L2 bid level");
         const PriceTick price = to_price_tick(level.price, tick_size_);
-        if (price <= 0 || (!next_bids.empty() && price >= previous_bid))
+        if (price <= 0 || (have_previous && price >= previous))
             throw std::invalid_argument("L2 bids must be strictly descending");
-        next_bids.emplace_hint(next_bids.end(), price, level.quantity);
-        previous_bid = price;
+        next_bids.set(price, level.quantity);
+        previous = price;
+        have_previous = true;
     }
-
-    PriceTick previous_ask = 0;
+    previous = 0;
+    have_previous = false;
     for (const auto& level : snapshot.asks)
     {
         if (!std::isfinite(level.price) || level.price <= 0.0 || level.quantity == 0)
             throw std::invalid_argument("invalid L2 ask level");
         const PriceTick price = to_price_tick(level.price, tick_size_);
-        if (price <= 0 || (!next_asks.empty() && price <= previous_ask))
+        if (price <= 0 || (have_previous && price <= previous))
             throw std::invalid_argument("L2 asks must be strictly ascending");
-        next_asks.emplace_hint(next_asks.end(), price, level.quantity);
-        previous_ask = price;
+        next_asks.set(price, level.quantity);
+        previous = price;
+        have_previous = true;
     }
     if (next_bids.empty() || next_asks.empty())
         throw std::invalid_argument("L2 snapshot must contain both sides");
-    if (next_bids.begin()->first > next_asks.begin()->first)
+    if (next_bids.best() > next_asks.best())
         throw std::invalid_argument("L2 snapshot is crossed");
 
     symbol_ = snapshot.symbol;
@@ -75,7 +80,6 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
     {
         bids_.clear();
         asks_.clear();
-        level_memory_.release();
     }
     snapshot_batch_active_ = reset;
 
@@ -88,20 +92,9 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
 
         const PriceTick price = to_price_tick(update.price, tick_size_);
         if (price <= 0) throw std::invalid_argument("invalid L2 incremental price");
-        if (update.side == Side::Buy)
-        {
-            if (update.amount == 0)
-                bids_.erase(price);
-            else
-                bids_.insert_or_assign(price, update.amount);
-        }
-        else
-        {
-            if (update.amount == 0)
-                asks_.erase(price);
-            else
-                asks_.insert_or_assign(price, update.amount);
-        }
+        // A zero amount removes the level, which is what set() does with a zero quantity.
+        if (update.side == Side::Buy) bids_.set(price, update.amount);
+        else asks_.set(price, update.amount);
     }
 
     timestamp_ = batch.exchange_ts;
@@ -112,10 +105,15 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
 TopOfBook L2OrderBook::top_of_book() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (bids_.empty() || asks_.empty() || bids_.begin()->first >= asks_.begin()->first) return {};
-    return TopOfBook{price_from_tick(bids_.begin()->first), bids_.begin()->second,
-                     price_from_tick(asks_.begin()->first),
-                     asks_.begin()->second};
+    PriceTick bid_tick = 0;
+    PriceTick ask_tick = 0;
+    uint64_t bid_quantity = 0;
+    uint64_t ask_quantity = 0;
+    if (!bids_.nth(0, bid_tick, bid_quantity) || !asks_.nth(0, ask_tick, ask_quantity) ||
+        bid_tick >= ask_tick)
+        return {};
+    return TopOfBook{price_from_tick(bid_tick), bid_quantity, price_from_tick(ask_tick),
+                     ask_quantity};
 }
 
 L2MarketView L2OrderBook::market_view(std::size_t levels) const
@@ -125,19 +123,25 @@ L2MarketView L2OrderBook::market_view(std::size_t levels) const
     view.symbol = symbol_;
     view.ts = timestamp_;
     view.local_ts = local_timestamp_;
-    if (bids_.empty() || asks_.empty() || bids_.begin()->first >= asks_.begin()->first || levels == 0)
+
+    PriceTick bid_tick = 0;
+    PriceTick ask_tick = 0;
+    uint64_t bid_quantity = 0;
+    uint64_t ask_quantity = 0;
+    if (levels == 0 || !bids_.nth(0, bid_tick, bid_quantity) ||
+        !asks_.nth(0, ask_tick, ask_quantity) || bid_tick >= ask_tick)
         return view;
 
-    view.top = TopOfBook{price_from_tick(bids_.begin()->first), bids_.begin()->second,
-                         price_from_tick(asks_.begin()->first), asks_.begin()->second};
-    const auto bid_count = std::min(levels, bids_.size());
-    const auto ask_count = std::min(levels, asks_.size());
-    auto bid_iterator = bids_.begin();
-    for (std::size_t index = 0; index < bid_count; ++index, ++bid_iterator)
-        view.bid_depth += bid_iterator->second;
-    auto ask_iterator = asks_.begin();
-    for (std::size_t index = 0; index < ask_count; ++index, ++ask_iterator)
-        view.ask_depth += ask_iterator->second;
+    view.top = TopOfBook{price_from_tick(bid_tick), bid_quantity, price_from_tick(ask_tick),
+                         ask_quantity};
+
+    const std::size_t bid_count = std::min(levels, bids_.size());
+    const std::size_t ask_count = std::min(levels, asks_.size());
+    PriceTick tick = 0;
+    for (std::size_t index = 0; index < bid_count; ++index)
+        if (bids_.nth(index, tick, bid_quantity)) view.bid_depth += bid_quantity;
+    for (std::size_t index = 0; index < ask_count; ++index)
+        if (asks_.nth(index, tick, ask_quantity)) view.ask_depth += ask_quantity;
 
     const uint64_t total_depth = view.bid_depth + view.ask_depth;
     if (total_depth > 0)
@@ -155,20 +159,12 @@ L2MarketView L2OrderBook::market_view(std::size_t levels) const
 DepthLevel L2OrderBook::level(Side side, std::size_t index) const
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (side == Side::Buy)
-    {
-        if (index >= bids_.size()) return {};
-        auto iterator = bids_.begin();
-        std::advance(iterator, static_cast<std::ptrdiff_t>(index));
-        return DepthLevel{price_from_tick(iterator->first), iterator->second};
-    }
-    if (side == Side::Sell)
-    {
-        if (index >= asks_.size()) return {};
-        auto iterator = asks_.begin();
-        std::advance(iterator, static_cast<std::ptrdiff_t>(index));
-        return DepthLevel{price_from_tick(iterator->first), iterator->second};
-    }
+    PriceTick tick = 0;
+    uint64_t quantity = 0;
+    if (side == Side::Buy && bids_.nth(index, tick, quantity))
+        return DepthLevel{price_from_tick(tick), quantity};
+    if (side == Side::Sell && asks_.nth(index, tick, quantity))
+        return DepthLevel{price_from_tick(tick), quantity};
     return {};
 }
 

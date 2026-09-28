@@ -1,6 +1,24 @@
-# Performance Baseline
+# Performance History
 
-This document records a lightweight, reproducible end-to-end baseline before any latency-focused changes. It is a regression reference, not a production throughput or latency claim.
+This is the chronological lab notebook of the performance work: what was measured, in what order, and
+what it said at the time. Most of it has been **superseded**, and that is the point of keeping it
+separate.
+
+Where things live now:
+
+| Question | Document |
+|---|---|
+| What does the engine cost today, and how is that measured? | [Performance](PERFORMANCE.md) |
+| Why is a given design faster, and what was rejected? | [Low-Latency Design](LATENCY_DESIGN.md) |
+| What was measured earlier, and what did it say then? | this document |
+
+Read a number here only as history. The entries that still hold are repeated in the
+[optimization ledger](PERFORMANCE.md#5-optimization-ledger); anything not in that ledger was either
+superseded by a later measurement or was never a latency claim in the first place.
+
+The order below is the order the work happened. It starts with a reproducible end-to-end baseline
+taken before any latency-focused change, which was a regression reference rather than a production
+throughput or latency claim.
 
 ## Workload
 
@@ -522,7 +540,7 @@ skipped while the following `std::get<BboQuote>` still ran and aborted with
 something; the whole suite now executes its checks in both presets.
 
 
-## Stage Timing
+## Stage Timing (before the container change)
 
 The function level profile above left 38.2% of the sample unattributed, and its percentages are
 shaped by the instrumentation itself: gprof adds a call at every function entry, so tiny helpers
@@ -618,3 +636,9 @@ Updated order of work:
 
 Validation and strategy are together under 9%, so they stay out of scope for now.
 
+Where that work stands, as recorded at the time: the reader keeps small batches inline and dispatches
+columns through a jump table, and a fixed point rewrite of the price parse was measured and dropped
+because it did not pay. `book-apply` and `market-view` were later rebuilt on `TickLadder`, and the
+engine's per-symbol maps were later re-keyed by integer id. Both are in the
+[optimization ledger](PERFORMANCE.md#5-optimization-ledger), with their mechanisms in
+[Low-Latency Design](LATENCY_DESIGN.md).

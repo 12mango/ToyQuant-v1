@@ -77,8 +77,32 @@ uint64_t snapshot_quantity(std::string_view value)
 
 bool parse_boolean(std::string_view value)
 {
-    if (value == "true" || value == "TRUE" || value == "1") return true;
-    if (value == "false" || value == "FALSE" || value == "0") return false;
+    // First character dispatch. It runs once per row, and the set of accepted spellings is
+    // identical to the chain it replaces: only the order of the comparisons changes. A first
+    // character of 'f' goes straight to the false spellings instead of testing the true ones
+    // first.
+    if (!value.empty())
+    {
+        switch (value.front())
+        {
+            case 't':
+            case 'T':
+                if (value == "true" || value == "TRUE") return true;
+                break;
+            case 'f':
+            case 'F':
+                if (value == "false" || value == "FALSE") return false;
+                break;
+            case '1':
+                if (value == "1") return true;
+                break;
+            case '0':
+                if (value == "0") return false;
+                break;
+            default:
+                break;
+        }
+    }
 
     std::string normalized(value);
     normalized.erase(std::remove_if(normalized.begin(), normalized.end(),
@@ -286,6 +310,19 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         side_column_ = require_column("side");
         price_column_ = require_column("price");
         amount_column_ = require_column("amount");
+
+        // Resolve each column position to its role once, here. The row loop can then dispatch
+        // through a jump table instead of walking a chain of eight runtime comparisons against
+        // member indices for every field of every row.
+        column_roles_.assign(columns_.size(), Column::Ignore);
+        column_roles_[exchange_column_] = Column::Exchange;
+        column_roles_[symbol_column_] = Column::Symbol;
+        column_roles_[timestamp_column_] = Column::Timestamp;
+        column_roles_[local_timestamp_column_] = Column::LocalTimestamp;
+        column_roles_[snapshot_column_] = Column::Snapshot;
+        column_roles_[side_column_] = Column::Side;
+        column_roles_[price_column_] = Column::Price;
+        column_roles_[amount_column_] = Column::Amount;
     }
 
     bool next(MarketEvent& event) override
@@ -303,6 +340,21 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
     }
 
    private:
+    // Role of a column position within one row. Resolved from the header once, so the row loop
+    // can switch on it instead of comparing against each column index in turn.
+    enum class Column : std::uint8_t
+    {
+        Ignore = 0,
+        Exchange,
+        Symbol,
+        Timestamp,
+        LocalTimestamp,
+        Snapshot,
+        Side,
+        Price,
+        Amount
+    };
+
     struct ParsedRow
     {
         std::string_view symbol;
@@ -332,15 +384,23 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
                 static_cast<unsigned char>(row[value_start + 2]) == 0xBF)
                 value_start += 3;
             const std::string_view field(row.data() + value_start, field_end - value_start);
-            if (field_index == exchange_column_) parsed.exchange = field;
-            else if (field_index == symbol_column_) parsed.symbol = field;
-            else if (field_index == timestamp_column_) parsed.exchange_ts = parse_uint64(field);
-            else if (field_index == local_timestamp_column_) parsed.local_ts = parse_uint64(field);
-            else if (field_index == snapshot_column_) parsed.is_snapshot = parse_boolean(field);
-            else if (field_index == side_column_)
-                parsed.side = field == "bid" ? Side::Buy : field == "ask" ? Side::Sell : Side::Unknown;
-            else if (field_index == price_column_) parsed.price = parse_double(field);
-            else if (field_index == amount_column_) parsed.amount = snapshot_quantity(field);
+            switch (field_index < column_roles_.size() ? column_roles_[field_index]
+                                                       : Column::Ignore)
+            {
+                case Column::Exchange: parsed.exchange = field; break;
+                case Column::Symbol: parsed.symbol = field; break;
+                case Column::Timestamp: parsed.exchange_ts = parse_uint64(field); break;
+                case Column::LocalTimestamp: parsed.local_ts = parse_uint64(field); break;
+                case Column::Snapshot: parsed.is_snapshot = parse_boolean(field); break;
+                case Column::Side:
+                    parsed.side = field == "bid"   ? Side::Buy
+                                  : field == "ask" ? Side::Sell
+                                                   : Side::Unknown;
+                    break;
+                case Column::Price: parsed.price = parse_double(field); break;
+                case Column::Amount: parsed.amount = snapshot_quantity(field); break;
+                case Column::Ignore: break;
+            }
             if (delimiter == std::string_view::npos) break;
             field_start = delimiter + 1;
             ++field_index;
@@ -421,6 +481,7 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
     bool started_{false};
     std::size_t exchange_column_{}, symbol_column_{}, timestamp_column_{}, local_timestamp_column_{};
     std::size_t snapshot_column_{}, side_column_{}, price_column_{}, amount_column_{};
+    std::vector<Column> column_roles_;
 };
 
 class DeribitTradeReader final : public IMarketEventReader

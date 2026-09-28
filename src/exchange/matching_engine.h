@@ -72,6 +72,16 @@ class IMatchingEngine
     }
 };
 
+// The engine keys every per-symbol map by this id rather than by the symbol string. A run touches
+// one or two symbols millions of times, and hashing a thirteen character symbol on each state
+// touch costs more than the bookkeeping it guards: the L2 replay reaches about nine of these maps
+// per incremental batch, all with the same symbol. The registry hands out an id the first time a
+// symbol appears and keeps it for the life of the engine, so the ids the maps hold stay valid.
+using SymbolId = uint32_t;
+
+// Returned by find_symbol for a symbol the engine has never seen.
+inline constexpr SymbolId kUnknownSymbol = 0;
+
 class MatchingEngine : public IMatchingEngine
 {
    public:
@@ -141,11 +151,37 @@ class MatchingEngine : public IMatchingEngine
         return normalize_owner(resting.owner) == normalize_owner(incoming.owner);
     }
 
-    void match_external_bbo(exchange::Order& order);
+    // A quote that fails this check invalidates the stored BBO for its symbol rather than replacing
+    // it, so every entry point has to agree on it.
+    static bool is_usable_quote(const BboQuote& quote)
+    {
+        return !quote.symbol.empty() && quote.bid_price > 0.0 && quote.ask_price > 0.0 &&
+               quote.bid_price <= quote.ask_price;
+    }
+
+    // Returns the id for `symbol`, assigning one on first sight.
+    SymbolId symbol_id(const std::string& symbol)
+    {
+        const auto [entry, inserted] = symbol_ids_.try_emplace(symbol, next_symbol_id_);
+        if (inserted) ++next_symbol_id_;
+        return entry->second;
+    }
+
+    // Returns the id for `symbol`, or kUnknownSymbol without registering it. Used where the symbol
+    // is only being looked up, so a rejected event does not grow the registry.
+    SymbolId find_symbol(const std::string& symbol) const
+    {
+        const auto entry = symbol_ids_.find(symbol);
+        return entry == symbol_ids_.end() ? kUnknownSymbol : entry->second;
+    }
+
+    // The body of process_bbo, with the symbol already resolved.
+    void process_bbo_for(SymbolId id, const BboQuote& quote);
+    void match_external_bbo(SymbolId id, exchange::Order& order);
     void cancel_order_immediate(uint64_t order_id);
     void apply_pending_cancels();
     uint64_t displayed_quantity_ahead(const exchange::Order& order) const;
-    void process_market_order(const std::string& symbol, Side side, double price,
+    void process_market_order(SymbolId id, const std::string& symbol, Side side, double price,
                               uint64_t quantity, uint64_t ts);
     void match(MEOrderBook& book, const exchange::Order& incoming, bool rest_incoming);
     void report_trade(const exchange::Order& order, double price, uint64_t quantity,
@@ -155,12 +191,14 @@ class MatchingEngine : public IMatchingEngine
         if (report_cb_) report_cb_(rpt);
     }
 
-    std::unordered_map<std::string, MEOrderBook> books_;
-    std::unordered_map<std::string, BboQuote> external_bbo_;
-    std::unordered_map<std::string, uint64_t> last_bid_trade_ts_;
-    std::unordered_map<std::string, uint64_t> last_ask_trade_ts_;
-    std::unordered_map<std::string, BboQuote> l2_top_bbo_;
-    std::unordered_set<std::string> queue_ahead_symbols_;
+    std::unordered_map<std::string, SymbolId> symbol_ids_;
+    SymbolId next_symbol_id_{1};
+    std::unordered_map<SymbolId, MEOrderBook> books_;
+    std::unordered_map<SymbolId, BboQuote> external_bbo_;
+    std::unordered_map<SymbolId, uint64_t> last_bid_trade_ts_;
+    std::unordered_map<SymbolId, uint64_t> last_ask_trade_ts_;
+    std::unordered_map<SymbolId, BboQuote> l2_top_bbo_;
+    std::unordered_set<SymbolId> queue_ahead_ids_;
     std::unordered_map<uint64_t, exchange::Order*> order_index_;
     ReportCallback report_cb_;
     double tick_size_;

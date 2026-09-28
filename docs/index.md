@@ -1,10 +1,11 @@
 # ToyQuant Documentation
 
-This documentation is organized into three layers:
+This documentation is organized into four layers:
 
 1. **Getting Started**: how to build, run, and test the project.
 2. **Architecture**: what each module does and why the C++ design is structured this way.
-3. **Data and experiments**: how to use synthetic market conditions to study behavior and compare strategies.
+3. **Performance**: what the engine costs, how that is measured, and why each low-latency design is faster.
+4. **Data and experiments**: how to use synthetic market conditions to study behavior and compare strategies.
 
 ---
 
@@ -15,6 +16,17 @@ This documentation is organized into three layers:
 
 - [Architecture](ARCHITECTURE.md)  
   *A module-by-module explanation of the data flow, matching logic, and the purpose of each C++ component.*
+
+- [Performance](PERFORMANCE.md)  
+  *Workloads, how to measure on this host, the current stage breakdown, and the ledger of every
+  optimization attempted, including the ones that did not pay.*
+
+- [Low-Latency Design](LATENCY_DESIGN.md)  
+  *Why each low-latency change is faster: the problem, the design, the mechanism, and the verification.
+  Also the designs that were measured and rejected.*
+
+- [Performance History](PERFORMANCE_HISTORY.md)  
+  *Superseded measurements in the order they were taken, kept as a lab notebook.*
 
 ---
 

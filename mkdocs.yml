@@ -35,6 +35,9 @@ nav:
   - Home: index.md
   - User Guide: USER_GUIDE.md
   - Architecture: ARCHITECTURE.md
+  - Performance: PERFORMANCE.md
+  - Low-Latency Design: LATENCY_DESIGN.md
+  - Performance History: PERFORMANCE_HISTORY.md
 
 markdown_extensions:
   - toc:

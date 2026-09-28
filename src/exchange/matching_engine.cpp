@@ -41,32 +41,30 @@ void MatchingEngine::send_order(const exchange::Order& order)
         return;
     }
 
+    const SymbolId id = symbol_id(order.symbol);
     Order remaining_order = order;
-    match_external_bbo(remaining_order);
+    match_external_bbo(id, remaining_order);
     if (remaining_order.remaining == 0) return;
 
-    auto& book = books_[remaining_order.symbol];
+    auto& book = books_[id];
     match(book, remaining_order, true);
 }
 
-void MatchingEngine::process_bbo(const BboQuote& quote)
+// The symbol reaches the engine as a string once per entry point and is resolved to an id there, so
+// the body below touches integers only. process_l2_top resolves the same symbol for its own state
+// and hands the id over, which is why the body is separate from the public override.
+void MatchingEngine::process_bbo_for(SymbolId id, const BboQuote& quote)
 {
-    ++event_counter_;
-    apply_pending_cancels();
-    if (quote.symbol.empty() || quote.bid_price <= 0.0 || quote.ask_price <= 0.0 ||
-        quote.bid_price > quote.ask_price)
-    {
-        external_bbo_.erase(quote.symbol);
-        return;
-    }
-    const auto previous_quote = external_bbo_.find(quote.symbol);
+    const auto previous_quote = external_bbo_.find(id);
     const bool has_previous = previous_quote != external_bbo_.end();
+    // One conversion per quoted price, instead of the four that the two comparisons and the queue
+    // update below used to do separately.
+    const PriceTick bid_tick = to_price_tick(quote.bid_price, tick_size_);
+    const PriceTick ask_tick = to_price_tick(quote.ask_price, tick_size_);
     const bool same_bid = has_previous &&
-                          to_price_tick(previous_quote->second.bid_price, tick_size_) ==
-                              to_price_tick(quote.bid_price, tick_size_);
+                          to_price_tick(previous_quote->second.bid_price, tick_size_) == bid_tick;
     const bool same_ask = has_previous &&
-                          to_price_tick(previous_quote->second.ask_price, tick_size_) ==
-                              to_price_tick(quote.ask_price, tick_size_);
+                          to_price_tick(previous_quote->second.ask_price, tick_size_) == ask_tick;
     const uint64_t bid_reduction = same_bid &&
                                            previous_quote->second.bid_quantity > quote.bid_quantity
                                        ? previous_quote->second.bid_quantity - quote.bid_quantity
@@ -75,14 +73,19 @@ void MatchingEngine::process_bbo(const BboQuote& quote)
                                            previous_quote->second.ask_quantity > quote.ask_quantity
                                        ? previous_quote->second.ask_quantity - quote.ask_quantity
                                        : 0;
+    // Read the previous sizes before the store below. Assigning into external_bbo_ can rehash the
+    // container, and the queue update further down used to dereference the same iterator again
+    // afterwards. That was safe only because a rehash cannot happen once the key exists.
+    const uint64_t previous_bid_quantity = has_previous ? previous_quote->second.bid_quantity : 0;
+    const uint64_t previous_ask_quantity = has_previous ? previous_quote->second.ask_quantity : 0;
     const bool bid_has_public_trade =
-        last_bid_trade_ts_[quote.symbol] > (has_previous ? previous_quote->second.ts : 0);
+        last_bid_trade_ts_[id] > (has_previous ? previous_quote->second.ts : 0);
     const bool ask_has_public_trade =
-        last_ask_trade_ts_[quote.symbol] > (has_previous ? previous_quote->second.ts : 0);
-    external_bbo_[quote.symbol] = quote;
+        last_ask_trade_ts_[id] > (has_previous ? previous_quote->second.ts : 0);
+    external_bbo_[id] = quote;
 
-    if (!queue_ahead_symbols_.contains(quote.symbol)) return;
-    const auto book_it = books_.find(quote.symbol);
+    if (!queue_ahead_ids_.contains(id)) return;
+    const auto book_it = books_.find(id);
     if (book_it == books_.end()) return;
     if (queue_model_ == QueueModel::Conservative) return;
 
@@ -124,43 +127,67 @@ void MatchingEngine::process_bbo(const BboQuote& quote)
             sell_queue_from_quantity_changes_ += inferred;
     };
     if (!bid_has_public_trade)
-        apply_quantity_change(Side::Buy, to_price_tick(quote.bid_price, tick_size_), bid_reduction,
-                              has_previous ? previous_quote->second.bid_quantity : 0);
+        apply_quantity_change(Side::Buy, bid_tick, bid_reduction, previous_bid_quantity);
     if (!ask_has_public_trade)
-        apply_quantity_change(Side::Sell, to_price_tick(quote.ask_price, tick_size_), ask_reduction,
-                              has_previous ? previous_quote->second.ask_quantity : 0);
+        apply_quantity_change(Side::Sell, ask_tick, ask_reduction, previous_ask_quantity);
+}
+
+void MatchingEngine::process_bbo(const BboQuote& quote)
+{
+    ++event_counter_;
+    apply_pending_cancels();
+    if (!is_usable_quote(quote))
+    {
+        // An unusable quote drops the stored one. A symbol the engine has never seen has nothing to
+        // drop, so this lookup deliberately does not register it.
+        const SymbolId id = find_symbol(quote.symbol);
+        if (id != kUnknownSymbol) external_bbo_.erase(id);
+        return;
+    }
+    process_bbo_for(symbol_id(quote.symbol), quote);
 }
 
 void MatchingEngine::process_l2_top(const BboQuote& quote)
 {
-    queue_ahead_symbols_.insert(quote.symbol);
-    const auto previous = l2_top_bbo_.find(quote.symbol);
+    ++event_counter_;
+    apply_pending_cancels();
+    const SymbolId id = symbol_id(quote.symbol);
+    queue_ahead_ids_.insert(id);
+
+    // The two quotes below are also the keys this side writes into the book, so the conversions are
+    // shared instead of repeated once per lookup.
+    const PriceTick bid_tick = to_price_tick(quote.bid_price, tick_size_);
+    const PriceTick ask_tick = to_price_tick(quote.ask_price, tick_size_);
+    const auto previous = l2_top_bbo_.find(id);
     const bool bid_moved = previous == l2_top_bbo_.end() ||
-                           to_price_tick(previous->second.bid_price, tick_size_) !=
-                               to_price_tick(quote.bid_price, tick_size_);
+                           to_price_tick(previous->second.bid_price, tick_size_) != bid_tick;
     const bool ask_moved = previous == l2_top_bbo_.end() ||
-                           to_price_tick(previous->second.ask_price, tick_size_) !=
-                               to_price_tick(quote.ask_price, tick_size_);
-    l2_top_bbo_[quote.symbol] = quote;
-    process_bbo(quote);
-    auto book_it = books_.find(quote.symbol);
+                           to_price_tick(previous->second.ask_price, tick_size_) != ask_tick;
+    l2_top_bbo_[id] = quote;
+    if (is_usable_quote(quote)) process_bbo_for(id, quote);
+    else external_bbo_.erase(id);
+
+    auto book_it = books_.find(id);
     if (book_it == books_.end()) return;
     if (bid_moved)
     {
-        const auto level = book_it->second.bids.find(to_price_tick(quote.bid_price, tick_size_));
-        if (level != book_it->second.bids.end()) level->second.external_queue_ahead = quote.bid_quantity;
+        const auto level = book_it->second.bids.find(bid_tick);
+        if (level != book_it->second.bids.end())
+            level->second.external_queue_ahead = quote.bid_quantity;
     }
     if (ask_moved)
     {
-        const auto level = book_it->second.asks.find(to_price_tick(quote.ask_price, tick_size_));
-        if (level != book_it->second.asks.end()) level->second.external_queue_ahead = quote.ask_quantity;
+        const auto level = book_it->second.asks.find(ask_tick);
+        if (level != book_it->second.asks.end())
+            level->second.external_queue_ahead = quote.ask_quantity;
     }
 }
 
 uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
 {
-    if (!queue_ahead_symbols_.contains(order.symbol)) return 0;
-    const auto quote_it = external_bbo_.find(order.symbol);
+    const SymbolId id = find_symbol(order.symbol);
+    if (id == kUnknownSymbol || !queue_ahead_ids_.contains(id)) return 0;
+    const auto quote_it = external_bbo_.find(id);
     if (quote_it == external_bbo_.end()) return 0;
 
     const auto& quote = quote_it->second;
@@ -176,9 +203,9 @@ uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
     return quote.ask_quantity;
 }
 
-void MatchingEngine::match_external_bbo(Order& order)
+void MatchingEngine::match_external_bbo(SymbolId id, Order& order)
 {
-    const auto quote_it = external_bbo_.find(order.symbol);
+    const auto quote_it = external_bbo_.find(id);
     if (quote_it == external_bbo_.end() || order.type != exchange::OrderType::Limit) return;
 
     BboQuote& quote = quote_it->second;
@@ -217,16 +244,17 @@ void MatchingEngine::match_external_bbo(Order& order)
 void MatchingEngine::process_market_trade(const MarketTrade& trade)
 {
     ++event_counter_;
+    const SymbolId id = symbol_id(trade.symbol);
     if (trade.aggressor_side == Side::Sell)
-        last_bid_trade_ts_[trade.symbol] = std::max(last_bid_trade_ts_[trade.symbol], trade.ts);
+        last_bid_trade_ts_[id] = std::max(last_bid_trade_ts_[id], trade.ts);
     else if (trade.aggressor_side == Side::Buy)
-        last_ask_trade_ts_[trade.symbol] = std::max(last_ask_trade_ts_[trade.symbol], trade.ts);
-    const auto quote_it = external_bbo_.find(trade.symbol);
+        last_ask_trade_ts_[id] = std::max(last_ask_trade_ts_[id], trade.ts);
+    const auto quote_it = external_bbo_.find(id);
     // Consuming the displayed size here is separate from the queue model. Whenever a public trade
     // prints at the best bid or ask, that much of the displayed size is gone, and a later taker
     // order must not be allowed to fill against liquidity that has already traded.
     //
-    // This block used to be gated on queue_ahead_symbols_ as well, which only process_l2_top
+    // This block used to be gated on queue_ahead_ids_ as well, which only process_l2_top
     // populates. On the L1 path that gate was never satisfied, so the stored best bid and ask
     // quantities never shrank from public trades and taker fills were capped by a stale size.
     if (quote_it != external_bbo_.end())
@@ -244,12 +272,13 @@ void MatchingEngine::process_market_trade(const MarketTrade& trade)
                                      ? quote.ask_quantity - trade.quantity
                                      : 0;
     }
-    process_market_order(trade.symbol, trade.aggressor_side, trade.price, trade.quantity, trade.ts);
+    process_market_order(id, trade.symbol, trade.aggressor_side, trade.price, trade.quantity,
+                         trade.ts);
     apply_pending_cancels();
 }
 
-void MatchingEngine::process_market_order(const std::string& symbol, Side side, double price,
-                                          uint64_t quantity, uint64_t ts)
+void MatchingEngine::process_market_order(SymbolId id, const std::string& symbol, Side side,
+                                          double price, uint64_t quantity, uint64_t ts)
 {
     if (side == Side::Unknown || quantity == 0) return;
 
@@ -264,7 +293,7 @@ void MatchingEngine::process_market_order(const std::string& symbol, Side side, 
         quantity,
         ts,
         "Market"};
-    auto& book = books_[symbol];
+    auto& book = books_[id];
     match(book, market_order, false);
 }
 
@@ -301,7 +330,7 @@ void MatchingEngine::cancel_order_immediate(uint64_t order_id)
 
     Order* ord = it->second;
     const Order cancelled_order = *ord;
-    auto& book = books_[cancelled_order.symbol];
+    auto& book = books_[symbol_id(cancelled_order.symbol)];
 
     if (cancelled_order.side == exchange::Side::Buy)
     {

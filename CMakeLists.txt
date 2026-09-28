@@ -43,6 +43,7 @@ set(COMMON_SOURCES
     src/legacy/tick_csv_parser.cpp
     src/backtest/performance.cpp
     src/orderbook/orderbook.cpp
+    src/orderbook/tick_ladder.cpp
     src/exchange/matching_engine.cpp
     src/utils/logger.cpp
     src/utils/stage_profiler.cpp
@@ -99,11 +100,17 @@ add_executable(orderbook_state_test tests/orderbook_state_test.cpp src/orderbook
 target_include_directories(orderbook_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME orderbook_state_test COMMAND orderbook_state_test)
 
-add_executable(l2_orderbook_test tests/l2_orderbook_test.cpp src/orderbook/l2_orderbook.cpp)
+add_executable(tick_ladder_test tests/tick_ladder_test.cpp src/orderbook/tick_ladder.cpp)
+target_include_directories(tick_ladder_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME tick_ladder_test COMMAND tick_ladder_test)
+
+add_executable(l2_orderbook_test tests/l2_orderbook_test.cpp src/orderbook/l2_orderbook.cpp
+    src/orderbook/tick_ladder.cpp)
 target_include_directories(l2_orderbook_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME l2_orderbook_test COMMAND l2_orderbook_test)
 
-add_executable(l2_strategy_test tests/l2_strategy_test.cpp src/orderbook/l2_orderbook.cpp)
+add_executable(l2_strategy_test tests/l2_strategy_test.cpp src/orderbook/l2_orderbook.cpp
+    src/orderbook/tick_ladder.cpp)
 target_include_directories(l2_strategy_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME l2_strategy_test COMMAND l2_strategy_test)
 

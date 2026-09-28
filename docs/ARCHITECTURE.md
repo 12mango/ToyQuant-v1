@@ -12,6 +12,8 @@ ToyQuant is a small event-driven market-making simulator. It connects market-dat
 | External book versus strategy orders | [OrderBook](#4-orderbook-external-market-view) and [MatchingEngine](#5-matchingengine-orders-queues-and-reports) |
 | How strategies make decisions | [Strategy](#6-strategy-the-main-decision-module) |
 | PnL and reusable metrics | [Backtest and Performance Metrics](#7-backtest-and-performance-metrics) |
+| What the engine costs and how that is measured | [Performance](PERFORMANCE.md) |
+| Why a latency-critical design is built the way it is | [Low-Latency Design](LATENCY_DESIGN.md) |
 
 The diagrams show control flow. The tables show ownership and responsibilities. The code blocks
 show the smallest representative implementation surface; detailed prose explains only the design
@@ -78,7 +80,7 @@ The source map is:
 | Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
 | Market replay | `src/market/market_data_adapter.*`, `replay_feed.*` | `IMarketEventReader`, `ReplayFeed::run` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
-| Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook` |
+| Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*`, `tick_ladder.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook`, `TickLadder` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
 | Strategy | `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, active L2 family |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
@@ -122,8 +124,9 @@ Every file backed reader obtains its rows from `LineReader` (`src/market/line_re
 1 MiB blocks, finds line boundaries with `memchr`, and returns a `std::string_view` into the block,
 which removes both the per-character scan of `std::getline`/`gzgets` and the per-row `std::string`
 allocation. The view is only valid until the next call, so a reader that must hold a row across
-`next()` calls copies it into its own buffer. `/docs/PERFORMANCE_BASELINE.md` records the isolated
-line-layer measurement and the end-to-end effect.
+`next()` calls copies it into its own buffer. [Performance](PERFORMANCE.md) records the isolated
+line-layer measurement and the end-to-end effect, and [Low-Latency
+Design](LATENCY_DESIGN.md#1-the-line-layer-linereader) explains why it is faster.
 
 Each v2 event carries an optional `exchange` identity. Binance L1 readers set it to `binance`,
 while the Deribit L2 snapshot reader preserves the source column. `Pipeline` locks to the first
@@ -189,6 +192,24 @@ The incremental L2 path uses `IncrementalBookBatch` events. The reader groups ro
 reset boundaries. Each update sets an absolute level amount; amount zero removes the level. After
 the batch is applied, the same `L2MarketView` interface is emitted, so strategies do not depend on
 whether the source was a reconstructed snapshot or an incremental feed.
+
+A real incremental message carries one or two level changes, so `IncrementalUpdates` keeps the first
+four inside the event object and only moves to a vector when a batch grows past that. On the Deribit
+incremental replay that removes one allocation and one free from nearly every batch. `begin()` and
+`end()` still expose a single contiguous range, so range-for, `std::any_of` and `operator[]` behave
+as they did when the storage was a plain vector. The same reader resolves each CSV column position to
+a role once at construction, so the per-row loop switches on a jump table rather than comparing
+against eight member indices per field.
+
+Levels are held in `TickLadder`, a flat array indexed by price tick. A `std::map` access descends
+about ten pointer levels, and a sorted vector moves several kilobytes per insertion once a book holds
+a thousand levels; Deribit BTC-PERPETUAL keeps more than a thousand live levels per side across a
+span of about twenty thousand ticks, so both structures pay for that shape, and indexing by tick
+turns a level change into one computed address. The range is learned from the levels themselves and
+the array grows when an update arrives outside it, so no price window is configured and no update is
+dropped. Iteration starts from a remembered best slot that is repointed when the touch is emptied,
+which keeps a top-of-book walk inside the few populated slots near the touch. `L2OrderBook` keeps the
+same interface, so `Pipeline`, the strategies and the replay tests are unchanged.
 
 The validator enforces monotonic exchange and local timestamps and counts snapshot/reset batches
 as reconnect diagnostics. The current normalized CSV schema does not expose Deribit
@@ -506,6 +527,22 @@ flowchart TD
 
 Owner normalization removes whitespace and lowercases characters. A self-trade cancels the
 aggressor. `Trade.quantity` is executed quantity; lifecycle quantities are remaining quantity.
+
+### Per-symbol state is keyed by an integer id
+
+The engine keeps its state in per-symbol containers: `books_`, `external_bbo_`, `l2_top_bbo_`, the two
+last-trade clocks, and the set of symbols that have an L2 top. A replay touches one symbol millions of
+times and reaches about ten of those containers per event, so keying them by the symbol string meant
+hashing a thirteen character key ten times per event for a value that never changes.
+
+`symbol_id()` resolves a symbol to a small `SymbolId` once per entry point and the containers are keyed
+by that id instead. The public interface still takes strings, so nothing outside the engine changed:
+`process_bbo` resolves once and hands the id to the private `process_bbo_for`, which is why the body of
+`process_bbo` is separate from the override. `find_symbol()` is the lookup-only variant, used where a
+rejected event must not register a new symbol.
+
+[Low-Latency Design](LATENCY_DESIGN.md#3-the-engines-per-symbol-state-symbol-ids) explains the
+mechanism and records the measured effect on the `engine` stage.
 
 ## 6. Strategy: The Main Decision Module
 
