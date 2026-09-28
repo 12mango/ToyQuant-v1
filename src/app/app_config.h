@@ -25,6 +25,9 @@ struct AppConfig
     QueueModel queue_model = QueueModel::Conservative;
     bool discard_output = false;
     bool fast_validation = false;
+    // 0 disables per-stage profiling. Otherwise this is the sampling interval in events,
+    // so 64 times the 64th event of every 64.
+    uint64_t profile_sample_interval = 0;
 };
 
 std::string to_abs_path(const std::string& input_path);

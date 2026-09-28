@@ -80,9 +80,10 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         MatchingEngine engine(nullptr, instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                           .taker_rate = instrument.taker_fee_rate,
-                                          .quantity_scale = instrument.quantity_scale},
+                                          .quantity_scale = instrument.quantity_scale,
+                                          .unit_notional_usd = instrument.unit_notional_usd},
                               1);
-        Portfolio portfolio(instrument.quantity_scale);
+        Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
         Logger logger;
         Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio, logger,
                   instrument.tick_size);

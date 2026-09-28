@@ -22,22 +22,42 @@ void Portfolio::apply(const ExecutionReport& report)
     if (report.exec_type != ExecType::Trade || report.quantity == 0) return;
 
     auto& position = positions_[report.symbol];
-    const double quantity = real_quantity(report.quantity);
-    const double notional = report.price * quantity;
-    const double fee = report.fee;
-    fees_paid_ += fee;
+    fees_paid_ += report.fee;
     if (report.liquidity_role == LiquidityRole::Maker)
     {
-        maker_fees_ += fee;
+        maker_fees_ += report.fee;
         ++maker_trade_count_;
     }
     else if (report.liquidity_role == LiquidityRole::Taker)
     {
-        taker_fees_ += fee;
+        taker_fees_ += report.fee;
         ++taker_trade_count_;
     }
-    cash_ += report.side == exchange::Side::Buy ? -notional - fee : notional - fee;
-    realized_pnl_ -= fee;
+    cash_ -= report.fee;
+    realized_pnl_ -= report.fee;
+
+    // A trade can close part of an existing position and open the rest. The closing portion is
+    // valued from the position's entry price and the opening portion at the trade price, so the
+    // two are settled separately. For a spot style instrument the closing value reduces to
+    // quantity * trade price, which is the previous behaviour.
+    const auto settle_close = [&](int64_t close_quantity)
+    {
+        const double closed = units(static_cast<uint64_t>(close_quantity));
+        const double value_now = value_of(closed, position.average_price, report.price);
+        const double value_at_entry = unit_value(position.average_price) * closed;
+        if (report.side == exchange::Side::Buy)
+        {
+            // Buying back a short: pay the current value and realise entry minus current.
+            cash_ -= value_now;
+            realized_pnl_ += value_at_entry - value_now;
+        }
+        else
+        {
+            // Selling a long: receive the current value.
+            cash_ += value_now;
+            realized_pnl_ += value_now - value_at_entry;
+        }
+    };
 
     int64_t remaining_quantity = static_cast<int64_t>(report.executed_quantity());
     if (report.side == exchange::Side::Buy)
@@ -45,22 +65,22 @@ void Portfolio::apply(const ExecutionReport& report)
         if (position.quantity < 0)
         {
             const int64_t close_quantity = std::min(-position.quantity, remaining_quantity);
-            const double closed = real_quantity(static_cast<uint64_t>(close_quantity));
-            realized_pnl_ += closed * (position.average_price - report.price);
+            settle_close(close_quantity);
             position.quantity += close_quantity;
             remaining_quantity -= close_quantity;
         }
 
         if (remaining_quantity > 0)
         {
-            const double open = real_quantity(static_cast<uint64_t>(remaining_quantity));
+            const double open = units(static_cast<uint64_t>(remaining_quantity));
             const double existing =
-                real_quantity(static_cast<uint64_t>(std::max<int64_t>(0, position.quantity)));
+                units(static_cast<uint64_t>(std::max<int64_t>(0, position.quantity)));
             const double total = existing + open;
             position.average_price =
                 total > 0.0 ? (existing * position.average_price + open * report.price) / total
                             : 0.0;
             position.quantity += remaining_quantity;
+            cash_ -= unit_value(report.price) * open;
         }
     }
     else
@@ -68,22 +88,22 @@ void Portfolio::apply(const ExecutionReport& report)
         if (position.quantity > 0)
         {
             const int64_t close_quantity = std::min(position.quantity, remaining_quantity);
-            const double closed = real_quantity(static_cast<uint64_t>(close_quantity));
-            realized_pnl_ += closed * (report.price - position.average_price);
+            settle_close(close_quantity);
             position.quantity -= close_quantity;
             remaining_quantity -= close_quantity;
         }
 
         if (remaining_quantity > 0)
         {
-            const double open = real_quantity(static_cast<uint64_t>(remaining_quantity));
+            const double open = units(static_cast<uint64_t>(remaining_quantity));
             const double existing =
-                real_quantity(static_cast<uint64_t>(std::max<int64_t>(0, -position.quantity)));
+                units(static_cast<uint64_t>(std::max<int64_t>(0, -position.quantity)));
             const double total = existing + open;
             position.average_price =
                 total > 0.0 ? (existing * position.average_price + open * report.price) / total
                             : 0.0;
             position.quantity -= remaining_quantity;
+            cash_ += unit_value(report.price) * open;
         }
     }
 }
@@ -96,13 +116,20 @@ void Portfolio::mark_to_market(const std::unordered_map<std::string, double>& pr
     {
         const auto price_it = prices.find(symbol);
         if (price_it == prices.end() || position.quantity == 0) continue;
-        const double quantity = real_quantity(static_cast<uint64_t>(std::llabs(position.quantity)));
-        const double pnl = position.quantity > 0
-                               ? quantity * (price_it->second - position.average_price)
-                               : quantity * (position.average_price - price_it->second);
-        unrealized_pnl_ += pnl;
-        equity_ += static_cast<double>(position.quantity) / static_cast<double>(quantity_scale_) *
-                   price_it->second;
+
+        const double amount = units(static_cast<uint64_t>(std::llabs(position.quantity)));
+        const double value_now = value_of(amount, position.average_price, price_it->second);
+        const double value_at_entry = unit_value(position.average_price) * amount;
+        if (position.quantity > 0)
+        {
+            unrealized_pnl_ += value_now - value_at_entry;
+            equity_ += value_now;
+        }
+        else
+        {
+            unrealized_pnl_ += value_at_entry - value_now;
+            equity_ -= value_now;
+        }
     }
 }
 

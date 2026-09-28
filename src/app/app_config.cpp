@@ -4,11 +4,19 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <system_error>
+
+#include "utils/stage_profiler.h"
 
 #ifndef PROJECT_ROOT_DIR
 #define PROJECT_ROOT_DIR "."
 #endif
+
+namespace
+{
+constexpr std::string_view kProfileStagesPrefix = "--profile-stages=";
+}  // namespace
 
 std::string to_abs_path(const std::string& input_path)
 {
@@ -56,7 +64,10 @@ void print_usage(const char* executable)
                   "[quantity_scale] [queue_model] [--no-output] [--fast-validation]\n";
         std::cerr << "   or: " << executable
                       << " l2_replay <trades_csv[.gz]> <depth_or_incremental_csv> <symbol> "
-                         "[ms_delay] [strategy] [quantity_scale] [queue_model] [--no-output] [--fast-validation]\n";
+                         "[ms_delay] [strategy] [quantity_scale] [queue_model] [--no-output] "
+                         "[--fast-validation] [--profile-stages[=interval]]\n";
+        std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
+                     "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64)\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
         std::cerr << "   queue_model: conservative (default) | heuristic | optimistic\n";
 }
@@ -82,7 +93,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
 
     if (cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay)
     {
-        if (argc < 5 || argc > 11)
+        if (argc < 5 || argc > 12)
         {
             error = "replay requires trade file, market-state file, and symbol";
             return false;
@@ -119,15 +130,33 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.discard_output = true;
             else if (flag == "--fast-validation")
                 cfg.fast_validation = true;
+            else if (flag == "--profile-stages")
+                cfg.profile_sample_interval = StageProfiler::kDefaultSampleInterval;
+            else if (flag.compare(0, kProfileStagesPrefix.size(), kProfileStagesPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kProfileStagesPrefix.size()),
+                                    cfg.profile_sample_interval) ||
+                    cfg.profile_sample_interval == 0)
+                {
+                    error = "--profile-stages interval must be a positive integer";
+                    return false;
+                }
+            }
             else
             {
-                error = "optional replay flags must be --no-output or --fast-validation";
+                error = "optional replay flags must be --no-output, --fast-validation, or "
+                        "--profile-stages[=interval]";
                 return false;
             }
         }
         if (cfg.fast_validation && cfg.mode != AppMode::L2Replay)
         {
             error = "--fast-validation is only supported by l2_replay";
+            return false;
+        }
+        if (cfg.profile_sample_interval > 0 && cfg.mode != AppMode::L2Replay)
+        {
+            error = "--profile-stages is only supported by l2_replay";
             return false;
         }
     }

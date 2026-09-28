@@ -13,6 +13,7 @@
 #include "market/market_event.h"
 #include "orderbook/orderbook.h"
 #include "strategy/strategy.h"
+#include "utils/stage_profiler.h"
 
 class Logger;
 
@@ -40,7 +41,24 @@ class Pipeline
         return execution_quality_;
     }
 
+    // Optional per-stage timing. The profiler is owned by the caller and has to outlive
+    // the pipeline. Passing nullptr, which is the default, keeps the hot path unchanged.
+    void set_profiler(StageProfiler* profiler)
+    {
+        profiler_ = profiler;
+    }
+
    private:
+    void profiler_begin(Stage stage)
+    {
+        if (profiler_ != nullptr) profiler_->begin(stage);
+    }
+
+    void profiler_end(Stage stage)
+    {
+        if (profiler_ != nullptr) profiler_->end(stage);
+    }
+
     void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top);
     void submit_strategy_actions(const std::string& symbol, uint64_t ts,
                                  std::vector<StrategyOrder> orders);
@@ -84,4 +102,5 @@ class Pipeline
     };
     std::unordered_map<uint64_t, OrderAudit> order_audit_;
     std::unordered_set<uint64_t> pending_cancel_orders_;
+    StageProfiler* profiler_{nullptr};
 };

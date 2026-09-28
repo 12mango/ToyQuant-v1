@@ -19,6 +19,10 @@ struct FeeSchedule
     double maker_rate{0.0};
     double taker_rate{0.0};
     uint64_t quantity_scale{1};
+    // See InstrumentSpec::unit_notional_usd. 0 falls back to the traded price, which is correct
+    // for spot style instruments. It must be set for contracts with a fixed USD face value,
+    // otherwise the fee is charged on the base asset price instead of on the contract value.
+    double unit_notional_usd{0.0};
 };
 
 struct PriceLevel

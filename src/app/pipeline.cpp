@@ -221,11 +221,24 @@ void Pipeline::process_l2_market_view(const L2MarketView& view, bool enable_prin
                              .ask_price = view.top.ask_price,
                              .ask_quantity = view.top.ask_size,
                              .exchange = {}};
+
+        profiler_begin(Stage::TopBookKeeping);
         latest_quotes_.insert_or_assign(view.symbol, quote);
+        profiler_end(Stage::TopBookKeeping);
+
+        profiler_begin(Stage::Engine);
         engine_.process_l2_top(quote);
+        profiler_end(Stage::Engine);
+
+        // The report callback runs inside process_l2_top and reads last_mid_, so this
+        // update has to stay after that call.
+        profiler_begin(Stage::TopBookKeeping);
         last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
         ++quote_cycle_;
+        profiler_end(Stage::TopBookKeeping);
     }
+
+    profiler_begin(Stage::QueueAccounting);
     const uint64_t buy_queue = engine_.queue_ahead_consumed(Side::Buy);
     const uint64_t sell_queue = engine_.queue_ahead_consumed(Side::Sell);
     if (buy_queue > last_buy_queue_ahead_consumed_)
@@ -238,7 +251,11 @@ void Pipeline::process_l2_market_view(const L2MarketView& view, bool enable_prin
         strategy_.on_queue_activity(Side::Sell, sell_queue - last_sell_queue_ahead_consumed_);
         last_sell_queue_ahead_consumed_ = sell_queue;
     }
+    profiler_end(Stage::QueueAccounting);
+
+    profiler_begin(Stage::Strategy);
     submit_strategy_actions(view.symbol, view.ts, strategy_.on_l2_market_view(view));
+    profiler_end(Stage::Strategy);
 }
 
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)

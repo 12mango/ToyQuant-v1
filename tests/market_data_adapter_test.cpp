@@ -1,3 +1,9 @@
+// The checks in this test are the test: keep them enabled even when the build defines
+// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include "market/market_data_adapter.h"
 
 #include <cassert>
@@ -126,4 +132,74 @@ int main()
     assert(deribit_trade.price == 6421.5);
     assert(deribit_trade.quantity == 190);
     assert(deribit_trade.aggressor_side == Side::Buy);
+
+    // Incremental book reader: batches group rows by local_timestamp, the snapshot batch
+    // starts the stream, CRLF rows are accepted, and the final row has no newline.
+    const auto incremental_path =
+        std::filesystem::temp_directory_path() / "toy_quant_incremental_book.csv";
+    {
+        std::ofstream output(incremental_path);
+        output << "exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount\r\n"
+               << "deribit,BTC-PERPETUAL,400,500,true,bid,6421.5,10\r\n"
+               << "deribit,BTC-PERPETUAL,400,500,true,ask,6421.5,10\r\n"
+               << "deribit,BTC-PERPETUAL,600,700,false,bid,6421.0,5\r\n"
+               << "deribit,BTC-PERPETUAL,600,700,false,bid,6420.5,6\r\n"
+               << "deribit,BTC-PERPETUAL,800,900,false,ask,6422.0,8\r\n"
+               << "deribit,BTC-PERPETUAL,1000,1100,false,bid,6419.5,3";
+    }
+
+    auto incremental_reader = make_deribit_incremental_book_reader(incremental_path.string());
+    std::vector<IncrementalBookBatch> batches;
+    MarketEvent incremental_event;
+    while (incremental_reader->next(incremental_event))
+        batches.push_back(std::get<IncrementalBookBatch>(incremental_event));
+    assert(!incremental_reader->next(incremental_event));
+
+    assert(batches.size() == 4);
+    std::size_t total_updates = 0;
+    for (const auto& batch : batches) total_updates += batch.updates.size();
+    assert(total_updates == 6);
+
+    assert(batches[0].exchange_ts == 400);
+    assert(batches[0].local_ts == 500);
+    assert(batches[0].symbol == "BTC-PERPETUAL");
+    assert(batches[0].exchange == "deribit");
+    assert(batches[0].updates.size() == 2);
+    assert(batches[0].has_snapshot());
+    assert(batches[0].updates[0].exchange_ts == 400);
+    assert(batches[0].updates[0].local_ts == 500);
+    assert(batches[0].updates[0].is_snapshot);
+    assert(batches[0].updates[0].side == Side::Buy);
+    assert(batches[0].updates[0].price == 6421.5);
+    assert(batches[0].updates[0].amount == 10);
+    assert(batches[0].updates[1].side == Side::Sell);
+
+    assert(batches[1].exchange_ts == 600);
+    assert(batches[1].local_ts == 700);
+    assert(batches[1].updates.size() == 2);
+    assert(!batches[1].has_snapshot());
+    assert(!batches[1].updates[0].is_snapshot);
+    assert(batches[1].updates[0].price == 6421.0);
+    assert(batches[1].updates[0].amount == 5);
+    assert(batches[1].updates[1].price == 6420.5);
+    assert(batches[1].updates[1].amount == 6);
+
+    assert(batches[2].local_ts == 900);
+    assert(batches[2].updates.size() == 1);
+    assert(batches[2].updates[0].side == Side::Sell);
+    assert(batches[2].updates[0].price == 6422.0);
+    assert(batches[2].updates[0].amount == 8);
+
+    assert(batches[3].local_ts == 1100);
+    assert(batches[3].updates.size() == 1);
+    assert(batches[3].updates[0].side == Side::Buy);
+    assert(batches[3].updates[0].price == 6419.5);
+    assert(batches[3].updates[0].amount == 3);
+
+    // Header sniffing routes an is_snapshot file to the incremental reader.
+    auto routed_reader = make_deribit_depth_reader(incremental_path.string());
+    MarketEvent routed_event;
+    assert(routed_reader->next(routed_event));
+    assert(std::holds_alternative<IncrementalBookBatch>(routed_event));
+    std::filesystem::remove(incremental_path);
 }

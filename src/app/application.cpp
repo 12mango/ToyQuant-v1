@@ -157,9 +157,10 @@ void Application::run_replay_mode() const
     MatchingEngine engine(&logger, instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
-                                      .quantity_scale = instrument.quantity_scale},
+                                      .quantity_scale = instrument.quantity_scale,
+                                      .unit_notional_usd = instrument.unit_notional_usd},
                           1, cfg_.queue_model);
-    Portfolio portfolio(instrument.quantity_scale);
+    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, logger);
     ReplayFeed feed(
@@ -192,6 +193,13 @@ void Application::run_l2_replay_mode() const
                " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
                " queue_model=", queue_model_name(cfg_.queue_model));
 
+    // Per-stage timing is opt-in. The profiler allocates nothing until sampling starts, so
+    // a run without --profile-stages pays nothing beyond this construction.
+    StageProfiler stage_profiler(cfg_.profile_sample_interval > 0
+                                     ? cfg_.profile_sample_interval
+                                     : StageProfiler::kDefaultSampleInterval);
+    StageProfiler* const profiler = cfg_.profile_sample_interval > 0 ? &stage_profiler : nullptr;
+
     const std::string source = "deribit;trades=" + trades_file + ";depth=" + depth_file +
                                ";symbol=" + cfg_.symbol +
                                ";tick_size=" + std::to_string(instrument.tick_size);
@@ -202,11 +210,13 @@ void Application::run_l2_replay_mode() const
     MatchingEngine engine(&logger, instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
-                                      .quantity_scale = instrument.quantity_scale},
+                                      .quantity_scale = instrument.quantity_scale,
+                                      .unit_notional_usd = instrument.unit_notional_usd},
                           1, cfg_.queue_model);
-    Portfolio portfolio(instrument.quantity_scale);
+    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
                       portfolio, logger, instrument.tick_size);
+    pipeline.set_profiler(profiler);
     double final_mid = 0.0;
     MarketDataValidationConfig validation_config;
     validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
@@ -223,15 +233,23 @@ void Application::run_l2_replay_mode() const
                         pipeline.process_l2_market_trade(value);
                     else if constexpr (std::is_same_v<Event, MarketDepthSnapshot>)
                     {
+                        if (profiler != nullptr) profiler->begin(Stage::BookApply);
                         l2_book.apply_snapshot(value);
+                        if (profiler != nullptr) profiler->end(Stage::BookApply);
+                        if (profiler != nullptr) profiler->begin(Stage::MarketView);
                         const auto view = l2_book.market_view();
+                        if (profiler != nullptr) profiler->end(Stage::MarketView);
                         final_mid = (view.top.bid_price + view.top.ask_price) / 2.0;
                         pipeline.process_l2_market_view(view);
                     }
                     else if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
                     {
+                        if (profiler != nullptr) profiler->begin(Stage::BookApply);
                         l2_book.apply_incremental_batch(value);
+                        if (profiler != nullptr) profiler->end(Stage::BookApply);
+                        if (profiler != nullptr) profiler->begin(Stage::MarketView);
                         const auto view = l2_book.market_view();
+                        if (profiler != nullptr) profiler->end(Stage::MarketView);
                         final_mid = (view.top.bid_price + view.top.ask_price) / 2.0;
                         pipeline.process_l2_market_view(view);
                     }
@@ -239,6 +257,7 @@ void Application::run_l2_replay_mode() const
                 event);
         },
         cfg_.delay, validation_config);
+    feed.set_profiler(profiler);
     feed.run();
     if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     const auto& validation = feed.validation_summary();
@@ -247,6 +266,12 @@ void Application::run_l2_replay_mode() const
                " incremental_batches=", validation.incremental_batches,
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches);
     logger.log(pipeline.summary().to_log_string());
+    if (profiler != nullptr)
+    {
+        // Written straight to stdout rather than through the logger, because --no-output
+        // disables the logger and that is the recommended combination for profiling.
+        std::cout << profiler->report() << std::flush;
+    }
 }
 
 void Application::run_legacy_udp_mode() const

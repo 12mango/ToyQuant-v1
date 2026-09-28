@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include "common/instrument_spec.h"
 #include "execution_report.h"
 #include "order.h"
 #include "utils/logger.h"
@@ -17,6 +18,11 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
     const double real_quantity =
         static_cast<double>(quantity) /
         static_cast<double>(std::max<uint64_t>(1, fee_schedule_.quantity_scale));
+    // Fees are charged on the USD value of the filled quantity. For a spot style instrument that
+    // value is price * quantity. For a contract with a fixed USD face value it is the face value
+    // times the number of contracts, so a Deribit perp contract pays a fee on 10 USD rather than
+    // on the BTC price.
+    const double unit_notional = unit_notional_at(fee_schedule_.unit_notional_usd, price);
     report(ExecutionReport{.order_id = order.id,
                            .side = order.side,
                            .exec_type = ExecType::Trade,
@@ -26,7 +32,7 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
                            .ts = ts,
                            .owner = order.owner,
                            .liquidity_role = liquidity_role,
-                           .fee = price * real_quantity * rate});
+                           .fee = unit_notional * real_quantity * rate});
 }
 
 void MatchingEngine::send_order(const exchange::Order& order)
@@ -160,13 +166,16 @@ uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
     if (quote_it == external_bbo_.end()) return 0;
 
     const auto& quote = quote_it->second;
-    if (order.side == exchange::Side::Buy &&
-        to_price_tick(order.price, tick_size_) == to_price_tick(quote.bid_price, tick_size_))
-        return quote.bid_quantity;
-    if (order.side == exchange::Side::Sell &&
-        to_price_tick(order.price, tick_size_) == to_price_tick(quote.ask_price, tick_size_))
-        return quote.ask_quantity;
-    return 0;
+    // A resting order is never first in the queue: the side it joins already shows size. The
+    // displayed best size of that side is the only estimate a top-of-book feed provides, and it
+    // is the minimum honest one.
+    //
+    // This used to return 0 whenever the order price was not exactly the best price. An order
+    // resting behind the touch then had no queue in front of it and filled in full as soon as
+    // any trade printed through its level, which is both wrong and selectively optimistic: those
+    // are exactly the prints where the market is moving against the resting side.
+    if (order.side == exchange::Side::Buy) return quote.bid_quantity;
+    return quote.ask_quantity;
 }
 
 void MatchingEngine::match_external_bbo(Order& order)

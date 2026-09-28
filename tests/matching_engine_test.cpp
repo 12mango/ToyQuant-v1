@@ -1,3 +1,9 @@
+// The checks in this test are the test: keep them enabled even when the build defines
+// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include "exchange/matching_engine.h"
 
 #include <algorithm>
@@ -282,6 +288,33 @@ int main()
     queued_engine.process_market_trade({28, "BTCUSDT", 99.0, 30, Side::Sell, 0, "test"});
     assert(!has_report(queued_reports, 54, ExecType::Trade, 10));
 
+    // An order resting behind the touch is not first in the queue either. It used to be given a
+    // queue of zero whenever its price was not exactly the best price, so it filled in full as
+    // soon as any trade printed through its level.
+    {
+        MatchingEngine behind_engine(nullptr, 0.1, {});
+        std::vector<ExecutionReport> behind_reports;
+        behind_engine.set_report_callback([&behind_reports](const ExecutionReport& report)
+                                          { behind_reports.push_back(report); });
+
+        // Best bid 99.0 shows 30, so that is the queue in front of a bid one tick lower.
+        behind_engine.process_l2_top({900, "TEST", 99.0, 30, 99.1, 30, 1, "test"});
+        behind_engine.send_order({91, "TEST", exchange::Side::Buy, exchange::OrderType::Limit,
+                                  98.9, 10, 10, 901, "MarketMaker"});
+        behind_reports.clear();
+
+        // A sell of 10 prints at 98.9: it only consumes part of the displayed queue.
+        behind_engine.process_market_trade({902, "TEST", 98.9, 10, Side::Sell, 0, "test"});
+        assert(!has_report(behind_reports, 91, ExecType::Trade, 10));
+
+        // The remaining 20 of the queue plus this order's 10 have to trade before it is filled.
+        behind_engine.process_market_trade({903, "TEST", 98.9, 20, Side::Sell, 0, "test"});
+        assert(!has_report(behind_reports, 91, ExecType::Trade, 10));
+
+        behind_engine.process_market_trade({904, "TEST", 98.9, 10, Side::Sell, 0, "test"});
+        assert(has_report(behind_reports, 91, ExecType::Trade, 10));
+    }
+
     MatchingEngine fee_engine(
         nullptr, 0.1, FeeSchedule{.maker_rate = 0.001, .taker_rate = 0.002, .quantity_scale = 100});
     std::vector<ExecutionReport> fee_reports;
@@ -307,4 +340,60 @@ int main()
     assert(taker_trade != fee_reports.end());
     assert(taker_trade->liquidity_role == LiquidityRole::Taker);
     assert(std::abs(taker_trade->fee - 0.02) < 1e-12);
+
+    // A contract with a fixed USD face value pays its fee on the face value, not on the base
+    // asset price. One Deribit BTC-PERPETUAL contract is worth 10 USD, so a 0.02% maker fee is
+    // 0.002 USD. Charging on the BTC price instead would report about 1.27 USD per contract.
+    {
+        MatchingEngine contract_engine(
+            nullptr, 0.5,
+            FeeSchedule{.maker_rate = 0.0002,
+                        .taker_rate = 0.0005,
+                        .quantity_scale = 1,
+                        .unit_notional_usd = 10.0});
+        std::vector<ExecutionReport> contract_reports;
+        contract_engine.set_report_callback(
+            [&contract_reports](const ExecutionReport& report)
+            { contract_reports.push_back(report); });
+
+        contract_engine.send_order({71, "BTC-PERPETUAL", exchange::Side::Buy,
+                                    exchange::OrderType::Limit, 6374.0, 1, 1, 701,
+                                    "MarketMaker"});
+        contract_engine.process_market_trade(
+            {702, "BTC-PERPETUAL", 6374.0, 1, Side::Sell, 0, "deribit"});
+
+        const auto contract_trade =
+            std::find_if(contract_reports.begin(), contract_reports.end(),
+                         [](const ExecutionReport& report)
+                         {
+                             return report.exec_type == ExecType::Trade && report.order_id == 71;
+                         });
+        assert(contract_trade != contract_reports.end());
+        assert(contract_trade->liquidity_role == LiquidityRole::Maker);
+        assert(contract_trade->price == 6374.0);
+        assert(std::abs(contract_trade->fee - 0.002) < 1e-12);
+
+        // A spot style instrument ignores the field and keeps charging on the price.
+        MatchingEngine spot_engine(
+            nullptr, 0.5,
+            FeeSchedule{.maker_rate = 0.0002,
+                        .taker_rate = 0.0005,
+                        .quantity_scale = 1,
+                        .unit_notional_usd = 0.0});
+        std::vector<ExecutionReport> spot_reports;
+        spot_engine.set_report_callback([&spot_reports](const ExecutionReport& report)
+                                        { spot_reports.push_back(report); });
+        spot_engine.send_order({72, "BTC-PERPETUAL", exchange::Side::Buy,
+                                exchange::OrderType::Limit, 6374.0, 1, 1, 801, "MarketMaker"});
+        spot_engine.process_market_trade(
+            {802, "BTC-PERPETUAL", 6374.0, 1, Side::Sell, 0, "deribit"});
+        const auto spot_trade =
+            std::find_if(spot_reports.begin(), spot_reports.end(),
+                         [](const ExecutionReport& report)
+                         {
+                             return report.exec_type == ExecType::Trade && report.order_id == 72;
+                         });
+        assert(spot_trade != spot_reports.end());
+        assert(std::abs(spot_trade->fee - 1.2748) < 1e-9);
+    }
 }

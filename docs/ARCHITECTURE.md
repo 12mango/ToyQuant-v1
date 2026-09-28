@@ -118,6 +118,13 @@ and book ticker rows into these domain events; `ReplayFeed` only performs stream
 merge. To support another vendor, implement readers for its files and add a factory branch in
 `make_market_data_readers` without changing `Pipeline`, the strategy, or matching code.
 
+Every file backed reader obtains its rows from `LineReader` (`src/market/line_reader.*`). It reads
+1 MiB blocks, finds line boundaries with `memchr`, and returns a `std::string_view` into the block,
+which removes both the per-character scan of `std::getline`/`gzgets` and the per-row `std::string`
+allocation. The view is only valid until the next call, so a reader that must hold a row across
+`next()` calls copies it into its own buffer. `/docs/PERFORMANCE_BASELINE.md` records the isolated
+line-layer measurement and the end-to-end effect.
+
 Each v2 event carries an optional `exchange` identity. Binance L1 readers set it to `binance`,
 while the Deribit L2 snapshot reader preserves the source column. `Pipeline` locks to the first
 non-empty exchange and rejects later events from another exchange. This prevents Binance `BTCUSDT`
@@ -138,6 +145,30 @@ simulation assumptions, not account-tier guarantees.
 For BTCUSDT it defines a `0.10` price tick and `1000000` integer quantity units per BTC. The replay
 strategy therefore uses `0.001 BTC` base orders, a two-tick base spread, and a `0.1 BTC` inventory
 limit.
+
+`InstrumentSpec::unit_notional_usd` states what one quantity unit is worth in USD when the traded
+price does not say it. Zero means the price *is* the unit value, which is right for an instrument
+quoted in quote currency per unit: one BTCUSDT unit is one BTC and is worth `price`. A nonzero value
+marks a contract with a fixed USD face value. Deribit perpetuals quote USD per contract while one
+contract is worth a fixed 10 USD, so BTC-PERPETUAL sets 10 and a fill of one contract is 10 USD
+rather than roughly 6300 USD.
+
+Both the fee model and `Portfolio` read this field, so they cannot disagree about what a fill is
+worth:
+
+- `MatchingEngine::report_trade` charges `unit_notional_usd * quantity * rate`, so one
+  BTC-PERPETUAL contract pays 0.02% of 10 USD.
+- `Portfolio` values cash and positions through `position_value(unit, quantity, entry, price)`. For
+  a price based unit this reduces to `quantity * price`, which is the spot case. For a fixed face
+  value it is `unit * quantity * price / entry`, because the position holds a fixed USD exposure
+  whose base amount was acquired at the entry price. That is the inverse contract relationship, so
+  a one contract long gains exactly `10 USD * (price / entry - 1)`.
+
+Before `unit_notional_usd` existed, both the fee and the cash balance were computed as
+`price * quantity`. At 2020 BTC prices that overcharged a Deribit contract by roughly 630x, so
+every L2 fee and every L2 cash and equity figure was meaningless. BTCUSDT and the legacy `Tick`
+paths leave the field at zero and are unaffected.
+
 Execution reports then carry the liquidity role and fee for each MarketMaker fill; the current
 offline backtest can consume those recorded fees while retaining a fee-rate fallback for legacy
 six-column trade files.

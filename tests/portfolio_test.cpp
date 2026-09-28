@@ -1,3 +1,9 @@
+// The checks in this test are the test: keep them enabled even when the build defines
+// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include "accounting/portfolio.h"
 
 #include <cassert>
@@ -40,4 +46,75 @@ int main()
     const auto metrics = portfolio.metrics();
     assert(std::abs(metrics.unrealized_pnl - 1.0) < 1e-12);
     assert(std::abs(metrics.equity - 1001.485) < 1e-12);
+
+    // A contract with a fixed USD face value holds that USD amount of the base asset, bought at
+    // the entry price. One Deribit BTC-PERPETUAL contract is 10 USD, so a 10% price move on one
+    // contract gains 10 USD * 10% = 1 USD. Valuing the contract at the BTC price instead would
+    // report a gain of roughly 637 USD.
+    {
+        Portfolio perp(1, 1000.0, 10.0);
+        perp.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 6000.0,
+                                   .quantity = 1,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.002});
+        const auto* long_position = perp.find_position("BTC-PERPETUAL");
+        assert(long_position != nullptr);
+        assert(long_position->quantity == 1);
+        assert(std::abs(long_position->average_price - 6000.0) < 1e-12);
+        // 1000 minus the 10 USD contract value and the 0.002 fee.
+        assert(std::abs(perp.metrics().cash - 989.998) < 1e-9);
+        assert(std::abs(perp.metrics().realized_pnl + 0.002) < 1e-9);
+
+        perp.mark_to_market({{"BTC-PERPETUAL", 6600.0}});
+        assert(std::abs(perp.metrics().unrealized_pnl - 1.0) < 1e-9);
+        assert(std::abs(perp.metrics().equity - 1000.998) < 1e-9);
+
+        perp.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 6600.0,
+                                   .quantity = 1,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Taker,
+                                   .fee = 0.005});
+        assert(perp.find_position("BTC-PERPETUAL")->quantity == 0);
+        // Start at 1000, gain 1 USD on the 10 USD exposure, pay 0.002 + 0.005 of fees.
+        assert(std::abs(perp.metrics().realized_pnl - 0.993) < 1e-9);
+        assert(std::abs(perp.metrics().cash - 1000.993) < 1e-9);
+        perp.mark_to_market({{"BTC-PERPETUAL", 6600.0}});
+        assert(std::abs(perp.metrics().equity - 1000.993) < 1e-9);
+    }
+
+    // The same contract on the short side loses 1 USD when the price rises 10%.
+    {
+        Portfolio perp(1, 1000.0, 10.0);
+        perp.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 6000.0,
+                                   .quantity = 1,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.002});
+        assert(std::abs(perp.metrics().cash - 1009.998) < 1e-9);
+        perp.mark_to_market({{"BTC-PERPETUAL", 6600.0}});
+        assert(std::abs(perp.metrics().unrealized_pnl + 1.0) < 1e-9);
+        assert(std::abs(perp.metrics().equity - 998.998) < 1e-9);
+        assert(perp.find_position("BTC-PERPETUAL")->quantity == -1);
+
+        perp.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 6600.0,
+                                   .quantity = 1,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Taker,
+                                   .fee = 0.005});
+        assert(std::abs(perp.metrics().realized_pnl + 1.007) < 1e-9);
+        assert(std::abs(perp.metrics().cash - 998.993) < 1e-9);
+    }
 }

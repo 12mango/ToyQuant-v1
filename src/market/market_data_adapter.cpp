@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
-#include <fstream>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -11,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <zlib.h>
+#include "market/line_reader.h"
 
 namespace
 {
@@ -36,33 +35,6 @@ double parse_double(std::string_view value)
     return std::stod(std::string(value));
 }
 
-void split_csv(const std::string& row, std::vector<std::string>& fields,
-               std::size_t expected_fields = 0)
-{
-    fields.clear();
-    const std::size_t reserve_count =
-        expected_fields > 0
-            ? expected_fields
-            : static_cast<std::size_t>(std::count(row.begin(), row.end(), ',')) + 1;
-    fields.reserve(reserve_count);
-    std::size_t field_start = 0;
-    while (field_start < row.size())
-    {
-        const std::size_t delimiter = row.find(',', field_start);
-        std::size_t field_end = delimiter == std::string::npos ? row.size() : delimiter;
-        if (field_end > field_start && row[field_end - 1] == '\r') --field_end;
-        std::size_t value_start = field_start;
-        if (fields.empty() && field_end - value_start >= 3 &&
-            static_cast<unsigned char>(row[value_start]) == 0xEF &&
-            static_cast<unsigned char>(row[value_start + 1]) == 0xBB &&
-            static_cast<unsigned char>(row[value_start + 2]) == 0xBF)
-            value_start += 3;
-        fields.emplace_back(row.data() + value_start, field_end - value_start);
-        if (delimiter == std::string::npos) break;
-        field_start = delimiter + 1;
-    }
-}
-
 void split_csv_views(std::string_view row, std::vector<std::string_view>& fields,
                      std::size_t expected_fields)
 {
@@ -84,13 +56,6 @@ void split_csv_views(std::string_view row, std::vector<std::string_view>& fields
         if (delimiter == std::string_view::npos) break;
         field_start = delimiter + 1;
     }
-}
-
-std::vector<std::string> split_csv(const std::string& row)
-{
-    std::vector<std::string> fields;
-    split_csv(row, fields);
-    return fields;
 }
 
 uint64_t scaled_quantity(std::string_view value, uint64_t scale)
@@ -131,30 +96,29 @@ class BinanceAggTradeReader final : public IMarketEventReader
 {
    public:
     BinanceAggTradeReader(const std::string& path, std::string symbol, uint64_t quantity_scale)
-        : input_(path), symbol_(std::move(symbol)), quantity_scale_(quantity_scale)
+        : reader_(path), symbol_(std::move(symbol)), quantity_scale_(quantity_scale)
     {
-        if (!input_) throw std::runtime_error("failed to open Binance aggTrades file: " + path);
     }
 
     bool next(MarketEvent& event) override
     {
-        std::string row;
-        while (std::getline(input_, row))
+        std::string_view row;
+        while (reader_.next_line(row))
         {
             if (row.empty()) continue;
-            const auto fields = split_csv(row);
-            if (!fields.empty() &&
-                (fields[0] == "agg_trade_id" || fields[0] == "aggregate_trade_id"))
+            split_csv_views(row, fields_, kColumns);
+            if (!fields_.empty() &&
+                (fields_[0] == "agg_trade_id" || fields_[0] == "aggregate_trade_id"))
                 continue;
-            if (fields.size() < 7) throw std::invalid_argument("invalid Binance aggTrades row");
+            if (fields_.size() < 7) throw std::invalid_argument("invalid Binance aggTrades row");
 
-            const bool buyer_is_maker = parse_boolean(fields[6]);
-            event = MarketTrade{.ts = parse_uint64(fields[5]),
+            const bool buyer_is_maker = parse_boolean(fields_[6]);
+            event = MarketTrade{.ts = parse_uint64(fields_[5]),
                                 .symbol = symbol_,
-                                .price = parse_double(fields[1]),
-                                .quantity = scaled_quantity(fields[2], quantity_scale_),
+                                .price = parse_double(fields_[1]),
+                                .quantity = scaled_quantity(fields_[2], quantity_scale_),
                                 .aggressor_side = buyer_is_maker ? Side::Sell : Side::Buy,
-                                .sequence = parse_uint64(fields[0]),
+                                .sequence = parse_uint64(fields_[0]),
                                 .exchange = "binance"};
             return true;
         }
@@ -162,7 +126,12 @@ class BinanceAggTradeReader final : public IMarketEventReader
     }
 
    private:
-    std::ifstream input_;
+    // agg_trade_id, price, quantity, first_trade_id, last_trade_id, transact_time,
+    // is_buyer_maker, is_best_match.
+    static constexpr std::size_t kColumns = 8;
+
+    LineReader reader_;
+    std::vector<std::string_view> fields_;
     std::string symbol_;
     uint64_t quantity_scale_;
 };
@@ -171,27 +140,26 @@ class BinanceBookTickerReader final : public IMarketEventReader
 {
    public:
     BinanceBookTickerReader(const std::string& path, std::string symbol, uint64_t quantity_scale)
-        : input_(path), symbol_(std::move(symbol)), quantity_scale_(quantity_scale)
+        : reader_(path), symbol_(std::move(symbol)), quantity_scale_(quantity_scale)
     {
-        if (!input_) throw std::runtime_error("failed to open Binance bookTicker file: " + path);
     }
 
     bool next(MarketEvent& event) override
     {
-        std::string row;
-        while (std::getline(input_, row))
+        std::string_view row;
+        while (reader_.next_line(row))
         {
             if (row.empty() || row.rfind("update_id,", 0) == 0) continue;
-            const auto fields = split_csv(row);
-            if (fields.size() < 7) throw std::invalid_argument("invalid Binance bookTicker row");
+            split_csv_views(row, fields_, kColumns);
+            if (fields_.size() < 7) throw std::invalid_argument("invalid Binance bookTicker row");
 
-            event = BboQuote{.ts = parse_uint64(fields[5]),
+            event = BboQuote{.ts = parse_uint64(fields_[5]),
                              .symbol = symbol_,
-                             .bid_price = parse_double(fields[1]),
-                             .bid_quantity = scaled_quantity(fields[2], quantity_scale_),
-                             .ask_price = parse_double(fields[3]),
-                             .ask_quantity = scaled_quantity(fields[4], quantity_scale_),
-                             .sequence = parse_uint64(fields[0]),
+                             .bid_price = parse_double(fields_[1]),
+                             .bid_quantity = scaled_quantity(fields_[2], quantity_scale_),
+                             .ask_price = parse_double(fields_[3]),
+                             .ask_quantity = scaled_quantity(fields_[4], quantity_scale_),
+                             .sequence = parse_uint64(fields_[0]),
                              .exchange = "binance"};
             return true;
         }
@@ -199,7 +167,12 @@ class BinanceBookTickerReader final : public IMarketEventReader
     }
 
    private:
-    std::ifstream input_;
+    // update_id, best_bid_price, best_bid_qty, best_ask_price, best_ask_qty,
+    // transaction_time, event_time.
+    static constexpr std::size_t kColumns = 7;
+
+    LineReader reader_;
+    std::vector<std::string_view> fields_;
     std::string symbol_;
     uint64_t quantity_scale_;
 };
@@ -207,16 +180,15 @@ class BinanceBookTickerReader final : public IMarketEventReader
 class DeribitBookSnapshotReader final : public IMarketEventReader
 {
    public:
-    explicit DeribitBookSnapshotReader(const std::string& path) : input_(path)
+    explicit DeribitBookSnapshotReader(const std::string& path) : reader_(path)
     {
-        if (!input_) throw std::runtime_error("failed to open Deribit book snapshot: " + path);
-
-        std::string header;
-        if (!std::getline(input_, header))
+        std::string_view header;
+        if (!reader_.next_line(header))
             throw std::invalid_argument("Deribit book snapshot is missing a header");
-        const auto fields = split_csv(header);
-        for (std::size_t index = 0; index < fields.size(); ++index)
-            columns_.emplace(fields[index], index);
+        std::vector<std::string_view> header_fields;
+        split_csv_views(header, header_fields, 0);
+        for (std::size_t index = 0; index < header_fields.size(); ++index)
+            columns_.emplace(std::string(header_fields[index]), index);
 
         symbol_column_ = require_column("symbol");
         timestamp_column_ = require_column("timestamp");
@@ -238,31 +210,30 @@ class DeribitBookSnapshotReader final : public IMarketEventReader
 
     bool next(MarketEvent& event) override
     {
-        std::string row;
-        while (std::getline(input_, row))
+        std::string_view row;
+        while (reader_.next_line(row))
         {
             if (row.empty()) continue;
-            std::vector<std::string_view> fields;
-            split_csv_views(row, fields, columns_.size());
-            if (fields.size() < columns_.size())
+            split_csv_views(row, fields_, columns_.size());
+            if (fields_.size() < columns_.size())
                 throw std::invalid_argument("invalid Deribit book snapshot row");
 
-            MarketDepthSnapshot snapshot{.ts = parse_uint64(fields[timestamp_column_]),
-                                         .symbol = std::string(fields[symbol_column_]),
+            MarketDepthSnapshot snapshot{.ts = parse_uint64(fields_[timestamp_column_]),
+                                         .symbol = std::string(fields_[symbol_column_]),
                                          .sequence = ++sequence_,
                                          .bids = {},
                                          .asks = {},
-                                         .exchange = std::string(fields[exchange_column_])};
+                                         .exchange = std::string(fields_[exchange_column_])};
             snapshot.bids.reserve(bids_.size());
             snapshot.asks.reserve(asks_.size());
             for (const auto& [price_column, quantity_column] : bids_)
                 snapshot.bids.push_back(
-                    DepthLevel{parse_double(fields[price_column]),
-                               snapshot_quantity(fields[quantity_column])});
+                    DepthLevel{parse_double(fields_[price_column]),
+                               snapshot_quantity(fields_[quantity_column])});
             for (const auto& [price_column, quantity_column] : asks_)
                 snapshot.asks.push_back(
-                    DepthLevel{parse_double(fields[price_column]),
-                               snapshot_quantity(fields[quantity_column])});
+                    DepthLevel{parse_double(fields_[price_column]),
+                               snapshot_quantity(fields_[quantity_column])});
             event = std::move(snapshot);
             return true;
         }
@@ -284,7 +255,8 @@ class DeribitBookSnapshotReader final : public IMarketEventReader
         return column->second;
     }
 
-    std::ifstream input_;
+    LineReader reader_;
+    std::vector<std::string_view> fields_;
     std::unordered_map<std::string, std::size_t> columns_;
     std::size_t symbol_column_{};
     std::size_t timestamp_column_{};
@@ -297,22 +269,15 @@ class DeribitBookSnapshotReader final : public IMarketEventReader
 class DeribitIncrementalBookReader final : public IMarketEventReader
 {
    public:
-    explicit DeribitIncrementalBookReader(const std::string& path)
+    explicit DeribitIncrementalBookReader(const std::string& path) : reader_(path)
     {
-        if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
-        {
-            gzip_input_ = gzopen(path.c_str(), "rb");
-            if (!gzip_input_) throw std::runtime_error("failed to open incremental book: " + path);
-        }
-        else
-        {
-            plain_input_.open(path);
-            if (!plain_input_) throw std::runtime_error("failed to open incremental book: " + path);
-        }
-        std::string header;
-        if (!read_line(header)) throw std::invalid_argument("incremental book is missing a header");
-        const auto fields = split_csv(header);
-        for (std::size_t index = 0; index < fields.size(); ++index) columns_.emplace(fields[index], index);
+        std::string_view header;
+        if (!reader_.next_line(header))
+            throw std::invalid_argument("incremental book is missing a header");
+        std::vector<std::string_view> header_fields;
+        split_csv_views(header, header_fields, 0);
+        for (std::size_t index = 0; index < header_fields.size(); ++index)
+            columns_.emplace(std::string(header_fields[index]), index);
         exchange_column_ = require_column("exchange");
         symbol_column_ = require_column("symbol");
         timestamp_column_ = require_column("timestamp");
@@ -321,11 +286,6 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         side_column_ = require_column("side");
         price_column_ = require_column("price");
         amount_column_ = require_column("amount");
-    }
-
-    ~DeribitIncrementalBookReader() override
-    {
-        if (gzip_input_) gzclose(gzip_input_);
     }
 
     bool next(MarketEvent& event) override
@@ -355,7 +315,7 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         uint64_t amount{};
     };
 
-    ParsedRow parse_row(const std::string& row) const
+    ParsedRow parse_row(std::string_view row) const
     {
         ParsedRow parsed;
         std::size_t field_start = 0;
@@ -363,8 +323,8 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         while (field_start < row.size())
         {
             const std::size_t delimiter = row.find(',', field_start);
-            std::size_t field_end = delimiter == std::string::npos ? row.size() : delimiter;
-            if (field_end > field_start && row[field_end - 1] == '\r') --field_end;
+            std::size_t field_end =
+                delimiter == std::string_view::npos ? row.size() : delimiter;
             std::size_t value_start = field_start;
             if (field_index == 0 && field_end - value_start >= 3 &&
                 static_cast<unsigned char>(row[value_start]) == 0xEF &&
@@ -381,7 +341,7 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
                 parsed.side = field == "bid" ? Side::Buy : field == "ask" ? Side::Sell : Side::Unknown;
             else if (field_index == price_column_) parsed.price = parse_double(field);
             else if (field_index == amount_column_) parsed.amount = snapshot_quantity(field);
-            if (delimiter == std::string::npos) break;
+            if (delimiter == std::string_view::npos) break;
             field_start = delimiter + 1;
             ++field_index;
         }
@@ -394,12 +354,14 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
     {
         if (pending_row_.empty())
         {
-            std::string row;
+            std::string_view row;
             do
             {
-                if (!read_line(row)) return false;
+                if (!reader_.next_line(row)) return false;
             } while (row.empty());
-            pending_row_ = std::move(row);
+            // The view is only valid until the next refill, so the pending row is copied.
+            // assign() reuses the existing capacity, so this does not allocate per batch.
+            pending_row_.assign(row.data(), row.size());
         }
         const ParsedRow first = parse_row(pending_row_);
         const uint64_t batch_timestamp = first.exchange_ts;
@@ -415,14 +377,14 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         batch.updates.reserve(2);
         append_update(batch, first);
         pending_row_.clear();
-        std::string row;
-        while (read_line(row))
+        std::string_view row;
+        while (reader_.next_line(row))
         {
             if (row.empty()) continue;
             const ParsedRow parsed = parse_row(row);
             if (parsed.local_ts != local_ts)
             {
-                pending_row_ = std::move(row);
+                pending_row_.assign(row.data(), row.size());
                 break;
             }
             append_update(batch, parsed);
@@ -445,34 +407,15 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
             .amount = row.amount});
     }
 
-    bool read_line(std::string& line)
-    {
-        line.clear();
-        if (gzip_input_)
-        {
-            char buffer[4096];
-            while (gzgets(gzip_input_, buffer, sizeof(buffer)))
-            {
-                line += buffer;
-                if (!line.empty() && line.back() == '\n') break;
-            }
-            if (line.empty()) return false;
-        }
-        else if (!std::getline(plain_input_, line)) return false;
-        if (!line.empty() && line.back() == '\n') line.pop_back();
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        return true;
-    }
-
     std::size_t require_column(const std::string& name) const
     {
         const auto column = columns_.find(name);
-        if (column == columns_.end()) throw std::invalid_argument("missing incremental column: " + name);
+        if (column == columns_.end())
+            throw std::invalid_argument("missing incremental column: " + name);
         return column->second;
     }
 
-    gzFile gzip_input_{nullptr};
-    std::ifstream plain_input_;
+    LineReader reader_;
     std::unordered_map<std::string, std::size_t> columns_;
     std::string pending_row_;
     bool started_{false};
@@ -483,24 +426,15 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
 class DeribitTradeReader final : public IMarketEventReader
 {
    public:
-    explicit DeribitTradeReader(const std::string& path)
+    explicit DeribitTradeReader(const std::string& path) : reader_(path)
     {
-        if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
-        {
-            gzip_input_ = gzopen(path.c_str(), "rb");
-            if (!gzip_input_) throw std::runtime_error("failed to open Deribit trade file: " + path);
-        }
-        else
-        {
-            plain_input_.open(path);
-            if (!plain_input_)
-                throw std::runtime_error("failed to open Deribit trade file: " + path);
-        }
-
-        std::string header;
-        if (!read_line(header)) throw std::invalid_argument("Deribit trade file is missing a header");
-        const auto fields = split_csv(header);
-        for (std::size_t index = 0; index < fields.size(); ++index) columns_.emplace(fields[index], index);
+        std::string_view header;
+        if (!reader_.next_line(header))
+            throw std::invalid_argument("Deribit trade file is missing a header");
+        std::vector<std::string_view> header_fields;
+        split_csv_views(header, header_fields, 0);
+        for (std::size_t index = 0; index < header_fields.size(); ++index)
+            columns_.emplace(std::string(header_fields[index]), index);
         exchange_column_ = require_column("exchange");
         symbol_column_ = require_column("symbol");
         timestamp_column_ = require_column("timestamp");
@@ -510,63 +444,36 @@ class DeribitTradeReader final : public IMarketEventReader
         amount_column_ = require_column("amount");
     }
 
-    ~DeribitTradeReader() override
-    {
-        if (gzip_input_) gzclose(gzip_input_);
-    }
-
     bool next(MarketEvent& event) override
     {
-        std::string row;
-        while (read_line(row))
+        std::string_view row;
+        while (reader_.next_line(row))
         {
             if (row.empty()) continue;
-            const auto fields = split_csv(row);
-            if (fields.size() < columns_.size())
+            split_csv_views(row, fields_, columns_.size());
+            if (fields_.size() < columns_.size())
                 throw std::invalid_argument("invalid Deribit trade row");
 
-            const auto& side = fields[side_column_];
+            const std::string_view side = fields_[side_column_];
             const Side aggressor_side = side == "buy"   ? Side::Buy
                                          : side == "sell" ? Side::Sell
-                                                           : Side::Unknown;
+                                                          : Side::Unknown;
             if (aggressor_side == Side::Unknown)
-                throw std::invalid_argument("invalid Deribit trade side: " + side);
+                throw std::invalid_argument("invalid Deribit trade side: " + std::string(side));
 
-            event = MarketTrade{.ts = parse_uint64(fields[timestamp_column_]),
-                                .symbol = fields[symbol_column_],
-                                .price = parse_double(fields[price_column_]),
-                                .quantity = snapshot_quantity(fields[amount_column_]),
+            event = MarketTrade{.ts = parse_uint64(fields_[timestamp_column_]),
+                                .symbol = std::string(fields_[symbol_column_]),
+                                .price = parse_double(fields_[price_column_]),
+                                .quantity = snapshot_quantity(fields_[amount_column_]),
                                 .aggressor_side = aggressor_side,
-                                .sequence = parse_uint64(fields[id_column_]),
-                                .exchange = fields[exchange_column_]};
+                                .sequence = parse_uint64(fields_[id_column_]),
+                                .exchange = std::string(fields_[exchange_column_])};
             return true;
         }
         return false;
     }
 
    private:
-    bool read_line(std::string& line)
-    {
-        line.clear();
-        if (gzip_input_)
-        {
-            char buffer[4096];
-            while (gzgets(gzip_input_, buffer, sizeof(buffer)))
-            {
-                line += buffer;
-                if (!line.empty() && line.back() == '\n') break;
-            }
-            if (line.empty()) return false;
-        }
-        else if (!std::getline(plain_input_, line))
-        {
-            return false;
-        }
-        if (!line.empty() && line.back() == '\n') line.pop_back();
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        return true;
-    }
-
     std::size_t require_column(const std::string& name) const
     {
         const auto column = columns_.find(name);
@@ -574,8 +481,8 @@ class DeribitTradeReader final : public IMarketEventReader
         return column->second;
     }
 
-    std::ifstream plain_input_;
-    gzFile gzip_input_{nullptr};
+    LineReader reader_;
+    std::vector<std::string_view> fields_;
     std::unordered_map<std::string, std::size_t> columns_;
     std::size_t exchange_column_{};
     std::size_t symbol_column_{};
@@ -617,28 +524,13 @@ std::unique_ptr<IMarketEventReader> make_deribit_incremental_book_reader(const s
 
 std::unique_ptr<IMarketEventReader> make_deribit_depth_reader(const std::string& path)
 {
-    std::string header;
-    if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
+    std::string_view header;
     {
-        gzFile input = gzopen(path.c_str(), "rb");
-        if (!input) throw std::runtime_error("failed to open Deribit depth file: " + path);
-        char buffer[4096];
-        if (!gzgets(input, buffer, sizeof(buffer)))
-        {
-            gzclose(input);
-            throw std::invalid_argument("Deribit depth file is missing a header");
-        }
-        header = buffer;
-        gzclose(input);
+        LineReader probe(path);
+        if (!probe.next_line(header)) throw std::invalid_argument("Deribit depth file is missing a header");
+        if (header.find("is_snapshot") != std::string_view::npos)
+            return make_deribit_incremental_book_reader(path);
     }
-    else
-    {
-        std::ifstream input(path);
-        if (!input || !std::getline(input, header))
-            throw std::invalid_argument("Deribit depth file is missing a header");
-    }
-    if (header.find("is_snapshot") != std::string::npos)
-        return make_deribit_incremental_book_reader(path);
     return make_deribit_book_snapshot_reader(path);
 }
 

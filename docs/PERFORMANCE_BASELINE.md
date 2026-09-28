@@ -338,21 +338,66 @@ runtime CSV/log output and use the strict default validation mode.
 
 ## L2 Strategy Regression Matrix
 
-All four retained L2 strategies were benchmarked on the same 15-minute trade window for each
-depth source, with `depth_every=1` and the conservative queue model. These summaries are
-per-source regression references; do not compare snapshot and incremental PnL or fills as if the
-event streams were identical.
+All four retained L2 strategies are replayed on the same 15-minute window for each depth source,
+with the conservative queue model. Window `[1585699200000000, 1585700100000000]`: 1,354 trade rows,
+201,130 incremental depth rows, 54,170 snapshot depth rows, `quantity_scale=1`. Net PnL is
+`equity - 1000`, i.e. the change in equity from the initial cash.
 
 | Strategy | Incremental orders / fills / net PnL | Snapshot orders / fills / net PnL |
 |---|---:|---:|
-| `passive_l2` | 657 / 2 / -13.056 | 641 / 2 / -13.056 |
-| `inventory_aware_l2` | 420 / 2 / -4.961 | 408 / 4 / -9.410 |
-| `flow_aware_l2` | 414 / 1 / 0.980 | 363 / 1 / -21.021 |
-| `active_l2` | 411 / 1 / 0.980 | 393 / 1 / 0.980 |
+| `passive_l2` | 657 / 2 / -0.020 | 641 / 2 / -0.020 |
+| `inventory_aware_l2` | 419 / 0 / 0.000 | 407 / 2 / -0.007 |
+| `flow_aware_l2` | 417 / 0 / 0.000 | 363 / 1 / -0.033 |
+| `active_l2` | 414 / 0 / 0.000 | 396 / 0 / 0.000 |
 
-These are single-run replay reference values, not profitability evidence. The matrix exists to
-detect behavioral drift if a shared hot path is later optimized; repeat a row with the same input
-hashes when checking exact output determinism.
+**These values supersede an earlier table that reported net PnL between -13 and -21.** That table was
+produced while the fee model charged `price * quantity` on a Deribit contract, which is about 630
+times the contract's 10 USD face value. Those figures were dominated by the overcharge rather than
+by trading, so they said nothing about the strategies. `ARCHITECTURE.md` documents the corrected
+model.
+
+### Why the fill counts are near zero
+
+Fees do not influence matching, so the corrected fee model leaves fills unchanged. Two other facts
+explain the counts, and both are model behaviour rather than defects:
+
+- The strategies cancel nearly everything they submit. In this window `passive_l2` submits 657
+  orders and cancels 643 of them, while `active_l2` submits 414 and cancels 412. Cancelling and
+  re-quoting at the same price loses the queue position and rejoins at the back, so the order never
+  reaches the front.
+- Under the default `conservative` queue model the queue advances only through real trades. A real
+  queue at the touch mostly drains by cancellation, so requiring the whole displayed size to trade
+  at your exact price makes a fill close to impossible.
+
+The queue model is the lever, and the same window shows its spread:
+
+| Queue model | `passive_l2` orders / fills / net PnL | `active_l2` orders / fills / net PnL |
+|---|---:|---:|
+| `conservative` | 657 / 2 / -0.020 | 414 / 0 / 0.000 |
+| `heuristic` | 657 / 2 / -0.020 | 273 / 5 / -0.002 |
+| `optimistic` | 664 / 4 / -0.013 | 286 / 8 / -0.014 |
+
+`heuristic` treats part of a displayed size decrease as cancellations ahead of the resting order and
+`optimistic` treats all of it that way. Neither is calibrated against real fills, so these rows are a
+sensitivity range rather than a measurement.
+
+One scale note: `L2MarketMakerConfig::order_size` defaults to `1`, which on a 10 USD contract is 10
+USD of notional. One tick of price move is then worth about `10 * 0.5 / 6374 = 0.0008` USD, so every
+net PnL above is a few cents and rounding dominates it. The matrix is usable for detecting
+behavioural drift, not for judging edge.
+
+These are single-run replay reference values, not profitability evidence. Repeat a row with the same
+input hashes when checking exact output determinism.
+
+### Queue position at arrival
+
+A resting order is never first in the queue, so `displayed_quantity_ahead` returns the displayed best
+size of the side the order joins. It previously returned 0 whenever the order price was not exactly
+the best price, which let an order resting behind the touch fill in full the moment any trade printed
+through its level. Those fills are selectively optimistic, because they appear exactly when the
+market is moving against the resting side. Correcting this removed four of the six fills the window
+previously produced; the two that remain are `passive_l2` quotes that sat at the touch, where the
+old and new estimates agree.
 
 ## Interpretation and Next Step
 
@@ -385,3 +430,191 @@ This changes the next optimization priority: the parser and typed batch/update p
 cost centers, followed by L2 map updates. Strategy code is not currently a primary hotspot, and
 output I/O was excluded from this profile. The percentages come from an instrumented Debug-style
 gprof build and guide prioritization; they are not production latency numbers.
+
+## Buffered Line Reader
+
+The line-reading layer was replaced before any parsing work, because `std::getline` and `gzgets`
+are both per-character loops. `src/market/line_reader.*` now pulls 1 MiB blocks from a plain
+`std::ifstream` or a `gzFile`, locates line boundaries with `memchr`, and hands back a
+`std::string_view` into the block, so the common case neither scans byte by byte nor allocates.
+A line that crosses a block boundary is compacted to the front of the block before the next read,
+so an owned copy is only needed for a line larger than one block. All five readers
+(`BinanceAggTradeReader`, `BinanceBookTickerReader`, `DeribitBookSnapshotReader`,
+`DeribitIncrementalBookReader`, `DeribitTradeReader`) use it, which also removed the
+comma-counting pre-pass that the old `split_csv(std::string)` needed to size its reserve.
+
+### Line layer in isolation
+
+A standalone microbenchmark over the first 200 MB (2,591,303 rows, about 76 bytes per row) of
+`data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv`, three runs, medians:
+
+| Stage | Seconds | Throughput |
+|---|---:|---:|
+| Raw 1 MiB block reads only | 0.037 | 5.4 GB/s |
+| Block reads plus `memchr` newline scan | 0.076 | 2.6 GB/s |
+| `std::getline` into `std::string` | 0.115 | 1.7 GB/s |
+| `LineReader::next_line` | **0.080** | **2.5 GB/s** |
+| `LineReader` plus the current per-row `find(',')` field split | 0.200 | 1.0 GB/s |
+
+Two conclusions matter more than the 1.44x on the line layer itself:
+
+- `LineReader` is within 10% of the `memchr`-only floor, so the line layer is now close to the
+  irreducible read cost. `std::getline` was adding about as much time as the scan itself.
+- **Per-row field splitting costs 0.120 s, which is more than the entire pre-change line layer.**
+  Eight `find(',')` calls over roughly 10 byte fields are dominated by `memchr` call setup rather
+  than by bytes scanned. Within this layer the field split, not the line split, is the next target.
+  The stage timings below show that the field split is in fact only a small part of the parser's
+  total cost, so this isolation result should not be read as the overall priority.
+
+### End-to-end
+
+Workload: the full-day `data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz` (119,238 rows)
+replayed against the first 2,000,000 rows of the incremental depth file, `active_l2` and the
+conservative queue model. Runtime summary: 1,303,131 events, 1,183,894 incremental batches, one
+snapshot batch.
+
+| Build | Median | Range | Paired mean difference |
+|---|---:|---|---:|
+| Pre-change, with output | 1.52 | 1.39–1.77 | |
+| `LineReader`, with output | 1.41 | 1.21–1.64 | **−0.156 s (−10.2%)** |
+| Pre-change, `--no-output --fast-validation` | 1.61 | 1.46–2.02 | |
+| `LineReader`, `--no-output --fast-validation` | 1.41 | 1.28–1.63 | **−0.258 s (−16.0%)** |
+
+Nine paired runs each, alternating pre-change and `LineReader` so that thermal and system drift
+affect both builds equally. **Only the paired difference is trustworthy here.** Unpaired runs of a
+single build ranged over 0.38 s, which is larger than the difference between the builds, so an
+earlier unpaired comparison on this host reported a misleading `1.46x`.
+
+Behavior is unchanged: `data/runtime/orders.csv`
+(`521275515d80052d84f5ffb458cc2b82311168d7d3c7002fdd5d54889540b835`) and `data/runtime/trades.csv`
+(`171bddd11a1d60e42ff250b9a0e6b3bedc90a44325d676b88c1303f20b88a02c`) match the pre-change build
+byte for byte, and the full stdout/stderr summary is identical.
+
+### Where the end-to-end saving actually came from
+
+The saving is larger than the isolation table predicts, and most of it is not the vectorised scan:
+
+| Source | Estimated share |
+|---|---|
+| Removing one `malloc`/`free` pair per batch | largest |
+| Per-character line scan removal (the isolation table) | about 27 ms of 258 ms |
+| Per-row `std::string`/`vector<std::string>` materialisation in `DeribitTradeReader` and the two Binance readers, plus their comma-counting reserve pre-pass | small on this workload |
+
+`read_batch` used `pending_row_ = std::move(row)`. The move steals the row buffer, so the next
+`std::getline` has to allocate a fresh one: on this workload that is roughly 1.18M allocate/free
+pairs. `pending_row_.assign(view)` reuses the existing capacity instead, so the allocation
+disappears. This is worth recording because the profiling story pointed at parsing, and the
+largest single win turned out to be allocation churn on the batching boundary.
+
+
+### Coverage added
+
+`tests/line_reader_test.cpp` covers LF, CRLF, empty lines, a missing trailing newline, a line
+larger than one block, block level batching, gzip parity, and line-for-line parity against
+`data/v2/test_aggTrades_5k.csv`. `tests/market_data_adapter_test.cpp` gained incremental book
+reader coverage for `local_timestamp` batching, the snapshot batch that starts the stream, CRLF
+rows, and the header sniffing in `make_deribit_depth_reader`.
+
+Every test source now starts with `#ifdef NDEBUG / #undef NDEBUG / #endif` before its first
+include. Without it `linux-relwithdebinfo` compiled the checks out, so a guarded setup call was
+skipped while the following `std::get<BboQuote>` still ran and aborted with
+`std::bad_variant_access`. That preset is the profiling build, so its test run has to mean
+something; the whole suite now executes its checks in both presets.
+
+
+## Stage Timing
+
+The function level profile above left 38.2% of the sample unattributed, and its percentages are
+shaped by the instrumentation itself: gprof adds a call at every function entry, so tiny helpers
+are charged for the measurement and inlined helpers are charged to their caller. The stage timings
+measure declared regions instead, which is the question that matters here: how long is each step of
+turning a row into a quote.
+
+`l2_replay ... --profile-stages[=N]` records eight regions on one event in every `N` (default 64)
+and prints exact percentiles to stdout, so it also works together with `--no-output`. With the flag
+absent the profiler is not attached and the run is unchanged; that was verified by diffing the full
+stdout and the runtime CSV hashes against the pre-change binary.
+
+### Clock cost on this host
+
+Reading the monotonic clock is not the ~20 ns that is normally assumed here:
+
+| Call | ns |
+|---|---:|
+| `std::chrono::steady_clock::now()` | 71 |
+| `clock_gettime(CLOCK_MONOTONIC)` | 72 |
+| `clock_gettime(CLOCK_MONOTONIC_RAW)` | 68 |
+
+This host reports itself as WSL2, where these reads are not on a fast path. Eight regions need
+sixteen reads per sampled event, about 1.1 microseconds, so timing every event would have cost
+more than the code being measured. At an interval of 64 the added wall time is roughly 17 ns per
+event, under 1.5% of a 1.3 microsecond event, which is why the instrumented and uninstrumented
+runs take the same time.
+
+Because the read cost is significant, the profiler calibrates its own instrument first: it probes
+two back to back clock reads at construction and subtracts the minimum from every sample (35-44 ns
+here). Without that subtraction each of the eight regions was charged for one clock read, which
+inflated the column sum by roughly 400 ns per event and made it appear larger than the total run
+time.
+
+### Measured breakdown
+
+Full-day Deribit trades (119,238 rows) against the first 2,000,000 rows of the incremental depth
+file, `active_l2` and the conservative queue model, `--no-output --fast-validation
+--profile-stages`. 1,303,131 events, 1,183,894 incremental batches, wall clock 1.80-1.85 s, which
+is 1381-1420 ns per event.
+
+| Stage | Samples | Share | Mean | p50 | p90 | p99 | p999 | Max |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| read+parse | 20361 | **50.4%** | 922.4 | 622 | 766 | 1102 | 58996 | 2835896 |
+| validate | 20361 | 5.0% | 85.1 | 62 | 122 | 192 | 860 | 61219 |
+| book-apply | 18514 | 15.7% | 287.0 | 193 | 338 | 710 | 3312 | 559972 |
+| market-view | 18514 | 9.0% | 145.2 | 111 | 180 | 299 | 1173 | 226713 |
+| top-booking | 18514 | 1.9% | 44.3 | 23 | 75 | 125 | 405 | 42885 |
+| engine | 18514 | 13.5% | 274.3 | 167 | 354 | 606 | 4569 | 233840 |
+| queue-acct | 18514 | 0.6% | 16.7 | 7 | 43 | 76 | 173 | 43463 |
+| strategy | 18514 | 3.9% | 122.7 | 48 | 114 | 307 | 7029 | 339400 |
+| **column sum** | | 100.0% | 1897.7 | **1233** | | | | |
+
+Three consecutive runs produced the same ordering and the same shares within one percentage point,
+so the ranking is stable even though the absolute values track the machine state.
+
+### How to read it
+
+- Share is computed from the p50 column. The mean is not usable for stages that have rare stalls:
+  `read+parse` reaches 39-59 microseconds at p999 and 2.8-9.3 milliseconds at its maximum, which is
+  a page fault or a 1 MiB block refill showing up in a single sample. Those few samples move the
+  mean by hundreds of nanoseconds while leaving the median where it belongs.
+- The p50 column sum lands within 10-15% of the per-event wall clock time, so the eight regions do
+  cover essentially the whole event. Treat the column sum as a ranking tool and the wall clock as
+  the absolute figure.
+- `top-booking`, `engine` and `queue-acct` had no row at all in the function level profile. They
+  were previously part of the unattributed 38.2%.
+
+### What this changes for the next step
+
+`read+parse` alone is half of the per-event cost. Combining this with the isolation measurement
+above, and knowing that a batch here holds one or two rows of about 76 bytes, the split inside one
+batch is roughly:
+
+| Part | ns |
+|---|---:|
+| line reader, two rows | 76 |
+| field split, two rows at about 46 ns | 92 |
+| number conversion, two rows at about 200 ns | 400 |
+| batch assembly, including one `updates` vector allocation | 60 |
+
+**Number conversion is the largest single item in the whole run, near a third of the per-event
+cost.** It is two `std::from_chars<double>` and three `parse_uint64` calls per row. This corrects
+the priority that the isolation benchmark implied, because that benchmark could only see the line
+layer and pointed at field splitting, which is about 7% of the event.
+
+Updated order of work:
+
+1. Number conversion inside the reader: fixed point parsing so that prices become integer ticks
+   directly, plus a hand written integer path.
+2. `book-apply` and `market-view`, together 25%.
+3. `engine`, 13%, which is a larger target than the function level profile suggested.
+
+Validation and strategy are together under 9%, so they stay out of scope for now.
+

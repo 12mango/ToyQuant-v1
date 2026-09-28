@@ -38,12 +38,14 @@ set(COMMON_SOURCES
     src/market/market_data_adapter.cpp
     src/market/market_data_validator.cpp
     src/market/l2_replay_feed.cpp
+    src/market/line_reader.cpp
     src/market/replay_feed.cpp
     src/legacy/tick_csv_parser.cpp
     src/backtest/performance.cpp
     src/orderbook/orderbook.cpp
     src/exchange/matching_engine.cpp
     src/utils/logger.cpp
+    src/utils/stage_profiler.cpp
 )
 
 # Cross-platform threading library.
@@ -107,7 +109,8 @@ add_test(NAME l2_strategy_test COMMAND l2_strategy_test)
 
 add_executable(l2_replay_test tests/l2_replay_test.cpp
     src/market/market_data_adapter.cpp src/market/market_data_validator.cpp
-    src/market/l2_replay_feed.cpp)
+    src/market/line_reader.cpp src/market/l2_replay_feed.cpp
+    src/utils/stage_profiler.cpp)
 target_include_directories(l2_replay_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(l2_replay_test PRIVATE ZLIB::ZLIB)
 add_test(NAME l2_replay_test COMMAND l2_replay_test)
@@ -121,9 +124,18 @@ add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp src/legacy/ti
 target_include_directories(tick_csv_parser_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME tick_csv_parser_test COMMAND tick_csv_parser_test)
 
+add_executable(line_reader_test tests/line_reader_test.cpp src/market/line_reader.cpp)
+target_include_directories(line_reader_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(line_reader_test PRIVATE ZLIB::ZLIB)
+add_test(NAME line_reader_test COMMAND line_reader_test)
+
+add_executable(stage_profiler_test tests/stage_profiler_test.cpp src/utils/stage_profiler.cpp)
+target_include_directories(stage_profiler_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME stage_profiler_test COMMAND stage_profiler_test)
+
 add_executable(market_data_adapter_test tests/market_data_adapter_test.cpp
     src/market/market_data_adapter.cpp src/market/market_data_validator.cpp
-    src/market/replay_feed.cpp)
+    src/market/line_reader.cpp src/market/replay_feed.cpp)
 target_include_directories(market_data_adapter_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(market_data_adapter_test PRIVATE ZLIB::ZLIB)
 add_test(NAME market_data_adapter_test COMMAND market_data_adapter_test)
