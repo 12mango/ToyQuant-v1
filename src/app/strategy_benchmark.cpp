@@ -2,7 +2,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 
 #include "app/pipeline.h"
 #include <memory>
@@ -16,21 +15,6 @@
 #include "exchange/matching_engine.h"
 #include "market/replay_feed.h"
 #include "orderbook/orderbook.h"
-#include "utils/logger.h"
-
-namespace
-{
-struct StrategyBenchmarkEnv
-{
-    std::unique_ptr<Strategy> strategy;
-    Portfolio portfolio;
-    OrderBook order_book;
-    std::ofstream orders;
-    std::ofstream trades;
-    std::unique_ptr<Logger> logger;
-    std::vector<StrategyBenchmarkResult> results;
-};
-}  // namespace
 
 std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& trades_path,
                                                             const std::string& quotes_path,
@@ -77,15 +61,14 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
                                       l1_minimum_stress_quantity_ratio,
                                       l1_fee_spread_multiplier);
         OrderBook order_book(instrument.tick_size);
-        MatchingEngine engine(nullptr, instrument.tick_size,
+        MatchingEngine engine(instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                           .taker_rate = instrument.taker_fee_rate,
                                           .quantity_scale = instrument.quantity_scale,
                                           .unit_notional_usd = instrument.unit_notional_usd},
                               1);
         Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
-        Logger logger;
-        Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio, logger,
+        Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio,
                   instrument.tick_size);
 
         double final_mid = 0.0;

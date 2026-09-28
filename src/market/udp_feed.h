@@ -10,16 +10,14 @@ class UdpFeed
    public:
     explicit UdpFeed(int port);
 
+    // Stops the receive thread and closes the socket. The destructor calls it, so a feed that
+    // goes out of scope releases its socket instead of terminating on a joinable thread.
+    ~UdpFeed();
+
     bool start();
     void stop();
 
     bool pop_tick(legacy::Tick& t);
-
-    uint64_t get_tick_count() const
-    {
-        return tick_count_.load(std::memory_order_relaxed);
-    }
-    size_t unread_count() const;
 
    private:
     void loop();
@@ -41,8 +39,6 @@ class UdpFeed
     std::vector<legacy::Tick> ring_{std::vector<legacy::Tick>(RING_SIZE)};
     std::atomic<size_t> head_{0};
     std::atomic<size_t> tail_{0};
-
-    std::atomic<uint64_t> tick_count_{0};
 
     std::vector<std::array<char, MAX_PKT>> recv_bufs_;
 };

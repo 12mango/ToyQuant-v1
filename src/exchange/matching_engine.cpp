@@ -1,12 +1,10 @@
 #include "matching_engine.h"
 
 #include <algorithm>
-#include <iostream>
 
 #include "common/instrument_spec.h"
 #include "execution_report.h"
 #include "order.h"
-#include "utils/logger.h"
 
 using exchange::Order;
 
@@ -224,7 +222,14 @@ void MatchingEngine::process_market_trade(const MarketTrade& trade)
     else if (trade.aggressor_side == Side::Buy)
         last_ask_trade_ts_[trade.symbol] = std::max(last_ask_trade_ts_[trade.symbol], trade.ts);
     const auto quote_it = external_bbo_.find(trade.symbol);
-    if (quote_it != external_bbo_.end() && queue_ahead_symbols_.contains(trade.symbol))
+    // Consuming the displayed size here is separate from the queue model. Whenever a public trade
+    // prints at the best bid or ask, that much of the displayed size is gone, and a later taker
+    // order must not be allowed to fill against liquidity that has already traded.
+    //
+    // This block used to be gated on queue_ahead_symbols_ as well, which only process_l2_top
+    // populates. On the L1 path that gate was never satisfied, so the stored best bid and ask
+    // quantities never shrank from public trades and taker fills were capped by a stale size.
+    if (quote_it != external_bbo_.end())
     {
         auto& quote = quote_it->second;
         if (trade.aggressor_side == Side::Sell &&
@@ -326,8 +331,6 @@ void MatchingEngine::cancel_order_immediate(uint64_t order_id)
                            .quantity = cancelled_order.remaining,
                            .ts = cancelled_order.ts,
                            .owner = cancelled_order.owner});
-
-    if (logger_) logger_->debug("[CANCEL] order_id=", order_id);
 }
 
 void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
@@ -438,10 +441,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .quantity = qty,
                                    .ts = new_order.ts,
                                    .owner = new_order.owner});
-
-            if (logger_)
-                logger_->debug("[RESTING] side=Buy order_id=", new_order.id, " qty=", qty,
-                               " price=", new_order.price);
         }
 
         // ==================== Sell-Side Matching ====================
@@ -546,10 +545,6 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .quantity = qty,
                                    .ts = new_order.ts,
                                    .owner = new_order.owner});
-
-            if (logger_)
-                logger_->debug("[RESTING] side=Sell order_id=", new_order.id, " qty=", qty,
-                               " price=", new_order.price);
         }
     }
 }

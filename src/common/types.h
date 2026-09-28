@@ -73,16 +73,3 @@ inline Side to_side(char c)
             return Side::Unknown;
     }
 }
-
-inline char to_char(Side s)
-{
-    switch (s)
-    {
-        case Side::Buy:
-            return 'B';
-        case Side::Sell:
-            return 'S';
-        default:
-            return 'N';
-    }
-}

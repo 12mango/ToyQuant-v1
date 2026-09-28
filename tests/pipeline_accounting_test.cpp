@@ -23,13 +23,13 @@ int main()
     std::ofstream trades("/tmp/pipeline_accounting_trades.csv");
     NaiveMarketMaker strategy(10, 0.1, 1.0);
     OrderBook order_book(1.0);
-    MatchingEngine engine(nullptr, 1.0,
+    MatchingEngine engine(1.0,
                           FeeSchedule{.maker_rate = 0.001,
                                       .taker_rate = 0.002,
                                       .quantity_scale = 1000});
     Portfolio portfolio(1000, 1000.0);
     Logger logger;
-    Pipeline pipeline(orders, trades, order_book, strategy, engine, portfolio, logger);
+    Pipeline pipeline(orders, trades, order_book, strategy, engine, portfolio);
 
     pipeline.process_event(BboQuote{1, "TEST", 99.0, 100, 101.0, 100, 1, "binance"});
     pipeline.process_event(MarketTrade{2, "TEST", 100.0, 10, Side::Sell, 2, "binance"});
@@ -43,12 +43,12 @@ int main()
     assert(std::abs(metrics.fees_paid - 0.001) < 1e-12);
     assert(pipeline.summary().trade_reports == 1);
 
-    Pipeline filtered_pipeline(orders, trades, order_book, strategy, engine, portfolio, logger);
+    Pipeline filtered_pipeline(orders, trades, order_book, strategy, engine, portfolio);
     filtered_pipeline.process_event(MarketTrade{3, "TEST", 110.0, 10, Side::Sell, 3, "binance"});
     assert(filtered_pipeline.summary().trade_reports == 0);
     assert(filtered_pipeline.summary().filtered_market_trades == 1);
 
-    Pipeline isolated_pipeline(orders, trades, order_book, strategy, engine, portfolio, logger);
+    Pipeline isolated_pipeline(orders, trades, order_book, strategy, engine, portfolio);
     isolated_pipeline.process_event(BboQuote{4, "TEST", 99.0, 100, 101.0, 100, 4, "binance"});
     bool rejected_mixed_exchange = false;
     try
@@ -76,10 +76,10 @@ int main()
                                                    .tick_size = 1.0,
                                                    .signal_mode = L2SignalMode::Baseline});
     OrderBook l2_execution_book(1.0);
-    MatchingEngine l2_engine(nullptr, 1.0);
+    MatchingEngine l2_engine(1.0);
     Portfolio l2_portfolio;
     Pipeline l2_pipeline(l2_orders, l2_trades, l2_execution_book, l2_strategy, l2_engine,
-                         l2_portfolio, logger);
+                         l2_portfolio);
     l2_pipeline.process_l2_market_view(L2MarketView{.symbol = "L2",
                                                     .ts = 10,
                                                     .top = TopOfBook{100.0, 100, 101.0, 100},
@@ -94,18 +94,23 @@ int main()
     assert(l2_pipeline.summary().trade_report_quantity == 10);
     assert(l2_pipeline.summary().queue_ahead_consumed == 100);
 
-    MatchingEngine deribit_fee_engine(
-        nullptr, 0.5, FeeSchedule{.maker_rate = 0.0002, .taker_rate = 0.0005, .quantity_scale = 1});
+    MatchingEngine deribit_fee_engine(0.5,
+        FeeSchedule{.maker_rate = 0.0002,
+                    .taker_rate = 0.0005,
+                    .quantity_scale = 1,
+                    .unit_notional_usd = 10.0});
     std::ofstream fee_orders("/tmp/pipeline_deribit_fee_orders.csv");
     std::ofstream fee_trades("/tmp/pipeline_deribit_fee_trades.csv");
     NaiveMarketMaker fee_strategy(1, 0.0, 0.5);
     OrderBook fee_book(0.5);
-    Portfolio fee_portfolio(1);
+    Portfolio fee_portfolio(1, 1000.0, 10.0);
     Pipeline fee_pipeline(fee_orders, fee_trades, fee_book, fee_strategy, deribit_fee_engine,
-                          fee_portfolio, logger);
+                          fee_portfolio);
     fee_pipeline.process_event(BboQuote{20, "BTC-PERPETUAL", 99.0, 100, 101.0, 100, 1,
                                         "deribit"});
     fee_pipeline.process_event(
         MarketTrade{21, "BTC-PERPETUAL", 100.0, 1, Side::Sell, 2, "deribit"});
-    assert(std::abs(fee_portfolio.metrics().fees_paid - 0.02) < 1e-12);
+    // One Deribit BTC-PERPETUAL contract is worth 10 USD, so the maker fee is 0.02% of 10 USD and
+    // not 0.02% of the quoted price.
+    assert(std::abs(fee_portfolio.metrics().fees_paid - 0.002) < 1e-12);
 }

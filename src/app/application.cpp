@@ -118,13 +118,13 @@ void Application::run_legacy_csv_mode() const
     auto output_files = open_output_files(csv_file);
     OrderBook order_book;
     auto strategy = make_strategy(cfg_.strategy_name);
-    MatchingEngine engine(&logger);
+    MatchingEngine engine;
     Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      portfolio, logger);
+                      portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     CsvFeed feed(
-        csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick, true); }, cfg_.delay,
+        csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick); }, cfg_.delay,
         &logger);
     feed.run();
     logger.log(pipeline.summary().to_log_string());
@@ -154,7 +154,7 @@ void Application::run_replay_mode() const
     auto output_files = open_output_files(source, "source_market_data");
     OrderBook order_book(instrument.tick_size);
     auto strategy = make_strategy(cfg_.strategy_name, &instrument);
-    MatchingEngine engine(&logger, instrument.tick_size,
+    MatchingEngine engine(instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
                                       .quantity_scale = instrument.quantity_scale,
@@ -162,11 +162,22 @@ void Application::run_replay_mode() const
                           1, cfg_.queue_model);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      portfolio, logger);
+                      portfolio);
+    // The replay can end holding a position, so the reported equity has to include its mark to
+    // market. Every other mode already does this; the L1 replay used to leave equity and
+    // unrealized PnL at zero no matter what the position was.
+    double final_mid = 0.0;
     ReplayFeed feed(
         make_market_data_readers("binance", trades_file, quotes_file, instrument),
-        [&](const MarketEvent& event) { pipeline.process_event(event); }, cfg_.delay);
+        [&](const MarketEvent& event)
+        {
+            if (const auto* quote = std::get_if<BboQuote>(&event))
+                final_mid = (quote->bid_price + quote->ask_price) / 2.0;
+            pipeline.process_event(event);
+        },
+        cfg_.delay);
     feed.run();
+    if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     const auto& validation = feed.validation_summary();
     logger.log("[DATA] status=", validation.has_soft_issues() ? "warning" : "ok",
                " events=", validation.events, " trades=", validation.trades,
@@ -207,7 +218,7 @@ void Application::run_l2_replay_mode() const
     OrderBook execution_book(instrument.tick_size);
     L2OrderBook l2_book(instrument.tick_size);
     auto strategy = make_strategy(cfg_.strategy_name, &instrument);
-    MatchingEngine engine(&logger, instrument.tick_size,
+    MatchingEngine engine(instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
                                       .quantity_scale = instrument.quantity_scale,
@@ -215,7 +226,7 @@ void Application::run_l2_replay_mode() const
                           1, cfg_.queue_model);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
-                      portfolio, logger, instrument.tick_size);
+                      portfolio, instrument.tick_size);
     pipeline.set_profiler(profiler);
     double final_mid = 0.0;
     MarketDataValidationConfig validation_config;
@@ -285,10 +296,10 @@ void Application::run_legacy_udp_mode() const
     auto output_files = open_output_files("udp://" + std::to_string(port));
     OrderBook order_book;
     auto strategy = make_strategy(cfg_.strategy_name);
-    MatchingEngine engine(&logger);
+    MatchingEngine engine;
     Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      portfolio, logger);
+                      portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     UdpFeed feed(port);
     feed.start();
@@ -298,7 +309,7 @@ void Application::run_legacy_udp_mode() const
     {
         if (feed.pop_tick(tick))
         {
-            tick_pipeline.process(tick, true);
+            tick_pipeline.process(tick);
         }
         else
         {

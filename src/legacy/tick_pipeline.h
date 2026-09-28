@@ -17,13 +17,13 @@ class TickPipeline
     {
     }
 
-    void process(const Tick& tick, bool enable_print = true)
+    void process(const Tick& tick)
     {
         legacy_book_.on_tick(tick);
         engine_.process_market_trade(
             MarketTrade{tick.ts, tick.symbol, tick.price, tick.size, tick.side, 0, {}});
-        pipeline_.process_top_of_book(tick.symbol, tick.ts, market_book_.market_top(tick.symbol),
-                          enable_print);
+        pipeline_.process_top_of_book(tick.symbol, tick.ts,
+                                      market_book_.market_top(tick.symbol));
     }
 
    private:

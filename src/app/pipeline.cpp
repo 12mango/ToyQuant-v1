@@ -5,7 +5,6 @@
 
 #include "backtest/performance.h"
 #include "exchange/execution_report.h"
-#include "utils/logger.h"
 
 namespace
 {
@@ -51,15 +50,14 @@ void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
 
 Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
                    Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio,
-                   Logger& logger, double tick_size)
+                   double tick_size)
     : orders_out_(orders_out),
       trades_out_(trades_out),
       order_book_(order_book),
       strategy_(strategy),
       engine_(engine),
       portfolio_(portfolio),
-    logger_(logger),
-    tick_size_(tick_size)
+      tick_size_(tick_size)
 {
     engine_.set_report_callback(
         [this](const ExecutionReport& report)
@@ -128,7 +126,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
         });
 }
 
-void Pipeline::process_event(const MarketEvent& event, bool enable_print)
+void Pipeline::process_event(const MarketEvent& event)
 {
     const auto exchange = std::visit([](const auto& value) { return value.exchange; }, event);
     if (!exchange.empty())
@@ -140,7 +138,7 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
     }
 
     std::visit(
-        [this, enable_print](const auto& value)
+        [this](const auto& value)
         {
             using Event = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<Event, MarketTrade>)
@@ -187,7 +185,7 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
                     static_cast<double>(inventory_samples_);
                 execution_quality_.max_abs_inventory =
                     std::max(execution_quality_.max_abs_inventory, std::abs(position_));
-                process_top_of_book(value.symbol, value.ts, top, enable_print);
+                process_top_of_book(value.symbol, value.ts, top);
             }
             else
             {
@@ -197,21 +195,13 @@ void Pipeline::process_event(const MarketEvent& event, bool enable_print)
         event);
 }
 
-void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top,
-                                   bool enable_print)
+void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top)
 {
-    if (enable_print)
-        logger_.debug("[TOP] symbol=", symbol, " ts=", ts, " bid=", top.bid_price, "@",
-                      top.bid_size, " ask=", top.ask_price, "@", top.ask_size);
     submit_strategy_actions(symbol, ts, top);
 }
 
-void Pipeline::process_l2_market_view(const L2MarketView& view, bool enable_print)
+void Pipeline::process_l2_market_view(const L2MarketView& view)
 {
-    if (enable_print)
-        logger_.debug("[L2] symbol=", view.symbol, " ts=", view.ts, " bid=",
-                      view.top.bid_price, " ask=", view.top.ask_price,
-                      " imbalance=", view.depth_imbalance, " micro=", view.micro_price);
     if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
     {
         const BboQuote quote{.ts = view.ts,

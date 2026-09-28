@@ -34,7 +34,7 @@ class BacktestDriver
 {
    public:
     BacktestDriver(const std::string& tick_file, const std::string& orders_file,
-                   const std::string& trades_file, double slippage, double fee_rate, RunMode mode,
+                   const std::string& trades_file, double slippage, double fee_rate,
                    Logger& logger);
     void run();
 
@@ -46,7 +46,6 @@ class BacktestDriver
     std::string trades_file_;
     double slippage_;
     double fee_rate_;
-    RunMode mode_;
 
     std::unordered_map<std::string, double> last_price;
     Portfolio portfolio_;

@@ -44,6 +44,8 @@ int main(int argc, char** argv)
     if (argc > 5) fee_rate = std::atof(argv[5]);
     if (argc > 6)
     {
+        // Accepted and reported for CLI compatibility. BacktestDriver evaluates both values
+        // identically, so nothing downstream branches on it.
         std::string m = argv[6];
         mode = (m == "realtime" ? RunMode::Realtime : RunMode::Backtest);
     }
@@ -77,7 +79,7 @@ int main(int argc, char** argv)
                    "Log file:      ", log_file);
 
         legacy::BacktestDriver driver(tick_file, orders_file, trades_file, slippage, fee_rate,
-                          mode, logger);
+                                      logger);
         driver.run();
     }
     catch (const std::exception& ex)

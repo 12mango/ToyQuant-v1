@@ -49,7 +49,10 @@ class Portfolio
         : quantity_scale_(quantity_scale == 0 ? 1 : quantity_scale),
           unit_notional_usd_(unit_notional_usd),
           initial_cash_(initial_cash),
-          cash_(initial_cash)
+          cash_(initial_cash),
+          // Matches reset(). Leaving equity at its default of zero made a summary that never
+          // marks to market report equity as zero while cash was correct.
+          equity_(initial_cash)
     {
     }
 

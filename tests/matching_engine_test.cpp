@@ -135,7 +135,7 @@ int main()
                                   report.quantity == 10;
                        }));
 
-    MatchingEngine bbo_engine(nullptr, 0.1);
+    MatchingEngine bbo_engine(0.1);
     std::vector<ExecutionReport> bbo_reports;
     bbo_engine.set_report_callback([&bbo_reports](const ExecutionReport& report)
                                    { bbo_reports.push_back(report); });
@@ -157,7 +157,7 @@ int main()
     assert(has_report(bbo_reports, 50, ExecType::Trade, 30));
     assert(has_report(bbo_reports, 50, ExecType::Filled, 0));
 
-    MatchingEngine queued_engine(nullptr, 0.1);
+    MatchingEngine queued_engine(0.1);
     std::vector<ExecutionReport> queued_reports;
     queued_engine.set_report_callback([&queued_reports](const ExecutionReport& report)
                                       { queued_reports.push_back(report); });
@@ -177,7 +177,7 @@ int main()
     assert(queued_engine.queue_ahead_consumed(Side::Buy) == 50);
     assert(queued_engine.queue_ahead_levels_cleared(Side::Buy) == 1);
 
-    MatchingEngine conservative_queue_engine(nullptr, 0.1, {}, 0, QueueModel::Conservative);
+    MatchingEngine conservative_queue_engine(0.1, {}, 0, QueueModel::Conservative);
     std::vector<ExecutionReport> conservative_queue_reports;
     conservative_queue_engine.set_report_callback(
         [&conservative_queue_reports](const ExecutionReport& report)
@@ -195,7 +195,7 @@ int main()
     assert(!has_report(conservative_queue_reports, 80, ExecType::Trade, 10));
     assert(conservative_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 0);
 
-    MatchingEngine optimistic_queue_engine(nullptr, 0.1, {}, 0, QueueModel::Optimistic);
+    MatchingEngine optimistic_queue_engine(0.1, {}, 0, QueueModel::Optimistic);
     std::vector<ExecutionReport> optimistic_queue_reports;
     optimistic_queue_engine.set_report_callback(
         [&optimistic_queue_reports](const ExecutionReport& report)
@@ -212,7 +212,7 @@ int main()
     assert(has_report(optimistic_queue_reports, 81, ExecType::Trade, 10));
     assert(optimistic_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 50);
 
-    MatchingEngine heuristic_queue_engine(nullptr, 0.1, {}, 0, QueueModel::Heuristic, 0.5);
+    MatchingEngine heuristic_queue_engine(0.1, {}, 0, QueueModel::Heuristic, 0.5);
     heuristic_queue_engine.process_l2_top({34, "HEURISTIC", 100.0, 50, 100.1, 40, 2, "test"});
     heuristic_queue_engine.send_order({82, "HEURISTIC", exchange::Side::Buy,
                                        exchange::OrderType::Limit, 100.0, 10, 10, 35,
@@ -230,7 +230,7 @@ int main()
     assert(has_report(queued_reports, 53, ExecType::Trade, 1));
     assert(has_report(queued_reports, 53, ExecType::PartialFill, 9));
 
-    MatchingEngine delayed_cancel_engine(nullptr, 0.1, {}, 1);
+    MatchingEngine delayed_cancel_engine(0.1, {}, 1);
     std::vector<ExecutionReport> delayed_cancel_reports;
     delayed_cancel_engine.set_report_callback(
         [&delayed_cancel_reports](const ExecutionReport& report)
@@ -249,7 +249,7 @@ int main()
                          [](const ExecutionReport& report)
                          { return report.exec_type == ExecType::Cancelled; }) == 0);
 
-    MatchingEngine cancel_engine(nullptr, 0.1, {}, 2);
+    MatchingEngine cancel_engine(0.1, {}, 2);
     std::vector<ExecutionReport> cancel_reports;
     cancel_engine.set_report_callback([&cancel_reports](const ExecutionReport& report)
                                       { cancel_reports.push_back(report); });
@@ -292,7 +292,7 @@ int main()
     // queue of zero whenever its price was not exactly the best price, so it filled in full as
     // soon as any trade printed through its level.
     {
-        MatchingEngine behind_engine(nullptr, 0.1, {});
+        MatchingEngine behind_engine(0.1, {});
         std::vector<ExecutionReport> behind_reports;
         behind_engine.set_report_callback([&behind_reports](const ExecutionReport& report)
                                           { behind_reports.push_back(report); });
@@ -315,8 +315,37 @@ int main()
         assert(has_report(behind_reports, 91, ExecType::Trade, 10));
     }
 
-    MatchingEngine fee_engine(
-        nullptr, 0.1, FeeSchedule{.maker_rate = 0.001, .taker_rate = 0.002, .quantity_scale = 100});
+    // A public trade consumes the displayed size, so a later taker order cannot fill against
+    // liquidity that has already traded. This block used to be gated on the queue model symbol
+    // set, which only the L2 entry point populates, so on the L1 path the stored best bid and ask
+    // quantities never shrank from public trades.
+    {
+        MatchingEngine depth_engine(0.1, FeeSchedule{.quantity_scale = 1});
+        std::vector<ExecutionReport> depth_reports;
+        depth_engine.set_report_callback([&depth_reports](const ExecutionReport& report)
+                                         { depth_reports.push_back(report); });
+
+        // Best ask shows 30 at 99.1.
+        depth_engine.process_bbo({1000, "TEST", 99.0, 100, 99.1, 30, 1, "test"});
+        // The market takes 25 of that level.
+        depth_engine.process_market_trade({1001, "TEST", 99.1, 25, Side::Buy, 0, "test"});
+
+        // Only 5 is left to take, so a 20 lot buy fills 5 from the displayed size and rests 15.
+        depth_engine.send_order({81, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 99.1,
+                                 20, 20, 1002, "MarketMaker"});
+        const auto depth_trade =
+            std::find_if(depth_reports.begin(), depth_reports.end(),
+                         [](const ExecutionReport& report)
+                         {
+                             return report.exec_type == ExecType::Trade && report.order_id == 81;
+                         });
+        assert(depth_trade != depth_reports.end());
+        assert(depth_trade->quantity == 5);
+        assert(depth_trade->liquidity_role == LiquidityRole::Taker);
+        assert(has_report(depth_reports, 81, ExecType::PartialFill, 15));
+    }
+
+    MatchingEngine fee_engine(0.1, FeeSchedule{.maker_rate = 0.001, .taker_rate = 0.002, .quantity_scale = 100});
     std::vector<ExecutionReport> fee_reports;
     fee_engine.set_report_callback([&fee_reports](const ExecutionReport& report)
                                    { fee_reports.push_back(report); });
@@ -345,8 +374,7 @@ int main()
     // asset price. One Deribit BTC-PERPETUAL contract is worth 10 USD, so a 0.02% maker fee is
     // 0.002 USD. Charging on the BTC price instead would report about 1.27 USD per contract.
     {
-        MatchingEngine contract_engine(
-            nullptr, 0.5,
+        MatchingEngine contract_engine(0.5,
             FeeSchedule{.maker_rate = 0.0002,
                         .taker_rate = 0.0005,
                         .quantity_scale = 1,
@@ -374,8 +402,7 @@ int main()
         assert(std::abs(contract_trade->fee - 0.002) < 1e-12);
 
         // A spot style instrument ignores the field and keeps charging on the price.
-        MatchingEngine spot_engine(
-            nullptr, 0.5,
+        MatchingEngine spot_engine(0.5,
             FeeSchedule{.maker_rate = 0.0002,
                         .taker_rate = 0.0005,
                         .quantity_scale = 1,

@@ -13,6 +13,11 @@
 
 UdpFeed::UdpFeed(int port) : port_(port), recv_bufs_(BATCH) {}
 
+UdpFeed::~UdpFeed()
+{
+    stop();
+}
+
 static inline void set_sock_rcvbuf(int fd, int mb)
 {
     int val = mb * 1024 * 1024;
@@ -161,7 +166,6 @@ void UdpFeed::loop()
             {
                 ring_[h] = t;
                 head_.store(next, std::memory_order_release);
-                tick_count_.fetch_add(1);
             }
         }
     }
@@ -196,7 +200,6 @@ void UdpFeed::loop()
         {
             ring_[h] = t;
             head_.store(next, std::memory_order_release);
-            tick_count_.fetch_add(1);
         }
     }
 #endif
@@ -212,11 +215,4 @@ bool UdpFeed::pop_tick(legacy::Tick& t)
     t = ring_[tl];
     tail_.store((tl + 1) % RING_SIZE);
     return true;
-}
-
-size_t UdpFeed::unread_count() const
-{
-    size_t h = head_.load();
-    size_t t = tail_.load();
-    return (h >= t) ? (h - t) : (RING_SIZE - t + h);
 }

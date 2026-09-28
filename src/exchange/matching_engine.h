@@ -12,8 +12,6 @@
 #include "market/market_event.h"
 #include "order.h"
 
-class Logger;
-
 struct FeeSchedule
 {
     double maker_rate{0.0};
@@ -79,13 +77,12 @@ class MatchingEngine : public IMatchingEngine
    public:
     using ReportCallback = std::function<void(const ExecutionReport&)>;
 
-    explicit MatchingEngine(Logger* logger = nullptr, double tick_size = PRICE_TICK_SIZE,
-                             FeeSchedule fee_schedule = {}, uint64_t cancel_delay_events = 0,
+    explicit MatchingEngine(double tick_size = PRICE_TICK_SIZE, FeeSchedule fee_schedule = {},
+                             uint64_t cancel_delay_events = 0,
                              QueueModel queue_model = QueueModel::Conservative,
                              double heuristic_cancel_ahead_ratio = 0.5,
                              double heuristic_max_reduction_fraction = 0.25)
-                : logger_(logger),
-                    tick_size_(tick_size),
+                : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
                     queue_model_(queue_model),
                     heuristic_cancel_ahead_ratio_(heuristic_cancel_ahead_ratio),
@@ -166,7 +163,6 @@ class MatchingEngine : public IMatchingEngine
     std::unordered_set<std::string> queue_ahead_symbols_;
     std::unordered_map<uint64_t, exchange::Order*> order_index_;
     ReportCallback report_cb_;
-    Logger* logger_;
     double tick_size_;
     FeeSchedule fee_schedule_;
     uint64_t queue_ahead_consumed_{0};

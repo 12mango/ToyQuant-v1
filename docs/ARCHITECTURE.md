@@ -465,9 +465,13 @@ The main matching rules are:
 - External ticks become `Market` orders, so they consume strategy liquidity but are never rested.
 - Each price level uses FIFO order and matches the best executable price first.
 - Owner normalization prevents `MarketMaker` from trading with itself.
+- A public trade that prints at the stored best bid or ask reduces that stored best size, so a
+    later taker order cannot fill against displayed liquidity that has already traded. This is
+    separate from the queue model and applies on every replay path.
 - In L2 replay, a maker order submitted at the displayed best price joins behind the displayed
     top-level quantity. Subsequent market trades consume this `external_queue_ahead` before local
-    FIFO orders become eligible to fill. Ordinary L1 replay keeps its existing BBO semantics.
+    FIFO orders become eligible to fill. Ordinary L1 replay keeps its existing BBO semantics, so an
+    L1 maker fill is not charged any queue position.
 
 The matching algorithm is a direct price-time implementation:
 
@@ -824,6 +828,10 @@ only when its behavior remains reasonable across multiple windows, dates, and qu
 
 The L2 replay applies a fixed one-market-event cancellation delay. Legacy CSV/UDP and ordinary
 snapshot replay use the configured delay path; this delay is event-count based, not milliseconds.
+Every replay mode marks the portfolio to market at the last market price before reporting, so
+`equity` and `unrealized_pnl` account for any position still open when the input ends. The L1
+replay path used to skip that step, which left both fields at zero while `cash` was populated.
+
 The run summary also records `audited_orders`, `audited_filled_orders`,
 `audited_cancelled_orders`, `cancelled_after_fill_orders`, `cancelled_before_fill_orders`, and
 `total_order_lifetime_cycles`. The last field counts quote decision cycles, not elapsed time.

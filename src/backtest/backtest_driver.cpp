@@ -63,13 +63,12 @@ inline uint64_t safe_stoull(const std::string& s)
 // ==================== Construction ====================
 BacktestDriver::BacktestDriver(const std::string& tick_file, const std::string& orders_file,
                                const std::string& trades_file, double slippage, double fee_rate,
-                               RunMode mode, Logger& logger)
+                               Logger& logger)
     : tick_file_(tick_file),
       orders_file_(orders_file),
       trades_file_(trades_file),
       slippage_(slippage),
       fee_rate_(fee_rate),
-      mode_(mode),
       portfolio_(1, InitialCapital),
       logger_(logger)
 {
@@ -213,11 +212,6 @@ void BacktestDriver::run()
             .liquidity_role = trade.liquidity_role,
             .fee = fee};
         portfolio_.apply(report);
-        const auto portfolio_metrics = portfolio_.metrics();
-
-        logger_.debug("[TRADE] ", trade.symbol, " side=", to_char(trade.side),
-                      " price=", exec_price, " qty=", trade.quantity, " fee=", fee,
-                      " realized_pnl=", portfolio_metrics.realized_pnl);
     };
 
     std::size_t trade_index = 0;
