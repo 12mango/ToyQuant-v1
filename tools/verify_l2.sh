@@ -26,6 +26,7 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 BIN="${2:-out/build/linux-debug/toy_quant}"
+DOC_CHECK_LOG="$(mktemp)"
 TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 L1_TRADES=data/v2/test_aggTrades_5k.csv
 L1_BBO=data/v2/test_bookTicker_5k.csv
@@ -55,13 +56,20 @@ tier1() {
         grep -oE 'submitted_orders=13734|trade_reports=2277|fill_rate=0.175872|realized_pnl=-33.7861|equity=966.196' | tokens)
   [ "$l2" = "$L2_WANT" ] || rc=1
   [ "$l1" = "$L1_WANT" ] || rc=1
-  if [ $rc -eq 0 ]; then
+  # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
+  # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
+  # as the invariants, on the same slices, so a documented value that stops being true fails a run.
+  local doc_check=0
+  python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
+    > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
+  if [ $rc -eq 0 ] && [ $doc_check -eq 0 ]; then
     echo "tier1 OK"
     return 0
   fi
   echo "tier1 MISMATCH"
   [ "$l2" = "$L2_WANT" ] || { echo "  L2 want: $L2_WANT"; echo "  L2 got : $l2"; }
   [ "$l1" = "$L1_WANT" ] || { echo "  L1 want: $L1_WANT"; echo "  L1 got : $l1"; }
+  [ $doc_check -eq 0 ] || sed 's/^/  doc: /' "$DOC_CHECK_LOG"
   return 1
 }
 

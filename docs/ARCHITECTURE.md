@@ -698,20 +698,24 @@ control has a distinct purpose:
 5. **Quote size.** Volatility stress reduces both sides toward a configurable minimum quantity
     ratio. Inventory reduces only the risky side. Above `inventory_risk_threshold`, the risky side is
     disabled and only the inventory-reducing side remains.
-6. **Lifecycle and measurement.** A changed quote first requests cancellation; replacement waits for
-    cancellation reports. The strategy tracks quote-cycle lifetime, delayed markout, adverse
-    selection, inventory path statistics, fills, cancels, and submitted quantity.
+6. **Lifecycle.** A changed quote first requests cancellation; replacement waits for cancellation
+    reports. The strategy counts what it owns: submitted quantity, fills, cancels, quotes, quote
+    refreshes and the queue it consumed. Execution quality is not among them; see below.
 
 The tunable values are grouped in `L1MarketMakerConfig`. The legacy positional constructor remains
 for compatibility, while the application entry point uses the named configuration object. The
 configuration is deliberately in-process rather than JSON/YAML: this project is an educational
 simulator, not a production configuration service.
 
-`StrategyMetrics` exposes the L1 measurements through the common strategy interface. The runtime
-summary can therefore report L1-specific observations without downcasting the strategy. These
-metrics are execution diagnostics: `captured_edge` is an immediate midpoint comparison, while
-`adverse_selection` is a later markout after `markout_horizon_quotes` BBO cycles. Neither includes
-fees or constitutes a complete portfolio PnL calculation.
+`StrategyMetrics` carries only what a strategy owns, so the runtime summary can report L1-specific
+counters without downcasting the strategy: submitted quantity, fills, cancels, quotes and quote
+refreshes. Execution quality is deliberately not included. `captured_edge` is an immediate midpoint
+comparison and `adverse_selection` is a later markout after five quote cycles; both belong to
+`ExecutionQualityMetrics` in the pipeline, which computes them once for every strategy from the same
+reports and the same market events, and prints them in `[EXECUTION]`. The L1 makers used to keep a
+second copy of those quantities from their own view of the mid, and it was deleted rather than
+reconciled because the two could disagree and nothing compared them. Neither number includes fees or
+constitutes a complete portfolio PnL calculation.
 
 ### 6.4 ActiveL2MarketMaker: L2 mainline
 

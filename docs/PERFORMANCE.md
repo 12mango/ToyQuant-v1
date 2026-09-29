@@ -238,8 +238,8 @@ the checks are split by what they are for:
 
 | Tier | Command | Cost | Purpose |
 |---|---|---|---|
-| 1 | `bash tools/verify_l2.sh fast` | ~1 s | L2 200k and L1 invariants, on every edit |
-| 2 | `bash tools/verify_l2.sh all` | ~15 s | adds the full-file stdout hash, before accepting |
+| 1 | `bash tools/verify_l2.sh fast` | ~3 s | L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
+| 2 | `bash tools/verify_l2.sh all` | ~20 s | adds the full-file stdout hash, before accepting |
 
 Tier 1 compares batch counts, order and fill counts, realised PnL and consumed queue position, which is
 what a reader or book change can actually break. Tier 2 is what makes a timing claim defensible,
