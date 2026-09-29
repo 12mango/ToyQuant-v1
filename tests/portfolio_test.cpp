@@ -117,4 +117,50 @@ int main()
         assert(std::abs(perp.metrics().realized_pnl + 1.007) < 1e-9);
         assert(std::abs(perp.metrics().cash - 998.993) < 1e-9);
     }
+
+    // One trade that both closes a position and opens the opposite one. The closing part is valued from the
+    // entry price and the opening part at the trade price, and the new side's average price has to be the
+    // trade price alone: blending it with the closed side's entry is the classic form of this bug, and it is
+    // silent because every total still looks plausible afterwards.
+    {
+        Portfolio flip(1, 1000.0, 10.0);
+        // Long two contracts at 6000, so cash pays 20 USD of notional and the position is +2.
+        flip.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 6000.0,
+                                   .quantity = 2,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.0});
+        assert(flip.find_position("BTC-PERPETUAL")->quantity == 2);
+        assert(std::abs(flip.metrics().cash - 980.0) < 1e-9);
+
+        // Sell five at 6600: two close the long, three open a short.
+        flip.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 6600.0,
+                                   .quantity = 5,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Taker,
+                                   .fee = 0.0});
+        const auto* short_position = flip.find_position("BTC-PERPETUAL");
+        assert(short_position->quantity == -3);
+        assert(std::abs(short_position->average_price - 6600.0) < 1e-9);
+        // 20 USD of exposure moved 10%, so the closed part realises 2 USD.
+        assert(std::abs(flip.metrics().realized_pnl - 2.0) < 1e-9);
+        // 980 in cash, plus the 22 received for the closed long, plus the 30 notional of the new short.
+        assert(std::abs(flip.metrics().cash - 1032.0) < 1e-9);
+
+        // Marked at the short's own entry price, equity is the starting cash plus what has been realised.
+        flip.mark_to_market({{"BTC-PERPETUAL", 6600.0}});
+        assert(std::abs(flip.metrics().unrealized_pnl) < 1e-9);
+        assert(std::abs(flip.metrics().equity - 1002.0) < 1e-9);
+
+        // A move back to 6000 gains on the short: 30 USD of exposure, marked at 6000/6600 of its entry.
+        flip.mark_to_market({{"BTC-PERPETUAL", 6000.0}});
+        assert(std::abs(flip.metrics().unrealized_pnl - 2.727272727) < 1e-6);
+        assert(std::abs(flip.metrics().equity - 1004.727272727) < 1e-6);
+    }
 }
