@@ -45,6 +45,10 @@ struct AppConfig
     // default the recorded runs use. 0 means "use the default". It exists because the fill count is
     // dominated by where the quote sits, and that has to be measurable rather than argued about.
     double base_spread_ticks = 0.0;
+    // How far the fair price has to move before a resting quote is pulled and replaced, in ticks.
+    // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
+    // that is replaced on every twitch never holds a queue position long enough to reach the front.
+    uint64_t refresh_price_ticks_override = 0;
     // 0 disables per-stage profiling. Otherwise this is the sampling interval in events,
     // so 64 times the 64th event of every 64.
     uint64_t profile_sample_interval = 0;

@@ -13,7 +13,8 @@
 namespace
 {
 L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
-                                        int64_t inventory_limit, double base_spread)
+                                        int64_t inventory_limit, double base_spread,
+                                        uint64_t refresh_price_ticks)
 {
     return L2MarketMakerConfig{.order_size = order_size,
                                .base_spread = base_spread,
@@ -26,7 +27,7 @@ L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
                                // was made explicit, so this sets exactly the old set.
                                .flow_guard = true,
                                .trade_window = 16ULL,
-                               .refresh_price_ticks = 2,
+                               .refresh_price_ticks = refresh_price_ticks,
                                .max_quote_age = 50,
                                .toxicity_flow_threshold = 0.65};
 }
@@ -52,7 +53,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                         double l1_fee_spread_multiplier,
                                         uint64_t order_size_override,
                                         int64_t inventory_limit_override,
-                                        double base_spread_ticks_override)
+                                        double base_spread_ticks_override,
+                                        uint64_t refresh_price_ticks_override)
 {
     const uint64_t derived_order_size =
         instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
@@ -87,7 +89,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     if (strategy_name == "inventory_aware_l2")
     {
         const auto base_config =
-            make_flow_l2_config(order_size, tick_size, inventory_limit, spread);
+            make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
+                                refresh_price_ticks_override > 0 ? refresh_price_ticks_override
+                                                                : 2);
         return std::make_unique<InventoryAwareL2MarketMaker>(
             InventoryAwareL2MarketMakerConfig{.base = base_config,
                                                .inventory_limit = inventory_limit,
@@ -96,7 +100,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     if (strategy_name == "active_l2" || strategy_name == "adaptive_l2")
     {
         const auto base_config =
-            make_flow_l2_config(order_size, tick_size, inventory_limit, spread);
+            make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
+                                refresh_price_ticks_override > 0 ? refresh_price_ticks_override
+                                                                : 2);
         return std::make_unique<ActiveL2MarketMaker>(make_active_l2_config(base_config));
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||
@@ -112,7 +118,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         const bool public_flow_strategy = strategy_name == "l2" || strategy_name == "flow_aware_l2";
         if (public_flow_strategy)
             return std::make_unique<L2MarketMaker>(
-                make_flow_l2_config(order_size, tick_size, inventory_limit, spread));
+                make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
+                                refresh_price_ticks_override > 0 ? refresh_price_ticks_override
+                                                                : 2));
         // The flow strategies returned above through make_flow_l2_config, so the ternaries that used to
         // sit on these values could never take their flow branch. They are spelled out now, which is
         // also what makes the difference between the two configurations readable.
@@ -125,7 +133,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
             .trade_imbalance_shift = tick_size,
             .signal_mode = signal_mode,
             .trade_window = 32,
-            .refresh_price_ticks = 1,
+            .refresh_price_ticks = refresh_price_ticks_override > 0 ? refresh_price_ticks_override
+                                                                   : 1,
             .max_quote_age = 20,
             .toxicity_flow_threshold = 2.0,
             .weak_flow_threshold = 0.9,

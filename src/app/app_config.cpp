@@ -20,6 +20,7 @@ constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
+constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -198,11 +199,21 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.base_spread_ticks = ticks;
             }
+            else if (flag.compare(0, kRefreshPrefix.size(), kRefreshPrefix) == 0)
+            {
+                uint64_t ticks = 0;
+                if (!parse_unsigned(flag.substr(kRefreshPrefix.size()), ticks) || ticks == 0)
+                {
+                    error = "--refresh-price-ticks must be a positive integer";
+                    return false;
+                }
+                cfg.refresh_price_ticks_override = ticks;
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
                         "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
-                        "--max-position=N, or --base-spread-ticks=N";
+                        "--max-position=N, --base-spread-ticks=N, or --refresh-price-ticks=N";
                 return false;
             }
         }

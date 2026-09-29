@@ -159,7 +159,7 @@ void Application::run_replay_mode() const
     // line, because the instrument's quantity scale is not an economic scale for a contract.
     auto strategy = make_strategy(cfg_.strategy_name, &instrument, {}, 0.60, 2.5, 0.10, 0.40,
                                   cfg_.order_size_override, cfg_.inventory_limit_override,
-                                  cfg_.base_spread_ticks);
+                                  cfg_.base_spread_ticks, cfg_.refresh_price_ticks_override);
     MatchingEngine engine(instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,
@@ -229,7 +229,7 @@ void Application::run_l2_replay_mode() const
     L2OrderBook l2_book(instrument.tick_size);
     auto strategy = make_strategy(cfg_.strategy_name, &instrument, {}, 0.60, 2.5, 0.10, 0.40,
                                   cfg_.order_size_override, cfg_.inventory_limit_override,
-                                  cfg_.base_spread_ticks);
+                                  cfg_.base_spread_ticks, cfg_.refresh_price_ticks_override);
     MatchingEngine engine(instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                       .taker_rate = instrument.taker_fee_rate,

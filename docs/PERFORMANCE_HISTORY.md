@@ -717,6 +717,78 @@ and finding out whether the remaining fills are enough to measure, or changing t
 a longer horizon, a different instrument, or a venue whose fee is small against its tick. Both are
 decisions about what the demo is for; neither is a code change, because the placement lever now exists.
 
+### What the fill model assumes, and what a realistic one would need
+
+The queue model is the part of this simulator a reader should distrust first, so here is what it
+assumes and which of those assumptions the data can check.
+
+**The spine, in order of how much is assumed.**
+
+1. **Price-time priority.** A resting order fills after everything ahead of it at its price, in arrival
+   order, and new size at the same price joins behind it. That is what the engine implements and what a
+   FIFO venue does.
+2. **Our order is invisible to us.** The displayed size comes from the venue, so it is other
+   participants: a 10-contract quote is 0.05% of a median level here and does not move it.
+3. **Trades consume the front, exactly.** A print of size `t` at our price removes `t` from the queue
+   ahead and fills us once that queue is gone. Nothing is assumed here, it is arithmetic.
+4. **Cancellations are the rest, and they are the only real assumption.** A level's displayed size
+   falls by `r`; trades explain a measured 0.04% of that, so 99.96% is cancel or amendment. Where in
+   the queue those cancels sit is not public. `ProRata` assumes they are spread uniformly, which
+   shrinks the queue ahead in proportion to the display:
+
+   ```
+   queue_ahead -= queue_ahead * r / previous_displayed
+   ```
+
+   `Conservative` (nothing comes off) and `Optimistic` (all of it does) bracket that.
+
+**So there is no free parameter to tune.** The cancel share is measured and the placement of those
+cancels is bounded by the two extremes, which is why the honest presentation is a range across all
+three and why the default is now the neutral member rather than the most skeptical one: a model that
+advances the queue only when a trade prints is not conservative, it contradicts the measured mechanism
+by three orders of magnitude.
+
+**What a more realistic model would need, ordered by how much it would move the answers.**
+
+1. **Cancel position, observed instead of assumed.** Only order-level data can settle it, and this feed
+   does not carry order identity. The range stands until a source that does is used.
+2. **Latency in milliseconds.** The engine counts cancellation delay in market events, not time. At this
+   feed's rate an event is under a millisecond, so the model cannot express the case that costs a maker
+   money: our cancel arriving after the market has moved.
+3. **Our own order larger than the print.** The engine can carry a partial fill, but on this workload
+   our 10-contract quotes are always smaller than the prints that reach them, so that path is not
+   exercised.
+4. **Repricing and time priority.** A venue that lets an existing order be modified keeps its place;
+   this feed does not publish order identity, so whether an increase at our price is new size behind us
+   or an amendment ahead of us cannot be measured here.
+
+### The fill count is available; the edge is what is missing
+
+The requote policy turned out to be the largest single lever, larger than quote placement and
+comparable to the queue model itself:
+
+| `--refresh-price-ticks` | 1 | 2 (default) | 4 | 8 | 16 |
+|---|---:|---:|---:|---:|---:|
+| submitted orders | 682 | 271 | 182 | 171 | 168 |
+| **fills** | 3 | **11** | **21** | 23 | 23 |
+| fill rate | 0.44% | 4.06% | 11.5% | 13.5% | 13.7% |
+| captured edge USD | 0.0012 | 0.0035 | 0.0016 | 0.0047 | 0.0047 |
+| fees paid USD | 0.006 | 0.022 | 0.042 | 0.046 | 0.046 |
+| realized PnL USD | +0.015 | -0.015 | -0.109 | -0.147 | -0.147 |
+
+All at the touch and under the calibrated model, with only the requote threshold changing. Holding a
+quote longer instead of re-joining the back of the queue is worth a factor of two in fills between the
+default and four ticks, and eight times between the shortest and the longest setting, saturating near
+23. So the fills are there to be taken; the early fill counts were a symptom of a quote that never held
+its place rather than of a market that could not reach it.
+
+What is not there is an edge that pays for them. Fees rise with the fill count and the captured edge
+does not, so every additional fill loses more: fees are 10x the captured edge at the long settings and
+3x at the default, and the only positive cell in the table is the shortest requote setting with three
+fills, which is a sample the markout immediately contradicts at -0.5 ticks. The conclusion is that the
+next question is not how to fill more, it is what a maker can capture on this instrument that exceeds a
+0.02% fee on a fixed 10 USD face value.
+
 ## Interpretation and Next Step
 
 The wall-clock baselines include startup, parsing, simulation, and output I/O; they do not identify
