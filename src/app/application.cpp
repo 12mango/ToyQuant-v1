@@ -169,6 +169,10 @@ void Application::run_replay_mode() const
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, instrument.tick_size);
+    // The replay path reports the same collateral and quantity scale as the L2 path, so its exposure
+    // and edge figures are in dollars rather than in raw instrument units.
+    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale);
+    pipeline.set_position_limit(cfg_.position_limit);
     // The replay can end holding a position, so the reported equity has to include its mark to
     // market. Every other mode already does this; the L1 replay used to leave equity and
     // unrealized PnL at zero no matter what the position was.
@@ -238,7 +242,7 @@ void Application::run_l2_replay_mode() const
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
     // enforced. 0, the default, reports the ceiling without blocking anything.
-    pipeline.set_collateral(1000.0, instrument.unit_notional_usd);
+    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale);
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_profiler(profiler);
     double final_mid = 0.0;

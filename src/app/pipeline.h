@@ -47,12 +47,17 @@ class Pipeline
         position_limit_ = limit;
     }
 
-    // Collateral report inputs: the cash the run started with, and the USD value of one quantity unit
-    // where 0 means the traded price is the unit value, which is the spot case.
-    void set_collateral(double starting_cash_usd, double unit_notional_usd)
+    // Collateral report inputs: the cash the run started with, the USD value of one quantity unit
+    // where 0 means the traded price is the unit value (the spot case), and the quantity scale the
+    // instrument counts in. The scale matters because quantities are raw instrument units: one BTCUSDT
+    // unit is a millionth of a BTC, so a notional computed from raw quantities is a million times too
+    // large, which is exactly what the first version of these fields reported.
+    void set_collateral(double starting_cash_usd, double unit_notional_usd,
+                        uint64_t quantity_scale = 1)
     {
         starting_cash_usd_ = starting_cash_usd;
         unit_notional_usd_ = unit_notional_usd;
+        quantity_scale_ = quantity_scale == 0 ? 1 : quantity_scale;
     }
 
     // Optional per-stage timing. The profiler is owned by the caller and has to outlive
@@ -106,6 +111,7 @@ class Pipeline
     uint64_t risk_rejected_orders_{0};
     double starting_cash_usd_{0.0};
     double unit_notional_usd_{0.0};
+    uint64_t quantity_scale_{1};
     double max_abs_exposure_usd_{0.0};
     uint64_t exposure_over_collateral_fills_{0};
     uint64_t strategy_position_mismatches_{0};

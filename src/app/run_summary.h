@@ -18,6 +18,13 @@ struct ExecutionQualityMetrics
     double captured_edge_ticks_quantity{0.0};
     double markout_quantity{0.0};
     double markout_ticks_quantity{0.0};
+    // The same two quantities in the unit fees are charged in. On an inverse contract a price edge of
+    // `e` is worth `quantity * face_value * e / price`, not `quantity * e`, so the money figure has to
+    // be converted here rather than assumed. It is the number to read against `fees_paid`: on
+    // BTC-PERPETUAL a maker fee of 0.02% on a 10 USD face value costs 0.002 USD per contract, which a
+    // quote at the touch earning 0.4 ticks does not cover.
+    double captured_edge_usd{0.0};
+    double markout_usd{0.0};
     double average_abs_inventory{0.0};
     int64_t max_abs_inventory{0};
     uint64_t inventory_sign_changes{0};
@@ -111,12 +118,14 @@ struct RunSummary
                        ? execution_quality.captured_edge_ticks_quantity /
                              execution_quality.captured_edge_quantity
                        : 0.0)
+               << " captured_edge_usd=" << execution_quality.captured_edge_usd
                << " adverse_selection=" << execution_quality.adverse_selection
                << " markout_per_unit_ticks="
                << (execution_quality.markout_quantity > 0.0
                        ? execution_quality.markout_ticks_quantity /
                              execution_quality.markout_quantity
                        : 0.0)
+               << " markout_usd=" << execution_quality.markout_usd
                << " markout_count=" << execution_quality.markout_count
                << " avg_abs_inventory=" << execution_quality.average_abs_inventory
                << " max_abs_inventory=" << execution_quality.max_abs_inventory

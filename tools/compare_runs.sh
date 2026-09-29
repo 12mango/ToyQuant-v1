@@ -69,7 +69,7 @@ if [[ $markdown -eq 1 ]]; then
         printf '\n'
         index=$(( index + 1 ))
     done
-    printf '-->\n'
+    printf '%s\n' '-->'
     printf '| field |'
     for label in "${labels[@]}"; do printf ' %s |' "$label"; done
     printf '\n|---|'

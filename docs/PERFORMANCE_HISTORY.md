@@ -588,8 +588,14 @@ those orders can still fill. The gate is off by default, so recorded runs are un
 default Deribit path is inside it anyway (`max_abs_exposure_usd=100` against `1000`). With the gate on,
 the same `naive` run goes from 122,794 fills and `cash=-120,940` to 43,714 fills and `cash=+1,924`.
 Without it, the run now says `max_abs_exposure_usd=487,710` and `exposure_over_collateral_fills=122,493`
-instead of saying nothing. The L1 BTCUSDT baseline runs at roughly seventy times its cash by the same
-measure, which is a property of that fixture and is now visible rather than implied.
+instead of saying nothing. The L1 BTCUSDT baseline is the same story at a smaller
+scale: by the same measure its exposure reaches 4,575 USD against 1,000 USD of cash, and 1,673 of
+its 2,277 fills pushed exposure past the collateral. An earlier version of this paragraph said
+seventy times, because the exposure field was computed from raw instrument units while BTCUSDT
+counts a millionth of a BTC, so every money figure on that path was a million times too large.
+The quantity scale is now passed in and both paths report dollars; the L1 edge figure moved from
+-335,733 to -0.336 USD, which is what the recorded -2.67 ticks per contract over 1.26 units
+implies.
 
 **A cross-check that had never been run.** The strategy, the pipeline and the portfolio each track the
 position independently. The summary now compares the first two on every report and counts divergences.

@@ -92,7 +92,8 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 // a strategy without an inventory limit reached a cash balance of -120,940 USD on this
                 // feed while equity still printed +29%, which no component flagged.
                 const double exposure =
-                    std::abs(static_cast<double>(position_)) *
+                    std::abs(static_cast<double>(position_)) /
+                    static_cast<double>(quantity_scale_) *
                     unit_notional_at(unit_notional_usd_, report.price);
                 max_abs_exposure_usd_ = std::max(max_abs_exposure_usd_, exposure);
                 if (starting_cash_usd_ > 0.0 && exposure > starting_cash_usd_)
@@ -109,6 +110,14 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 execution_quality_.captured_edge_quantity += executed;
                 execution_quality_.captured_edge_ticks_quantity +=
                     unit_edge / std::max(tick_size_, PRICE_TICK_SIZE) * executed;
+                // The same edge in money. A price difference on an inverse contract moves the position
+                // by quantity * face value * edge / price, so this is the figure that can be compared
+                // with fees_paid. For a spot instrument the face value is zero, the price is the unit
+                // value, and the expression reduces to quantity * edge.
+                const double unit_value_at_fill = unit_notional_at(unit_notional_usd_, report.price);
+                execution_quality_.captured_edge_usd +=
+                    executed / static_cast<double>(quantity_scale_) * unit_value_at_fill *
+                    unit_edge / std::max(report.price, 1e-9);
                 pending_markouts_.push_back(
                     {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
                      report.executed_quantity(), quote_cycle_});
@@ -231,6 +240,11 @@ void Pipeline::process_event(const MarketEvent& event)
                     execution_quality_.markout_ticks_quantity +=
                         markout / std::max(tick_size_, PRICE_TICK_SIZE) *
                         static_cast<double>(observation.quantity);
+                    const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, last_mid_);
+                    execution_quality_.markout_usd +=
+                        static_cast<double>(observation.quantity) /
+                        static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
+                        std::max(last_mid_, 1e-9);
                     ++execution_quality_.markout_count;
                 }
                 const double abs_inventory = static_cast<double>(std::abs(position_));
@@ -293,6 +307,11 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
             execution_quality_.markout_ticks_quantity +=
                 markout / std::max(tick_size_, PRICE_TICK_SIZE) *
                 static_cast<double>(observation.quantity);
+            const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, last_mid_);
+            execution_quality_.markout_usd +=
+                static_cast<double>(observation.quantity) /
+                static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
+                std::max(last_mid_, 1e-9);
             ++execution_quality_.markout_count;
         }
         profiler_end(Stage::TopBookKeeping);
