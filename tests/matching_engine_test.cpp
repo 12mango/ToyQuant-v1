@@ -221,6 +221,57 @@ int main()
     prorata_queue_engine.process_l2_top({36, "PRORATA", 100.0, 0, 100.1, 40, 3, "test"});
     assert(prorata_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 50);
 
+    // The measured shape of a level decrease is that whole orders leave, each of them ahead of us with
+    // probability q = queue ahead / previous displayed. At q = 1 all of the decrease was ahead of us, so
+    // every model except the conservative one must remove exactly the decrease, with no randomness left
+    // in it however finely the decrease is split.
+    for (const uint64_t chunks : {1ULL, 8ULL})
+    {
+        MatchingEngine lumpy_full(0.1, {}, 0, QueueModel::Lumpy, chunks, 7);
+        lumpy_full.process_l2_top({40, "LUMPYFULL", 100.0, 50, 100.1, 40, 2, "test"});
+        lumpy_full.send_order({90, "LUMPYFULL", exchange::Side::Buy, exchange::OrderType::Limit, 100.0,
+                               10, 10, 41, "MarketMaker"});
+        lumpy_full.process_l2_top({42, "LUMPYFULL", 100.0, 0, 100.1, 40, 3, "test"});
+        assert(lumpy_full.queue_ahead_from_quantity_changes(Side::Buy) == 50);
+    }
+
+    // q < 1 is what a decrease after the displayed size grew looks like: 50 of a displayed 100 are ahead
+    // of us, so the mean removal is half the decrease and the lumpiness is the only thing left to vary.
+    const auto half_share_removal = [](uint64_t seed)
+    {
+        MatchingEngine engine(0.1, {}, 0, QueueModel::Lumpy, 1, seed);
+        engine.process_l2_top({50, "LUMPYHALF", 100.0, 50, 100.1, 40, 2, "test"});
+        engine.send_order({91, "LUMPYHALF", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10,
+                           10, 51, "MarketMaker"});
+        // New size joins behind us, so FIFO keeps our place: the queue ahead stays 50 while the display
+        // reaches 100, and the decrease from 100 back to 50 is then a 50/100 share.
+        engine.process_l2_top({52, "LUMPYHALF", 100.0, 100, 100.1, 40, 3, "test"});
+        engine.process_l2_top({53, "LUMPYHALF", 100.0, 50, 100.1, 40, 4, "test"});
+        return engine.queue_ahead_from_quantity_changes(Side::Buy);
+    };
+    // The seed makes a run reproducible: one seed is a replication, not a random draw.
+    assert(half_share_removal(11) == half_share_removal(11));
+
+    MatchingEngine prorata_half(0.1, {}, 0, QueueModel::ProRata);
+    prorata_half.process_l2_top({54, "PRORATAHALF", 100.0, 50, 100.1, 40, 2, "test"});
+    prorata_half.send_order({92, "PRORATAHALF", exchange::Side::Buy, exchange::OrderType::Limit, 100.0,
+                             10, 10, 55, "MarketMaker"});
+    prorata_half.process_l2_top({56, "PRORATAHALF", 100.0, 100, 100.1, 40, 3, "test"});
+    prorata_half.process_l2_top({57, "PRORATAHALF", 100.0, 50, 100.1, 40, 4, "test"});
+    assert(prorata_half.queue_ahead_from_quantity_changes(Side::Buy) == 25);  // r * q = 50 * 0.5
+
+    // The lumpy model has the same mean by construction, 25, and a variance pro-rata throws away. Over
+    // 200 replications the total has to land near 200 * 25, and every single draw has to be a whole
+    // order: either the one ahead of us came off, or nothing did.
+    uint64_t lumpy_removed_total = 0;
+    for (uint64_t seed = 1; seed <= 200; ++seed)
+    {
+        const uint64_t removed = half_share_removal(seed);
+        assert(removed == 0 || removed == 50);
+        lumpy_removed_total += removed;
+    }
+    assert(lumpy_removed_total > 200 * 20 && lumpy_removed_total < 200 * 30);
+
     queued_reports.clear();
     queued_engine.cancel_order(52);
     queued_engine.send_order({53, "BTCUSDT", exchange::Side::Buy,
