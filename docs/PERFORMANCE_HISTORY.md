@@ -262,6 +262,38 @@ against 58 fills, and on the control 150 against 146, so the honest form is **al
 the front traded, within a few percent on all three windows. The direction survives; the exact equality was a
 property of one window.
 
+## What the Queue Model Does Not Change
+
+The queue in front of a quote is the weakest part of this simulator, and the obvious upgrade is
+order-by-order data. Before spending anything on it, the four queue models the engine already has answer the
+question: the truth lies somewhere between `conservative` and `optimistic`, so a conclusion that holds at both
+ends cannot be moved by knowing the truth.
+
+Same window, same policy, one row per model:
+
+| Queue model | fills | fill rate | captured ticks/contract | captured USD | fees USD | realized USD | queue min-fraction p50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `conservative` (lower bound) | 103 | 4.2% | -0.083 | -0.0067 | 0.206 | -0.537 | 1.000 |
+| `prorata` (default) | 267 | 12.6% | 0.088 | 0.0186 | 0.534 | -1.387 | 0.965 |
+| `lumpy` | 269 | 12.5% | 0.063 | 0.0134 | 0.538 | -1.354 | 0.996 |
+| `optimistic` (upper bound) | 305 | 14.0% | 0.111 | 0.0269 | 0.610 | -1.446 | 0.952 |
+
+Three readings, and the third is the one that decides whether finer data is worth buying.
+
+1. **The timing conclusions are model-dependent.** Fill counts move by a factor of three across the bounds
+   (103 to 305) and the number of orders that reached the front of their queue moves by a factor of six, so
+   those numbers are always reported next to the model that produced them.
+2. **The economics barely move, and never in the strategy's favour.** The captured edge stays between -0.083
+   and +0.111 ticks while the fee is fixed at 0.002 USD per contract by the fee schedule. In the three rows
+   where the edge is positive the fee is 23 to 40 times it, and in the conservative row the edge is negative,
+   so there the fee is simply lost. The realized loss grows monotonically with the fill count, which is the
+   same scale-invariance the order-size sweep and the second day both showed.
+3. **Knowing the true queue cannot change the binding result.** The truth lies inside this range, and the
+   range is unprofitable at every point, so finer data would buy precision on the fill count and on the queue
+   percentiles rather than a different conclusion. Its one honest use here would be calibration — a day of it
+   offline, to fit the four rules — instead of a new runtime path, and only if the goal becomes proving the
+   queue reconstruction itself.
+
 ## L2 Mainline Workload
 
 To cover the current mainline, `active_l2` was replayed against a 15-minute incremental Deribit
