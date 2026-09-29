@@ -90,6 +90,15 @@ struct RunSummary
     PortfolioMetrics portfolio;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
+    // Which orders are worth tracing, so a reader does not have to guess an id. Printed only when a
+    // trace was asked for: a hint about tracing inside a run that traces nothing is noise, and it would
+    // also change the output of every ordinary run.
+    bool trace_requested{false};
+    uint64_t first_fill_order_id{0};
+    uint64_t longest_wait_filled_order_id{0};
+    uint64_t longest_wait_filled_cycles{0};
+    uint64_t longest_wait_working_order_id{0};
+    uint64_t longest_wait_working_cycles{0};
     // One order's wait, when --trace-order names it: the queue it joined behind, every change in that
     // queue, and the report that ended it. It is the only place in this project where a mechanism is
     // shown as a sequence instead of as a total, which is what makes it the teaching artefact.
@@ -157,6 +166,14 @@ struct RunSummary
                << " working_orders=" << working_orders << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string();
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
+        if (trace_requested)
+        {
+            stream << "\n[TRACE_HINTS] first_fill_order_id=" << first_fill_order_id
+                   << " longest_wait_filled_order_id=" << longest_wait_filled_order_id
+                   << " longest_wait_filled_cycles=" << longest_wait_filled_cycles
+                   << " longest_wait_working_order_id=" << longest_wait_working_order_id
+                   << " longest_wait_working_cycles=" << longest_wait_working_cycles;
+        }
         for (const auto& row : queue_trace)
         {
             stream << "\n[QUEUE_TRACE] ts=" << row.ts << " event=" << row.event

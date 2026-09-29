@@ -80,6 +80,7 @@ int main()
     Portfolio l2_portfolio;
     Pipeline l2_pipeline(l2_orders, l2_trades, l2_execution_book, l2_strategy, l2_engine,
                          l2_portfolio);
+    l2_pipeline.set_trace_order(1);
     l2_pipeline.process_l2_market_view(L2MarketView{.symbol = "L2",
                                                     .ts = 10,
                                                     .top = TopOfBook{100.0, 100, 101.0, 100},
@@ -93,6 +94,25 @@ int main()
     assert(l2_pipeline.summary().trade_reports == 1);
     assert(l2_pipeline.summary().trade_report_quantity == 10);
     assert(l2_pipeline.summary().queue_ahead_consumed == 100);
+
+    // The trace of order 1, which is the bid the first view submitted. It joins behind the 100 the level
+    // displays, the first market trade takes half of that queue, and the second reaches it and fills 10.
+    // The accessor behind these rows reports the order's wait, not a property of the price, so the submit
+    // row has no queue and the rest row is where the joined queue appears.
+    const auto trace = l2_pipeline.summary().queue_trace;
+    assert(trace.size() == 5);
+    assert(trace[0].event == "submit" && trace[0].side == Side::Buy && trace[0].price == 100.0);
+    // The submit row has no queue because the order is not in a level yet, which is the accessor's real
+    // semantics rather than a gap in it.
+    assert(trace[0].change == 10 && trace[0].queue_ahead == 0);
+    assert(trace[1].event == "rest" && trace[1].queue_ahead == 100);
+    assert(trace[2].event == "trade" && trace[2].queue_ahead == 50 && trace[2].change == 50);
+    // The queue reached zero and the order traded. The second market trade leaves the queue where it is, so
+    // it produces no further row: a row means the queue moved.
+    assert(trace[3].event == "fill" && trace[3].change == 10 && trace[3].queue_ahead == 0);
+    assert(trace[4].event == "fully_filled" && trace[4].queue_ahead == 0);
+    assert(l2_pipeline.summary().first_fill_order_id == 1);
+    assert(l2_pipeline.summary().trace_requested);
 
     MatchingEngine deribit_fee_engine(0.5,
         FeeSchedule{.maker_rate = 0.0002,
@@ -113,4 +133,7 @@ int main()
     // One Deribit BTC-PERPETUAL contract is worth 10 USD, so the maker fee is 0.02% of 10 USD and
     // not 0.02% of the quoted price.
     assert(std::abs(fee_portfolio.metrics().fees_paid - 0.002) < 1e-12);
+    // A pipeline that was never asked to trace an order reports no hints, which is what keeps the summary
+    // of an ordinary run exactly as it was.
+    assert(!fee_pipeline.summary().trace_requested);
 }

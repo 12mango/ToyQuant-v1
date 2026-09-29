@@ -160,5 +160,11 @@ class Pipeline
     double trace_price_{0.0};
     uint64_t trace_last_queue_{0};
     std::vector<TraceRow> trace_rows_;
+    // Which orders turned out to be worth tracing. A reader cannot know an id before the run, and the
+    // first few orders are hostile samples: they die in the same millisecond they arrive. These are the
+    // orders that actually waited, so a second run can name one of them.
+    uint64_t first_fill_order_id_{0};
+    uint64_t longest_wait_filled_order_id_{0};
+    uint64_t longest_wait_filled_cycles_{0};
     StageProfiler* profiler_{nullptr};
 };

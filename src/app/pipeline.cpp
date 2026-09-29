@@ -161,6 +161,11 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                                                   ? quote_cycle_ - audit->second.start_cycle
                                                   : 0;
                     execution_quality_.total_order_lifetime_cycles += lifetime;
+                    if (audit->second.filled && lifetime > longest_wait_filled_cycles_)
+                    {
+                        longest_wait_filled_cycles_ = lifetime;
+                        longest_wait_filled_order_id_ = report.order_id;
+                    }
                     if (report.exec_type == ExecType::Cancelled && audit->second.filled)
                     {
                         ++execution_quality_.cancelled_after_fill_orders;
@@ -178,6 +183,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
             }
             if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
             {
+                if (first_fill_order_id_ == 0) first_fill_order_id_ = report.order_id;
                 ++trade_reports_;
                 trade_report_quantity_ += report.executed_quantity();
             }
@@ -397,6 +403,21 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 
 RunSummary Pipeline::summary() const
 {
+    // The longest waiting order that is still in the book. The audit map holds the open orders, and their
+    // lifetime is the one measure of patience this project has, so the maximum over it names the quote
+    // whose queue is worth watching: it has survived every requote the run made.
+    uint64_t longest_working_id = 0;
+    uint64_t longest_working_cycles = 0;
+    for (const auto& [order_id, audit] : order_audit_)
+    {
+        const uint64_t lifetime =
+            quote_cycle_ >= audit.start_cycle ? quote_cycle_ - audit.start_cycle : 0;
+        if (lifetime > longest_working_cycles)
+        {
+            longest_working_cycles = lifetime;
+            longest_working_id = order_id;
+        }
+    }
     return {.submitted_orders = submitted_orders_,
             .submitted_quantity = submitted_quantity_,
             .cancel_requests = cancel_requests_,
@@ -423,6 +444,12 @@ RunSummary Pipeline::summary() const
             .portfolio = portfolio_.metrics(),
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
+            .trace_requested = trace_order_id_ != 0,
+            .first_fill_order_id = first_fill_order_id_,
+            .longest_wait_filled_order_id = longest_wait_filled_order_id_,
+            .longest_wait_filled_cycles = longest_wait_filled_cycles_,
+            .longest_wait_working_order_id = longest_working_id,
+            .longest_wait_working_cycles = longest_working_cycles,
             .queue_trace = trace_rows_};
 }
 

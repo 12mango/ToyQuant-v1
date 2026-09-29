@@ -253,8 +253,21 @@ Order ids are assigned in submission order and start at 1, so a small id is an e
   --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --trace-order=3 | grep QUEUE_TRACE
 ```
 
-Each row is one event that changed the queue standing in front of that order, and the last row is the fill
-or the cancel that ended it. `docs/LEARNING.md` reads one of these traces line by line.
+Each row is one event that changed the queue standing in front of that order, and the last row is the fill,
+the cancel or the completion that ended it. The events are `submit` for the strategy's intent, `rest` for
+the queue the order then joined behind, `view` and `trade` for the market events that moved that queue, and
+`fill`, `fully_filled` or `cancel` for the report that ended the order. `docs/LEARNING.md` reads one of
+these traces line by line.
+
+An order id is not something a reader knows in advance, so a traced run also prints `[TRACE_HINTS]`: the id
+of the first order that traded, the id of the filled order that waited longest, and the id of the still
+resting order that has waited longest. Quoting the first few ids is usually the wrong way to find a good
+example, because the earliest orders are the ones that die in the same millisecond they arrive:
+
+```bash
+./build/toy_quant l2_replay data/trades.csv.gz data/depth.csv BTC-PERPETUAL 0 active_l2 1 prorata \
+  --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --trace-order=1 | grep TRACE_HINTS
+```
 
 Of these, the requote threshold moves the fill count the most of anything measured so far, and the
 arrival share the least; `docs/PERFORMANCE_HISTORY.md` records the measured ordering.

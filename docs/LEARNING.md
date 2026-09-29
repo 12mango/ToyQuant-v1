@@ -144,6 +144,36 @@ The trace now times every row with the clock of the event being processed. And `
 summary, so the first traced run that used it printed nothing at all; the trace rides in the summary and is
 meant to be read with `grep QUEUE_TRACE`.
 
+## 7. Latency is two costs with opposite signs
+
+The natural way to model latency is a single number that makes everything slightly worse. Measured on this
+feed it is two numbers that pull in opposite directions, and they are not the same kind of cost.
+
+| added latency | fills | captured ticks per contract | realized USD |
+|---|---:|---:|---:|
+| none | 21 | +0.095 | -0.109 |
+| 20 ms to arrive | 11 | +4.09 | -0.016 |
+| 20 ms to cancel | 25 | -0.440 | -0.156 |
+
+**A late arrival quotes wider.** The strategy chooses a price at one view and that price reaches the book
+milliseconds later, by which time the touch has usually moved. The order ends up where the strategy would no
+longer put it, which on this feed means further from the mid, and further from the mid is a better price for
+the side that gets filled. Fewer orders trade and each one that does is worth more: the capture per contract
+rises by a factor of forty, and the fill count halves.
+
+**A late cancel leaves a stale quote standing.** The quote sits at a price the strategy has already decided
+to leave, so the trades that reach it are exactly the trades that were going through that price, which means
+buying above the mid. The fill count rises rather than falls, because a quote that is never pulled is always
+there to be hit, and the capture per contract turns negative: each fill is worth less than nothing before
+fees are counted.
+
+The asymmetry is the lesson. Being slow to arrive costs fills; being slow to leave costs money. One latency
+knob would have averaged the two into a mild cost, and the numbers above say the mild version is wrong in
+both directions. It is also the reason the two are separate flags rather than one: a strategy that is only
+slow on the way in and fast on the way out is a different business from the reverse, and this project can
+now tell them apart. `docs/PERFORMANCE_HISTORY.md` records the five-point sweep of each, including the
+markout column that shows the cancel's cost is realised at the fill rather than after it.
+
 ## Field reference
 
 The fields a reader needs, what they mean, and which line carries them. `[EXECUTION]` is authoritative
