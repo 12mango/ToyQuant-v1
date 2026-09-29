@@ -842,9 +842,33 @@ event, but the fill count is a nonlinear function of the whole queue path, so a 
 queue in one jump does not fill exactly as often as one that empties it smoothly. The 18.6 against 21
 is that effect rather than a defect, and it is the reason the two runs are not reported as agreeing.
 
-What would move the headline number is the `q` inside `E[X] = r q`. That is the arrival rule, and the
-arrival rule is why `q` is close to one for a quote at the touch: a resting order starts behind the
-displayed size.
+**Where the headline number actually comes from.** The paragraph here used to say that `q` inside
+`E[X] = r q` is what moves the headline, and that the arrival rule is what sets `q`. Measuring it shows
+that this is backwards, and the reason is worth the space. With `q` fixed at arrival, every cancel
+removes `r q` from the queue ahead while the display falls by `r`, so the ratio is preserved:
+
+```
+q' = (Q - r q) / (D - r) = q (D - r) / (D - r) = q
+```
+
+`q` is therefore a fixed point of the pro-rata dynamics and the starting share barely matters. Only two
+things break that fixed point: a trade at our price, which removes from the front rather than in
+proportion, and a model that lets `q` drift for its own reasons. Across the arrival share, at the touch
+with a four-tick requote threshold:
+
+| `--arrival-share` | 1.0 | 0.75 | 0.5 | 0.25 | 0.0 |
+|---|---:|---:|---:|---:|---:|
+| fills | 21 | 21 | 21 | 23 | 35 |
+| fill rate | 11.5% | 11.5% | 11.5% | 12.8% | 19.4% |
+
+Starting at the back of the queue and starting halfway through it are the same run, and starting at the
+front is worth less than a factor of two. Set against the levers measured around it, requote policy is
+7.7x and the queue model 5x. The decisive modelling choice is therefore not where we arrive; it is
+whether a cancellation is allowed to help us at all, which is exactly the mean of `X(r)`.
+`conservative` says no and fills once, `pro-rata` says proportionally and fills twenty-one times, and
+`optimistic` lets `q` drift to zero and fills more than either. The arrival share and the chunk count
+are second-order on this book because trades, the only thing that breaks the fixed point, are 0.04% of
+what moves a level.
 
 ## Interpretation and Next Step
 

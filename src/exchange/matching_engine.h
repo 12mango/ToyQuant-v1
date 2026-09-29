@@ -96,12 +96,15 @@ class MatchingEngine : public IMatchingEngine
     explicit MatchingEngine(double tick_size = PRICE_TICK_SIZE, FeeSchedule fee_schedule = {},
                              uint64_t cancel_delay_events = 0,
                              QueueModel queue_model = QueueModel::ProRata,
-                             uint64_t lump_chunks = 1, uint64_t random_seed = kDefaultQueueSeed)
+                             uint64_t lump_chunks = 1, uint64_t random_seed = kDefaultQueueSeed,
+                             double arrival_share = 1.0)
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
                     queue_model_(queue_model),
                     lump_chunks_(lump_chunks == 0 ? 1 : lump_chunks),
                     queue_rng_(random_seed),
+                    arrival_share_(arrival_share < 0.0 ? 0.0
+                                                       : arrival_share > 1.0 ? 1.0 : arrival_share),
                     cancel_delay_events_(cancel_delay_events)
     {
     }
@@ -215,6 +218,15 @@ class MatchingEngine : public IMatchingEngine
     uint64_t sell_queue_ahead_cleared_{0};
     uint64_t buy_queue_from_quantity_changes_{0};
     uint64_t sell_queue_from_quantity_changes_{0};
+    // The share of a level's displayed size that a newly arriving order starts behind: alpha in
+    // Q0 = alpha * D0, so q starts at alpha. 1.0 is what a FIFO venue does at the moment the order
+    // joins, since a new order is always last, and 0.0 would mean starting at the front. It is a knob
+    // because of where the arithmetic leaves the uncertainty: the amount a decrease removes from the
+    // queue ahead is r * q, so at q = 1 the placement of the cancellations does not matter at all and
+    // every model but the conservative one removes the whole decrease. The arrival share, not the queue
+    // model, is therefore what sets the headline fill count, and the models only separate once q < 1.
+    uint64_t scale_arrival(uint64_t displayed) const;
+    double arrival_share_{1.0};
     QueueModel queue_model_{QueueModel::ProRata};
     // Chunks per level decrease for QueueModel::Lumpy, and the generator that draws them. The seed is
     // fixed so a lumpy run is reproducible: one seed is a replication, not a random experiment, and

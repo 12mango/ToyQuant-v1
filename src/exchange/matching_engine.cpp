@@ -207,14 +207,22 @@ void MatchingEngine::process_l2_top(const BboQuote& quote)
     {
         const auto level = book_it->second.bids.find(bid_tick);
         if (level != book_it->second.bids.end())
-            level->second.external_queue_ahead = quote.bid_quantity;
+            level->second.external_queue_ahead = scale_arrival(quote.bid_quantity);
     }
     if (ask_moved)
     {
         const auto level = book_it->second.asks.find(ask_tick);
         if (level != book_it->second.asks.end())
-            level->second.external_queue_ahead = quote.ask_quantity;
+            level->second.external_queue_ahead = scale_arrival(quote.ask_quantity);
     }
+}
+
+uint64_t MatchingEngine::scale_arrival(uint64_t displayed) const
+{
+    // 1.0 returns the value untouched, which is what keeps every recorded run byte-identical when the
+    // parameter is left alone.
+    if (arrival_share_ >= 1.0) return displayed;
+    return static_cast<uint64_t>(static_cast<double>(displayed) * arrival_share_ + 0.5);
 }
 
 uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
@@ -233,8 +241,8 @@ uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
     // resting behind the touch then had no queue in front of it and filled in full as soon as
     // any trade printed through its level, which is both wrong and selectively optimistic: those
     // are exactly the prints where the market is moving against the resting side.
-    if (order.side == exchange::Side::Buy) return quote.bid_quantity;
-    return quote.ask_quantity;
+    if (order.side == exchange::Side::Buy) return scale_arrival(quote.bid_quantity);
+    return scale_arrival(quote.ask_quantity);
 }
 
 void MatchingEngine::match_external_bbo(SymbolId id, Order& order)

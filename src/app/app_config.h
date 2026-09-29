@@ -49,6 +49,9 @@ struct AppConfig
     // the draws. Both default to the model's own choice, so a run without them is reproducible.
     uint64_t queue_lump_chunks = 0;
     uint64_t queue_seed = 0;
+    // The share of the displayed size a new quote starts behind, in [0, 1]. 1.0 is the FIFO arrival rule
+    // the engine uses by default; smaller values place the quote inside the queue instead of at its back.
+    double arrival_share = 1.0;
     // How far the fair price has to move before a resting quote is pulled and replaced, in ticks.
     // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
     // that is replaced on every twitch never holds a queue position long enough to reach the front.

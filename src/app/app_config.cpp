@@ -23,6 +23,7 @@ constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
 constexpr std::string_view kQueueChunksPrefix = "--queue-chunks=";
 constexpr std::string_view kQueueSeedPrefix = "--queue-seed=";
+constexpr std::string_view kArrivalSharePrefix = "--arrival-share=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -82,6 +83,8 @@ void print_usage(const char* executable)
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
         std::cerr << "   queue_model: prorata (default, calibrated) | lumpy (same mean, real variance) | "
                      "conservative (lower bound) | optimistic (upper bound)\n";
+        std::cerr << "   arrival: --arrival-share=X sets the share of the displayed size a new quote "
+                     "starts behind; 1.0 is FIFO\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -234,12 +237,23 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
             }
+            else if (flag.compare(0, kArrivalSharePrefix.size(), kArrivalSharePrefix) == 0)
+            {
+                double share = 0.0;
+                std::istringstream stream(flag.substr(kArrivalSharePrefix.size()));
+                if (!(stream >> share) || share < 0.0 || share > 1.0)
+                {
+                    error = "--arrival-share must be a number between 0 and 1";
+                    return false;
+                }
+                cfg.arrival_share = share;
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
                         "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
-                        "--queue-chunks=N, or --queue-seed=N";
+                        "--queue-chunks=N, --queue-seed=N, or --arrival-share=X";
                 return false;
             }
         }
