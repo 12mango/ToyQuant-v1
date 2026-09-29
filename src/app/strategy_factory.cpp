@@ -29,8 +29,12 @@ L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
 
 ActiveL2MarketMakerConfig make_active_l2_config(const L2MarketMakerConfig& base)
 {
+    // The halt threshold sits on a speed that this feed's view gaps dominate, so it is left at the
+    // value the 200,000-row window was recorded with. See the note on the field in
+    // active_l2_market_maker.h: making the threshold mean a tick range over a fixed window is a
+    // behaviour change to a risk control and is documented as a known gap instead of being half done.
     return ActiveL2MarketMakerConfig{
-        .base = base, .volatility_alpha = 0.25, .pause_after_ticks = 9.0,
+        .base = base, .volatility_alpha = 0.25, .pause_after_ticks_per_second = 9.0,
         .warmup_trades = 16, .warmup_views = 2};
 }
 }  // namespace

@@ -123,6 +123,8 @@ void Application::run_legacy_csv_mode() const
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
+    pipeline.set_collateral(1000.0, 0.0);
+    pipeline.set_position_limit(cfg_.position_limit);
     CsvFeed feed(
         csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick); }, cfg_.delay,
         &logger);
@@ -231,6 +233,11 @@ void Application::run_l2_replay_mode() const
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
                       portfolio, instrument.tick_size);
+    // The documented model is cash only and no margin, so the cash the run starts with is the
+    // exposure ceiling the summary measures against, and --max-position decides whether it is
+    // enforced. 0, the default, reports the ceiling without blocking anything.
+    pipeline.set_collateral(1000.0, instrument.unit_notional_usd);
+    pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_profiler(profiler);
     double final_mid = 0.0;
     MarketDataValidationConfig validation_config;
@@ -305,6 +312,8 @@ void Application::run_legacy_udp_mode() const
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
+    pipeline.set_collateral(1000.0, 0.0);
+    pipeline.set_position_limit(cfg_.position_limit);
     UdpFeed feed(port);
     feed.start();
 

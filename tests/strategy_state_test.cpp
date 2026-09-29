@@ -184,9 +184,12 @@ int main()
     assert(metrics_strategy.inventory_samples >= 6);
     assert(metrics_strategy.max_abs_inventory >= 10);
     assert(metrics_strategy.total_quote_lifetime == 5);
+    // The strategy's own metrics no longer carry execution quality: the pipeline computes edge,
+    // markout, quote lifetime and inventory once and prints them in [EXECUTION], so there is exactly
+    // one copy of each of those numbers. Only the L1 maker's private counters are asserted above.
     const auto metrics = metrics_strategy.metrics();
     assert(metrics.filled_quantity == 5);
-    assert(metrics.markout_count == 1);
+    assert(metrics.fill_count == 1);
 
     OptimizedMarketMaker strategy;
 

@@ -220,6 +220,14 @@ cancellation delay; it is not a millisecond latency model. Queue model defaults 
 `tools/calibrate_queue_model.py` measures 99.96% of the size removed from a book level as cancellation
 rather than trade. Pass `--queue-model` to `analyze_l2_windows.py` when comparing these assumptions.
 
+The replay also reports `max_abs_exposure_usd` next to `starting_cash_usd`, the cash the run began with.
+The model is cash only and no margin, so exposure above that ceiling is a modelling violation, and
+`exposure_over_collateral_fills` counts how often a fill pushed the marked position past it. Pass
+`--max-position=N` to enforce the ceiling as a pre-trade gate in quantity units; it counts the quantity
+already resting on the side an order adds to, so two quotes that arrive in the same cycle cannot jump
+it. `strategy_position_mismatches` compares the strategy's own position against the pipeline's on every
+report, which is how a dropped callback would show up instead of as an unexplained PnL difference.
+
 ### Replay strategy choices
 
 The replay command continues to accept these frozen L1 strategy names for compatibility and

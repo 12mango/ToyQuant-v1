@@ -14,64 +14,36 @@ struct InventoryAwareL2MarketMakerConfig
     double max_inventory_shift_ticks{2.0};
 };
 
-class InventoryAwareL2MarketMaker final : public Strategy
+// Adds a continuous inventory response to the L2 maker: the side that would grow the position is
+// scaled down and the side that would reduce it is priced more aggressively.
+//
+// It derives from L2MarketMaker instead of holding one and forwarding each callback. The wrapper
+// version forgot to forward on_queue_activity, which silently disabled the base's queue-hold refresh
+// policy together with its queue-consumption counters: this strategy reported zero consumed queue
+// while the base's own bookkeeping, and the refresh decision built on it, never ran.
+class InventoryAwareL2MarketMaker final : public L2MarketMaker
 {
    public:
     explicit InventoryAwareL2MarketMaker(InventoryAwareL2MarketMakerConfig config)
-        : config_(config), base_(config.base)
+        : L2MarketMaker(config.base), config_(config)
     {
     }
 
     std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                               const TopOfBook& top) override
     {
-        return adjust_orders(base_.on_top_of_book(symbol, top));
+        return adjust_orders(L2MarketMaker::on_top_of_book(symbol, top));
     }
 
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override
     {
-        return adjust_orders(base_.on_l2_market_view(view));
-    }
-
-    void on_market_trade(const MarketTrade& trade) override
-    {
-        base_.on_market_trade(trade);
-    }
-
-    void on_order_submitted(const StrategyOrder& order) override
-    {
-        base_.on_order_submitted(order);
-    }
-
-    std::vector<uint64_t> cancel_requests() override
-    {
-        return base_.cancel_requests();
-    }
-
-    int64_t net_position() const override
-    {
-        return base_.net_position();
-    }
-
-    std::size_t working_order_count() const override
-    {
-        return base_.working_order_count();
-    }
-
-    StrategyMetrics metrics() const override
-    {
-        return base_.metrics();
-    }
-
-    void on_order_update(const ExecutionReport& report) override
-    {
-        base_.on_order_update(report);
+        return adjust_orders(L2MarketMaker::on_l2_market_view(view));
     }
 
    private:
     std::vector<StrategyOrder> adjust_orders(std::vector<StrategyOrder> orders) const
     {
-        const int64_t position = base_.net_position();
+        const int64_t position = net_position();
         const double ratio = config_.inventory_limit > 0
                                  ? std::clamp(std::abs(static_cast<double>(position)) /
                                                   static_cast<double>(config_.inventory_limit),
@@ -104,5 +76,4 @@ class InventoryAwareL2MarketMaker final : public Strategy
     }
 
     InventoryAwareL2MarketMakerConfig config_;
-    L2MarketMaker base_;
 };

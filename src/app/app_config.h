@@ -33,6 +33,9 @@ struct AppConfig
     // come from the quantity scale, without changing any existing command line.
     uint64_t order_size_override = 0;
     int64_t inventory_limit_override = 0;
+    // Pre-trade position limit in quantity units for the pipeline gate. 0 leaves the gate off, which
+    // is the historical behaviour; the run still reports the marked exposure against the collateral.
+    int64_t position_limit = 0;
     // 0 disables per-stage profiling. Otherwise this is the sampling interval in events,
     // so 64 times the 64th event of every 64.
     uint64_t profile_sample_interval = 0;

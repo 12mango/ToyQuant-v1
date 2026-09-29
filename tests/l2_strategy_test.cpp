@@ -198,7 +198,7 @@ int main()
                                      .signal_mode = L2SignalMode::Flow,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 0.5,
-        .pause_after_ticks = 8.0});
+        .pause_after_ticks_per_second = 8.0});
     assert(active.on_l2_market_view(view).size() == 2);
     L2MarketView volatile_view = view;
     assert(active.on_l2_market_view(view).size() == 2);
@@ -234,7 +234,7 @@ int main()
                                      .signal_mode = L2SignalMode::Flow,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 0.5,
-                        .pause_after_ticks = 8.0});
+                        .pause_after_ticks_per_second = 8.0});
     L2MarketView base_time_view = view;
     base_time_view.ts = 1000;
     time_aware.on_l2_market_view(base_time_view);
@@ -253,7 +253,7 @@ int main()
                                      .signal_mode = L2SignalMode::Flow,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 0.5,
-                        .pause_after_ticks = 8.0});
+                        .pause_after_ticks_per_second = 8.0});
     fast_time_aware.on_l2_market_view(base_time_view);
     L2MarketView fast_move = base_time_view;
     fast_move.ts = 1001;
@@ -272,7 +272,7 @@ int main()
                                      .signal_mode = L2SignalMode::Flow,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 1.0,
-                        .pause_after_ticks = 5.0});
+                        .pause_after_ticks_per_second = 5.0});
     L2MarketView calm_view = view;
     calm_view.ts = 1000000;
     const auto pausing_orders = pausing.on_l2_market_view(calm_view);

@@ -527,6 +527,63 @@ does (`optimistic`). The measurement narrowed the range rather than closing it, 
 table above shows what is still at stake in it: three fills against seven on one window, and one
 profitable cell out of six.
 
+### Strategy execution correctness pass
+
+Three defects in this area were one class of mistake: a number or a decision that two components each
+owned, with nothing comparing them. They were fixed together, and the measurements below are from the
+200,000-row depth slice.
+
+**A wrapper that forgot one callback.** `ActiveL2MarketMaker` and `InventoryAwareL2MarketMaker` held an
+`L2MarketMaker` and hand-forwarded each of its eight virtuals. `InventoryAwareL2MarketMaker` never
+forwarded `on_queue_activity`, which silently disabled two things at once: the base's queue-consumption
+counters, which reported zero, and the base's queue-hold refresh policy, which is built on the same
+member. A forgotten forward changes behaviour without failing to compile, so both classes now derive
+from `L2MarketMaker` and inherit everything they do not override. On this workload the refresh
+behaviour barely moved (`price_refresh_count` 221 → 221, age 121 → 120) because the hold only binds at
+a long quote age, but the counters went from `buy/sell_queue_consumed=0/0` to `1310/47480`.
+
+**Two copies of every execution number.** `[STRATEGY_METRICS]` printed its own `captured_edge`,
+`adverse_selection`, `markout_count`, quote lifetime and inventory fields beside `[EXECUTION]`, and
+they disagreed: the same run reported `captured_edge=1.25` and `max_abs_inventory=10` in `[EXECUTION]`
+and `0` and `0` in `[STRATEGY_METRICS]`, because only the legacy L1 maker ever filled those fields.
+That is the same shape as the four-defect line fixed earlier; the earlier fix made `[EXECUTION]`
+authoritative without removing the copy that contradicts it. `StrategyMetrics` now carries only what a
+strategy owns (its own submit, cancel, fill, refresh and queue counters) and execution quality exists
+once, in `ExecutionQualityMetrics`. The Python benchmark's parser already read only the strategy-owned
+fields, so this split matches what the tools expected. The L1 maker still computes its own markout
+internals, which its unit tests assert and nothing publishes; deleting that duplicate implementation is
+the follow-up, not part of this pass.
+
+**A documented constraint that nothing enforced or measured.** `docs/PERFORMANCE_HISTORY.md` states
+that the model is cash only with no margin, so exposure cannot exceed cash. No component enforced it,
+reported it, or noticed it. A strategy without an inventory limit (`naive`, which also never cancels)
+reached a cash balance of `-120,940 USD` while `equity` still printed `+29%`, and nothing in the
+summary said so. Two changes: the summary now reports `max_abs_exposure_usd` against
+`starting_cash_usd` and counts fills that pushed the marked exposure past it, and `--max-position=N`
+adds a pre-trade gate that counts the quantity already resting on the side an order adds to, because
+those orders can still fill. The gate is off by default, so recorded runs are unaffected, and the
+default Deribit path is inside it anyway (`max_abs_exposure_usd=100` against `1000`). With the gate on,
+the same `naive` run goes from 122,794 fills and `cash=-120,940` to 43,714 fills and `cash=+1,924`.
+Without it, the run now says `max_abs_exposure_usd=487,710` and `exposure_over_collateral_fills=122,493`
+instead of saying nothing. The L1 BTCUSDT baseline runs at roughly seventy times its cash by the same
+measure, which is a property of that fixture and is now visible rather than implied.
+
+**A cross-check that had never been run.** The strategy, the pipeline and the portfolio each track the
+position independently. The summary now compares the first two on every report and counts divergences.
+On the L2 workload it reports `strategy_position_mismatches=0`, so the three agree, which is what makes
+the strategy's own sizing trustworthy. If a callback were dropped again this counter is where it would
+show, rather than in a PnL difference nobody can attribute.
+
+**One gap left open on purpose.** `ActiveL2MarketMaker` compares `pause_after_ticks_per_second` against
+a mid-price speed built from the time between views, and this feed's view gaps run from microseconds to
+hundreds of milliseconds, so that speed measures the gap distribution rather than the market:
+`min_elapsed_seconds=0.05` is above the 8.5 ms mean gap, so the floor always applies. Measured, the
+halt fires 46 times at the field's value of 9.0 and 246 times at 50.0, and every value in between lands
+in the same place. The threshold that would mean something is a tick range over a fixed time window,
+which is a behaviour change to a risk control, and it is recorded here as a known gap rather than
+half-changed: the field is renamed to say it is a per-second rate, the finding is written next to it,
+and the 200,000-row invariants were re-verified unchanged after the rename.
+
 ## Interpretation and Next Step
 
 The wall-clock baselines include startup, parsing, simulation, and output I/O; they do not identify

@@ -25,6 +25,12 @@ struct StrategyOrder
     }
 };
 
+// What a strategy knows about its own order flow. Execution quality is deliberately not here: the
+// pipeline sees every report and every event, so it computes edge, markout, quote lifetime and
+// inventory once, in ExecutionQualityMetrics, and prints them in [EXECUTION]. A second copy owned by
+// the strategy could only disagree with it, and it did: [STRATEGY_METRICS] printed captured_edge=0
+// and max_abs_inventory=0 beside an [EXECUTION] line that said 1.25 and 10 in the same run, because
+// the L2 strategies never filled those fields and only the legacy L1 maker did, from its own mid.
 struct StrategyMetrics
 {
     uint64_t submitted_quantity{0};
@@ -33,16 +39,6 @@ struct StrategyMetrics
     uint64_t cancel_count{0};
     uint64_t quote_count{0};
     double fees_paid{0.0};
-    // The legacy L1 maker fills these from its own counters. The L2 strategies do not, so on that path
-    // they stay zero and the authoritative values are the ones the pipeline prints in [EXECUTION].
-    double captured_edge{0.0};
-    double adverse_selection{0.0};
-    uint64_t markout_count{0};
-    uint64_t total_quote_lifetime{0};
-    uint64_t max_quote_lifetime{0};
-    double average_abs_inventory{0.0};
-    int64_t max_abs_inventory{0};
-    uint64_t inventory_sign_changes{0};
     uint64_t price_refresh_count{0};
     uint64_t age_refresh_count{0};
     uint64_t risk_pause_count{0};
@@ -65,22 +61,15 @@ struct StrategyMetrics
                << " filled_quantity=" << filled_quantity << " fill_rate=" << fill_rate
                << " fill_count=" << fill_count << " cancel_count=" << cancel_count
                << " quote_count=" << quote_count << " fees_paid=" << fees_paid
-               << " captured_edge=" << captured_edge << " adverse_selection=" << adverse_selection
-               << " markout_count=" << markout_count
-               << " total_quote_lifetime=" << total_quote_lifetime
-               << " max_quote_lifetime=" << max_quote_lifetime
-               << " avg_abs_inventory=" << average_abs_inventory
-               << " max_abs_inventory=" << max_abs_inventory
-               << " inventory_sign_changes=" << inventory_sign_changes
                << " price_refresh_count=" << price_refresh_count
                << " age_refresh_count=" << age_refresh_count
                << " risk_pause_count=" << risk_pause_count;
-            stream << " buy_queue_consumed=" << buy_queue_consumed
-                   << " sell_queue_consumed=" << sell_queue_consumed
-                   << " buy_fill_count=" << buy_fill_count
-                   << " sell_fill_count=" << sell_fill_count
-                   << " buy_quote_count=" << buy_quote_count
-                   << " sell_quote_count=" << sell_quote_count;
+        stream << " buy_queue_consumed=" << buy_queue_consumed
+               << " sell_queue_consumed=" << sell_queue_consumed
+               << " buy_fill_count=" << buy_fill_count
+               << " sell_fill_count=" << sell_fill_count
+               << " buy_quote_count=" << buy_quote_count
+               << " sell_quote_count=" << sell_quote_count;
         return stream.str();
     }
 };

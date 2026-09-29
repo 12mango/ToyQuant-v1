@@ -18,6 +18,7 @@ namespace
 constexpr std::string_view kProfileStagesPrefix = "--profile-stages=";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
+constexpr std::string_view kMaxPositionPrefix = "--max-position=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -70,8 +71,8 @@ void print_usage(const char* executable)
                          "[--fast-validation] [--profile-stages[=interval]]\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
-                     "--order-size=N and --inventory-limit=N override the values derived from the "
-                     "instrument quantity scale\n";
+                     "--order-size=N, --inventory-limit=N, and --max-position=N override the "
+                     "values derived from the instrument quantity scale\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
         std::cerr << "   queue_model: conservative (default) | prorata | optimistic\n";
 }
@@ -165,10 +166,21 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.inventory_limit_override = static_cast<int64_t>(limit);
             }
+            else if (flag.compare(0, kMaxPositionPrefix.size(), kMaxPositionPrefix) == 0)
+            {
+                uint64_t limit = 0;
+                if (!parse_unsigned(flag.substr(kMaxPositionPrefix.size()), limit) || limit == 0)
+                {
+                    error = "--max-position must be a positive integer";
+                    return false;
+                }
+                cfg.position_limit = static_cast<int64_t>(limit);
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
-                        "--profile-stages[=interval], --order-size=N, or --inventory-limit=N";
+                        "--profile-stages[=interval], --order-size=N, --inventory-limit=N, or "
+                        "--max-position=N";
                 return false;
             }
         }

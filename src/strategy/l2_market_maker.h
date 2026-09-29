@@ -37,7 +37,9 @@ struct L2MarketMakerConfig
     bool quote_at_best_when_neutral{false};
 };
 
-class L2MarketMaker final : public Strategy
+// The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
+// a wrapper has to hand-forward every callback, and a forgotten one changes behaviour silently.
+class L2MarketMaker : public Strategy
 {
    public:
     explicit L2MarketMaker(L2MarketMakerConfig config = {}) : config_(config) {}

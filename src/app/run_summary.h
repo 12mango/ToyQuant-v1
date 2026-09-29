@@ -43,6 +43,16 @@ struct RunSummary
     uint64_t filtered_market_trades{0};
     double fill_rate{0.0};
     double cancel_rate{0.0};
+    // Risk and collateral facts. `position_limit` is what the pre-trade gate enforces, 0 when it is
+    // off; `starting_cash_usd` is the collateral the documented cash-only model allows and
+    // `max_abs_exposure_usd` is how far the marked position went against it.
+    int64_t position_limit{0};
+    int64_t strategy_net_position{0};
+    uint64_t strategy_position_mismatches{0};
+    uint64_t risk_rejected_orders{0};
+    double starting_cash_usd{0.0};
+    double max_abs_exposure_usd{0.0};
+    uint64_t exposure_over_collateral_fills{0};
     size_t working_orders{0};
     PortfolioMetrics portfolio;
     StrategyMetrics strategy;
@@ -86,6 +96,13 @@ struct RunSummary
                << " inventory_sign_changes=" << execution_quality.inventory_sign_changes
                << " total_quote_lifetime=" << execution_quality.total_quote_lifetime
                << " max_quote_lifetime=" << execution_quality.max_quote_lifetime
+               << " position_limit=" << position_limit
+               << " risk_rejected_orders=" << risk_rejected_orders
+               << " strategy_net_position=" << strategy_net_position
+               << " strategy_position_mismatches=" << strategy_position_mismatches
+               << " starting_cash_usd=" << starting_cash_usd
+               << " max_abs_exposure_usd=" << max_abs_exposure_usd
+               << " exposure_over_collateral_fills=" << exposure_over_collateral_fills
                << " working_orders=" << working_orders << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string();
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();

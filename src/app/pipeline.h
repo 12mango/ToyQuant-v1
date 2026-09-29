@@ -38,6 +38,23 @@ class Pipeline
         return execution_quality_;
     }
 
+    // Pre-trade position limit in quantity units. 0, the default, disables the gate, and the run then
+    // reports how far the position went and how often the marked exposure passed the collateral
+    // instead of blocking anything. A positive value refuses any order that would leave the position,
+    // counting resting orders that could still fill, outside +/- the limit.
+    void set_position_limit(int64_t limit)
+    {
+        position_limit_ = limit;
+    }
+
+    // Collateral report inputs: the cash the run started with, and the USD value of one quantity unit
+    // where 0 means the traded price is the unit value, which is the spot case.
+    void set_collateral(double starting_cash_usd, double unit_notional_usd)
+    {
+        starting_cash_usd_ = starting_cash_usd;
+        unit_notional_usd_ = unit_notional_usd;
+    }
+
     // Optional per-stage timing. The profiler is owned by the caller and has to outlive
     // the pipeline. Passing nullptr, which is the default, keeps the hot path unchanged.
     void set_profiler(StageProfiler* profiler)
@@ -81,6 +98,17 @@ class Pipeline
     ExecutionQualityMetrics execution_quality_;
     int64_t position_{0};
     uint64_t quote_cycle_{0};
+    int64_t position_limit_{0};
+    // Quantity reserved by resting orders, so the gate accounts for what could still fill rather than
+    // only for the position as it stands.
+    int64_t pending_buy_quantity_{0};
+    int64_t pending_sell_quantity_{0};
+    uint64_t risk_rejected_orders_{0};
+    double starting_cash_usd_{0.0};
+    double unit_notional_usd_{0.0};
+    double max_abs_exposure_usd_{0.0};
+    uint64_t exposure_over_collateral_fills_{0};
+    uint64_t strategy_position_mismatches_{0};
     double last_mid_{0.0};
     uint64_t inventory_samples_{0};
     struct FillObservation

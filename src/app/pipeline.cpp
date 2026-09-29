@@ -78,6 +78,25 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 if (previous_position != 0 && position_ != 0 &&
                     (previous_position < 0) != (position_ < 0))
                     ++execution_quality_.inventory_sign_changes;
+                // The order is no longer resting, so give the gate its reserved quantity back.
+                if (report.side == exchange::Side::Buy)
+                    pending_buy_quantity_ -=
+                        std::min(pending_buy_quantity_,
+                                 static_cast<int64_t>(report.executed_quantity()));
+                else
+                    pending_sell_quantity_ -=
+                        std::min(pending_sell_quantity_,
+                                 static_cast<int64_t>(report.executed_quantity()));
+                // Marked exposure against the collateral the run started with. The documented model is
+                // cash only and no margin, and nothing else in the simulator enforces or reports it:
+                // a strategy without an inventory limit reached a cash balance of -120,940 USD on this
+                // feed while equity still printed +29%, which no component flagged.
+                const double exposure =
+                    std::abs(static_cast<double>(position_)) *
+                    unit_notional_at(unit_notional_usd_, report.price);
+                max_abs_exposure_usd_ = std::max(max_abs_exposure_usd_, exposure);
+                if (starting_cash_usd_ > 0.0 && exposure > starting_cash_usd_)
+                    ++exposure_over_collateral_fills_;
                 execution_quality_.captured_edge +=
                     report.side == exchange::Side::Buy ? last_mid_ - report.price
                                                        : report.price - last_mid_;
@@ -100,8 +119,19 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 }
             }
             strategy_.on_order_update(report);
+            // The strategy keeps its own position from the same reports. A divergence is silent drift
+            // in every quote it sizes, so it is counted here rather than assumed away.
+            if (report.owner == "MarketMaker" && strategy_.net_position() != position_)
+                ++strategy_position_mismatches_;
             if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+            {
+                const auto remaining = static_cast<int64_t>(report.remaining_quantity());
+                if (report.side == exchange::Side::Buy)
+                    pending_buy_quantity_ -= std::min(pending_buy_quantity_, remaining);
+                else
+                    pending_sell_quantity_ -= std::min(pending_sell_quantity_, remaining);
                 pending_cancel_orders_.erase(report.order_id);
+            }
             auto audit = order_audit_.find(report.order_id);
             if (audit != order_audit_.end())
             {
@@ -292,6 +322,13 @@ RunSummary Pipeline::summary() const
             .filtered_market_trades = filtered_market_trades_,
             .fill_rate = metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_),
             .cancel_rate = metrics::compute_cancel_rate(submitted_orders_, cancel_requests_),
+            .position_limit = position_limit_,
+            .strategy_net_position = strategy_.net_position(),
+            .strategy_position_mismatches = strategy_position_mismatches_,
+            .risk_rejected_orders = risk_rejected_orders_,
+            .starting_cash_usd = starting_cash_usd_,
+            .max_abs_exposure_usd = max_abs_exposure_usd_,
+            .exposure_over_collateral_fills = exposure_over_collateral_fills_,
             .working_orders = strategy_.working_order_count(),
             .portfolio = portfolio_.metrics(),
             .strategy = strategy_.metrics(),
@@ -317,6 +354,26 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
 
     for (auto& order : orders)
     {
+        // Pre-trade position gate. It counts the quantity already resting on the side that the order
+        // adds to, because those orders can still fill, and a market maker that ignores that can post
+        // risk it has no collateral for.
+        if (position_limit_ > 0 && order.quantity > 0)
+        {
+            const int64_t signed_quantity =
+                order.side == Side::Buy ? static_cast<int64_t>(order.quantity)
+                                        : -static_cast<int64_t>(order.quantity);
+            const int64_t projected = position_ + pending_buy_quantity_ - pending_sell_quantity_ +
+                                      signed_quantity;
+            if (projected > position_limit_ || projected < -position_limit_)
+            {
+                ++risk_rejected_orders_;
+                continue;
+            }
+            if (order.side == Side::Buy)
+                pending_buy_quantity_ += static_cast<int64_t>(order.quantity);
+            else if (order.side == Side::Sell)
+                pending_sell_quantity_ += static_cast<int64_t>(order.quantity);
+        }
         order.order_id = next_order_id_++;
         auto exchange_order = to_exchange_order(order, ts, "MarketMaker");
         ++submitted_orders_;
