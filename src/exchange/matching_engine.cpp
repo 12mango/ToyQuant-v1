@@ -107,6 +107,29 @@ void MatchingEngine::process_bbo_for(SymbolId id, const BboQuote& quote)
     {
         if (queue_model_ == QueueModel::Optimistic) return reduction;
         if (previous_quantity == 0) return queue_ahead;
+        if (queue_model_ == QueueModel::Lumpy)
+        {
+            // A level's displayed size falls in whole orders: the measured median decrease removes 74%
+            // of a median level, and 99.96% of the fall is cancel or amendment rather than trade. So a
+            // fall of r is read as k orders leaving, each of them ahead of us with probability
+            // q = queue_ahead / previous_quantity, which gives
+            //
+            //     removed from ahead = (r / k) * Binomial(k, q)
+            //     E[...]            = r * q                    same as pro-rata, for every k
+            //     Var[...]          = r^2 * q * (1 - q) / k    falls as the fall is split more finely
+            //
+            // k = 1 is the lumpiest reading and matches that median; k -> infinity is the deterministic
+            // pro-rata rule. The two models therefore differ in variance and not in mean, and this is
+            // the one that can reproduce a single large cancellation putting an order at the front.
+            const double share =
+                std::min(1.0, static_cast<double>(queue_ahead) /
+                                  static_cast<double>(previous_quantity));
+            std::binomial_distribution<uint64_t> from_ahead(lump_chunks_, share);
+            const uint64_t ahead_orders = from_ahead(queue_rng_);
+            return static_cast<uint64_t>(std::llround(static_cast<double>(reduction) *
+                                                      static_cast<double>(ahead_orders) /
+                                                      static_cast<double>(lump_chunks_)));
+        }
         return static_cast<uint64_t>((static_cast<double>(queue_ahead) *
                                       static_cast<double>(reduction)) /
                                      static_cast<double>(previous_quantity));

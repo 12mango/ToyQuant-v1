@@ -165,7 +165,8 @@ void Application::run_replay_mode() const
                                       .taker_rate = instrument.taker_fee_rate,
                                       .quantity_scale = instrument.quantity_scale,
                                       .unit_notional_usd = instrument.unit_notional_usd},
-                          1, cfg_.queue_model);
+                          1, cfg_.queue_model, cfg_.queue_lump_chunks,
+                          cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, instrument.tick_size);
@@ -235,7 +236,8 @@ void Application::run_l2_replay_mode() const
                                       .taker_rate = instrument.taker_fee_rate,
                                       .quantity_scale = instrument.quantity_scale,
                                       .unit_notional_usd = instrument.unit_notional_usd},
-                          1, cfg_.queue_model);
+                          1, cfg_.queue_model, cfg_.queue_lump_chunks,
+                          cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
                       portfolio, instrument.tick_size);

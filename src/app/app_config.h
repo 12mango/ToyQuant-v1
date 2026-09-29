@@ -45,6 +45,10 @@ struct AppConfig
     // default the recorded runs use. 0 means "use the default". It exists because the fill count is
     // dominated by where the quote sits, and that has to be measurable rather than argued about.
     double base_spread_ticks = 0.0;
+    // QueueModel::Lumpy settings: how many whole orders a level decrease is read as, and the seed for
+    // the draws. Both default to the model's own choice, so a run without them is reproducible.
+    uint64_t queue_lump_chunks = 0;
+    uint64_t queue_seed = 0;
     // How far the fair price has to move before a resting quote is pulled and replaced, in ticks.
     // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
     // that is replaced on every twitch never holds a queue position long enough to reach the front.

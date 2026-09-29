@@ -789,7 +789,66 @@ fills, which is a sample the markout immediately contradicts at -0.5 ticks. The 
 next question is not how to fill more, it is what a maker can capture on this instrument that exceeds a
 0.02% fee on a fixed 10 USD face value.
 
+### The queue model, as arithmetic
+
+Let a price level display `D` contracts, of which `Q` are ahead of our resting order, so our share of the
+queue is `q = Q / D`. Two kinds of event change `Q`.
+
+**Trades.** A print of size `t` at our price removes from the front: `Q <- max(0, Q - t)`, and the order
+fills when `Q` reaches zero. Nothing is assumed here.
+
+**Cancellations.** The display falls from `D` to `D - r` with no trade at that price. Which of those `r`
+contracts were ahead of us is not in the data. Write the amount that leaves from ahead as a random
+variable `X(r)`; a queue model is a claim about its distribution.
+
+| model | `X(r)` | `E[X]` | `Var[X]` |
+|---|---|---|---|
+| `conservative` | `0` | `0` | `0` |
+| `prorata` | `r * q` | `r * q` | `0` |
+| `lumpy` | `(r / k) * Binomial(k, q)` | `r * q` | `r^2 q (1 - q) / k` |
+| `optimistic` | `r` | `r` | `0` |
+
+The columns after the first are what the models *mean*, and they separate two different uncertainties.
+`conservative` and `optimistic` bracket the **mean**: they are the claims that none, or all, of the
+fall came from ahead of us. `k` moves the **variance** without touching the mean, because a binomial
+with `k` draws has mean `k q` and variance `k q (1 - q)`, and each draw carries `r / k`. So `k` is not a
+free knob either; it has a physical reading. A cancellation removes whole orders, and the measurements
+say how big those are: the median level decrease removes 74% of a median level, decreases run from 100
+to 360,000 contracts, and the removed fraction is flat at 0.5-0.7 across four orders of magnitude of
+level size. The neutral reading of a fall of `r` is therefore "one or a few orders left, each ahead of
+us with probability `q`", which is `k = 1`, and `k -> infinity` is the deterministic pro-rata rule. A
+level of `n` equal orders would give `k = n r / D`, so `k` is L2-blind in the same way the placement of
+the cancels is.
+
+**What the measurement says, including a negative result.** The same window, quoted at the touch, with
+a four-tick requote threshold, ten seeds per setting:
+
+| model | fills over ten seeds | mean | range |
+|---|---|---:|---|
+| `prorata` | 21, 21, 21 | 21.0 | 0 |
+| `lumpy`, `k = 1` | 17 17 19 19 19 17 21 19 17 21 | 18.6 | 17-21 |
+| `lumpy`, `k = 4` | 19 19 19 19 21 19 21 21 19 21 | 19.8 | 19-21 |
+| `lumpy`, `k = 16` | 21 19 21 19 19 19 19 19 19 17 | 19.4 | 17-21 |
+
+**The fill count is largely insensitive to `k`.** The per-event variance is real, but a quote lives
+through many level updates before it can fill, so most of that variance averages out along the way and
+every setting lands within about 10% of the deterministic value. Lumpiness therefore changes *which*
+quotes fill and *when*, which a count per window cannot see, and it does not change how many a window
+produces. That is the honest reason it is offered as an alternative reading rather than as the default:
+it buys mechanism, not magnitude.
+
+**And "mean-preserving" is per event, not per run.** `E[X] = r q` holds by construction for every
+event, but the fill count is a nonlinear function of the whole queue path, so a path that empties a
+queue in one jump does not fill exactly as often as one that empties it smoothly. The 18.6 against 21
+is that effect rather than a defect, and it is the reason the two runs are not reported as agreeing.
+
+What would move the headline number is the `q` inside `E[X] = r q`. That is the arrival rule, and the
+arrival rule is why `q` is close to one for a quote at the touch: a resting order starts behind the
+displayed size.
+
 ## Interpretation and Next Step
+
+
 
 The wall-clock baselines include startup, parsing, simulation, and output I/O; they do not identify
 event-level latency. The L1 sample is unsuitable for profitability conclusions, and none of these

@@ -3,6 +3,7 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -11,6 +12,11 @@
 #include "execution_report.h"
 #include "market/market_event.h"
 #include "order.h"
+
+// Every draw in QueueModel::Lumpy comes from a generator seeded with the date of the recorded window,
+// so a lumpy run is reproducible by default. A different seed is a replication of the same model
+// rather than a different model, which is why the number worth reporting is the spread across seeds.
+inline constexpr uint64_t kDefaultQueueSeed = 20200401;
 
 struct FeeSchedule
 {
@@ -89,10 +95,13 @@ class MatchingEngine : public IMatchingEngine
 
     explicit MatchingEngine(double tick_size = PRICE_TICK_SIZE, FeeSchedule fee_schedule = {},
                              uint64_t cancel_delay_events = 0,
-                             QueueModel queue_model = QueueModel::ProRata)
+                             QueueModel queue_model = QueueModel::ProRata,
+                             uint64_t lump_chunks = 1, uint64_t random_seed = kDefaultQueueSeed)
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
                     queue_model_(queue_model),
+                    lump_chunks_(lump_chunks == 0 ? 1 : lump_chunks),
+                    queue_rng_(random_seed),
                     cancel_delay_events_(cancel_delay_events)
     {
     }
@@ -207,6 +216,11 @@ class MatchingEngine : public IMatchingEngine
     uint64_t buy_queue_from_quantity_changes_{0};
     uint64_t sell_queue_from_quantity_changes_{0};
     QueueModel queue_model_{QueueModel::ProRata};
+    // Chunks per level decrease for QueueModel::Lumpy, and the generator that draws them. The seed is
+    // fixed so a lumpy run is reproducible: one seed is a replication, not a random experiment, and
+    // the spread across seeds is the quantity worth reporting.
+    uint64_t lump_chunks_{1};
+    std::mt19937_64 queue_rng_{kDefaultQueueSeed};
     uint64_t event_counter_{0};
     std::unordered_map<uint64_t, uint64_t> pending_cancels_;
     uint64_t cancel_delay_events_{0};

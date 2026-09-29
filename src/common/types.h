@@ -30,6 +30,7 @@ enum class QueueModel : uint8_t
 {
     Conservative,
     ProRata,
+    Lumpy,
     Optimistic
 };
 
@@ -41,6 +42,8 @@ inline const char* queue_model_name(QueueModel model)
             return "conservative";
         case QueueModel::ProRata:
             return "prorata";
+        case QueueModel::Lumpy:
+            return "lumpy";
         case QueueModel::Optimistic:
             return "optimistic";
     }

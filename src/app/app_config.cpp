@@ -21,6 +21,8 @@ constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
+constexpr std::string_view kQueueChunksPrefix = "--queue-chunks=";
+constexpr std::string_view kQueueSeedPrefix = "--queue-seed=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -55,6 +57,7 @@ bool parse_queue_model(const std::string& value, QueueModel& result)
 {
     if (value == "conservative") result = QueueModel::Conservative;
     else if (value == "prorata") result = QueueModel::ProRata;
+    else if (value == "lumpy") result = QueueModel::Lumpy;
     else if (value == "optimistic") result = QueueModel::Optimistic;
     else return false;
     return true;
@@ -77,8 +80,8 @@ void print_usage(const char* executable)
                      "values derived from the instrument quantity scale | --base-spread-ticks=N "
                      "sets the quote half-spread, 1 being the venue touch\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
-        std::cerr << "   queue_model: prorata (default, calibrated) | conservative (lower bound) | "
-                     "optimistic (upper bound)\n";
+        std::cerr << "   queue_model: prorata (default, calibrated) | lumpy (same mean, real variance) | "
+                     "conservative (lower bound) | optimistic (upper bound)\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -102,7 +105,10 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
 
     if (cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay)
     {
-        if (argc < 5 || argc > 12)
+        // No upper bound on the argument count: every optional flag is validated as it is parsed, so
+        // capping the total only rejected valid commands with a misleading message once the flags
+        // multiplied, which is exactly what happened when two were added at once.
+        if (argc < 5)
         {
             error = "replay requires trade file, market-state file, and symbol";
             return false;
@@ -135,7 +141,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         {
             if (!parse_queue_model(argv[8], cfg.queue_model))
             {
-                error = "queue model must be conservative, prorata, or optimistic";
+                error = "queue model must be conservative, prorata, lumpy, or optimistic";
                 return false;
             }
             first_optional_flag = 9;
@@ -209,11 +215,31 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.refresh_price_ticks_override = ticks;
             }
+            else if (flag.compare(0, kQueueChunksPrefix.size(), kQueueChunksPrefix) == 0)
+            {
+                uint64_t chunks = 0;
+                if (!parse_unsigned(flag.substr(kQueueChunksPrefix.size()), chunks) ||
+                    chunks == 0)
+                {
+                    error = "--queue-chunks must be a positive integer";
+                    return false;
+                }
+                cfg.queue_lump_chunks = chunks;
+            }
+            else if (flag.compare(0, kQueueSeedPrefix.size(), kQueueSeedPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kQueueSeedPrefix.size()), cfg.queue_seed))
+                {
+                    error = "--queue-seed must be a non-negative integer";
+                    return false;
+                }
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
                         "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
-                        "--max-position=N, --base-spread-ticks=N, or --refresh-price-ticks=N";
+                        "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
+                        "--queue-chunks=N, or --queue-seed=N";
                 return false;
             }
         }
