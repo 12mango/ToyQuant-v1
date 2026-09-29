@@ -227,6 +227,43 @@ improvement.
 Both tables are reproduced by the commands in their sections above; their inputs to the invariant are the two
 numbers in the marked block, which the fast gate re-computes on every change.
 
+## Out of Sample: the Same Policy on a Second Day
+
+Every conclusion above comes from one day, and the repository holds a second one: a 25-level snapshot file and
+a trades file for 2020-05-01. Both days are replayed through the **same depth format**, which is the point of
+the design — a difference between the rows below is the day, not the feed.
+
+| Window | Depth source | submitted | fills | fill rate | captured ticks/contract | captured USD | fees USD | fees / captured | realized USD | queue min-fraction p50 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 04-01 | snapshot (control) | 1146 | 146 | 12.7% | 0.086 | 0.00987 | 0.292 | 29.6x | -0.757 | 0.992 |
+| **05-01** | snapshot (out of sample) | 526 | 58 | 11.0% | 0.034 | 0.00114 | 0.116 | **102x** | -0.287 | 0.951 |
+| 04-01 | incremental (mainline) | 182 | 21 | 11.5% | 0.095 | 0.00157 | 0.042 | 26.8x | -0.109 | 0.961 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+then: submitted_orders=526 trade_reports=58 fill_rate=0.110266 captured_edge_per_unit_ticks=0.0344828 captured_edge_usd=0.00113946 fees_paid=0.116 realized_pnl=-0.287468 queue_min_fraction_p50=0.951289
+-->
+
+What survives is the reason for doing it.
+
+1. **The fill rate is 11 to 13% on all three windows**, so "a quote rarely fills" is not a property of one day.
+2. **The captured edge per contract stays in the tenths of a tick** (0.034, 0.086, 0.095) and stays positive,
+   while the fee per contract is fixed at 0.002 USD by the fee schedule and cannot move.
+3. **The fee is between 27 and 102 times the captured edge, and never below 27 times.** The second day is the
+   *worst* case for the strategy rather than the best, which is the useful direction for the claim: the
+   conclusion does not rest on having chosen a favourable day.
+4. **The realized loss scales with the fill count, not with the parameters.** 21 fills lose 0.109 USD and 146
+   fills lose 0.757 USD, about seven times the loss for about seven times the fills. That is the same
+   scale-invariance the order-size sweep found, reproduced on a day the parameters were not chosen on.
+
+One claim needs narrowing rather than repeating. On the mainline window `queue_zero_orders` equalled the fill
+count exactly, which supported "every order that reached the front traded". On the second day it is 59 orders
+against 58 fills, and on the control 150 against 146, so the honest form is **almost every** order that reached
+the front traded, within a few percent on all three windows. The direction survives; the exact equality was a
+property of one window.
+
+## L2 Mainline Workload
+
 To cover the current mainline, `active_l2` was replayed against a 15-minute incremental Deribit
 window with the conservative queue model and no depth sampling:
 

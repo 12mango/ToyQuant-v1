@@ -42,6 +42,11 @@ L1_BBO=data/v2/test_bookTicker_5k.csv
 FULL_DEPTH=data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv
 SLICE_200K=/tmp/depth_200k_base.csv
 SLICE_2M=/tmp/depth_2m.csv
+# The second day exists only as a gzipped snapshot file, so its slice is cut through zcat. It backs the
+# out-of-sample check in docs/PERFORMANCE_HISTORY.md, whose numbers the gate re-derives. All three slices are
+# built on demand, so the cut costs a second once and nothing afterwards.
+SNAPSHOT_0501=data/v2/deribit_book_snapshot_25_2020-05-01_BTC-PERPETUAL.csv.gz
+SLICE_0501=/tmp/snap_0501_200k.csv
 REF_HASH=/tmp/l2_full_ref.sha256
 
 # The slices are cut from the tracked depth file. /tmp is volatile, so cut them again on demand
@@ -49,6 +54,9 @@ REF_HASH=/tmp/l2_full_ref.sha256
 ensure_slices() {
   [ -f "$SLICE_200K" ] || head -n 200001 "$FULL_DEPTH" > "$SLICE_200K"
   [ -f "$SLICE_2M" ] || head -n 2000001 "$FULL_DEPTH" > "$SLICE_2M"
+  if [ ! -f "$SLICE_0501" ] && [ -f "$SNAPSHOT_0501" ]; then
+    zcat "$SNAPSHOT_0501" 2>/dev/null | head -n 200001 > "$SLICE_0501"
+  fi
 }
 
 # Sort the tokens so the comparison does not depend on the order the summary lines happen to print in.
