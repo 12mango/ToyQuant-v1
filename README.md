@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen)](tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[User Guide](docs/USER_GUIDE.md) · [Architecture](docs/ARCHITECTURE.md) · [Performance](docs/PERFORMANCE.md) · [Low-Latency Design](docs/LATENCY_DESIGN.md) · [Data Formats](data/README.md)
+[User Guide](docs/USER_GUIDE.md) · [Design Review](docs/DESIGN_REVIEW.md) · [Architecture](docs/ARCHITECTURE.md) · [Performance](docs/PERFORMANCE.md) · [Low-Latency Design](docs/LATENCY_DESIGN.md) · [Learning Path](docs/LEARNING.md) · [Data Formats](data/README.md)
 
 </div>
 
@@ -181,11 +181,14 @@ ToyQuant deliberately excludes real exchange connectivity, FIX, a risk gateway, 
 
 | Document | Contents |
 |---|---|
+| [Design Review](docs/DESIGN_REVIEW.md) | Why the demo is built this way: the constraints it holds itself to, the decisions and rejected alternatives behind each component, the measured headline results, what is still wrong with it, and the 30-second version of the pitch |
 | [User Guide](docs/USER_GUIDE.md) | CLI reference, scenarios, experiments, data contracts, and troubleshooting |
+| [Learning Path](docs/LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference |
 | [Architecture](docs/ARCHITECTURE.md) | Data flow, module responsibilities, matching rules, order lifecycle |
 | [Performance](docs/PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted |
 | [Low-Latency Design](docs/LATENCY_DESIGN.md) | Why each low-latency change is faster, how it was verified, and what was measured and rejected |
 | [Performance History](docs/PERFORMANCE_HISTORY.md) | Superseded measurements in the order they were taken |
+| [Documentation Index](docs/index.md) | Which document to read for which question, and what keeps each of them honest |
 | [Data Files](data/README.md) | Tick CSV format, runtime outputs, typical workflow |
 
 ## Contributing

@@ -1,5 +1,15 @@
 # Learning Path
 
+This document is the market-making side of the project: the mechanisms the simulator exists to show, in the
+order they matter, each with the measurement that supports it. It is short on purpose and it points at two
+places for depth. [Design Review](DESIGN_REVIEW.md) explains why the simulator is built the way it is and
+lists what the evidence cannot yet support; [Performance History](PERFORMANCE_HISTORY.md) holds the
+measurements themselves.
+
+Sections 1, 6 and 7 are one thread and are best read together: section 1 claims that a fill is a queue
+statement rather than a price statement, section 6 shows that claim as a single order's trace, and section 7
+shows what changes when the queue is harder to leave than to reach.
+
 This is a market-making simulator for learning, not a profitability claim. It exists to make four
 mechanisms visible and measurable, and this document walks them in the order they start to matter. Each
 section says what to run, which field answers it, and what the recorded numbers look like, so a reader

@@ -79,7 +79,8 @@ tier1() {
   # source: flags, queue models and tool paths.
   local prose_check=0
   python3 tools/lint_prose.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
-      docs/PERFORMANCE.md docs/LEARNING.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+      docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md docs/index.md \
+      > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   l2=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 conservative \
         --fast-validation 2>&1 | grep -oE 'incremental_batches=117288|submitted_orders=406|trade_reports=1|queue_ahead_consumed=55460|realized_pnl=-0.002|equity=1000' | tokens)
   l1=$("$BIN" replay "$L1_TRADES" "$L1_BBO" BTCUSDT 0 optimized 1000000 2>&1 |
@@ -91,7 +92,7 @@ tier1() {
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
   local doc_check=0
   python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
-    > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
+    docs/DESIGN_REVIEW.md > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
   if [ $rc -eq 0 ] && [ $doc_check -eq 0 ] && [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ]; then
     echo "tier1 OK"
     return 0

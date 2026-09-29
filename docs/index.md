@@ -1,44 +1,42 @@
 # ToyQuant Documentation
 
-This documentation is organized into four layers:
+Start from the reason you are reading. The last column says who keeps each document honest, because in this
+project that is a mechanical answer: most of the claims here are re-derived by the build.
 
-1. **Getting Started**: how to build, run, and test the project.
-2. **Architecture**: what each module does and why the C++ design is structured this way.
-3. **Performance**: what the engine costs, how that is measured, and why each low-latency design is faster.
-4. **Data and experiments**: how to use synthetic market conditions to study behavior and compare strategies.
+## Pick the path
 
----
+| If you want to... | Read | Then |
+|---|---|---|
+| evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
+| understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the evidence |
+| run it | [User Guide](USER_GUIDE.md) | [Data Files](../data/README.md) for the input contracts |
+| know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](LATENCY_DESIGN.md) for why each change is faster |
+| see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the section named in whichever document quoted it |
 
-## Documentation Navigation
+**If you only read one document, read the [Design Review](DESIGN_REVIEW.md).** It carries the constraints the
+project holds itself to, the decisions and the rejected alternatives behind each component, the measured
+headline results, an explicit list of what is wrong with the demo, and the three lengths of the same story
+for talking about it out loud.
 
-- [User Guide](USER_GUIDE.md)  
-  *Build instructions, CLI usage, scenarios, experiments, runtime artifacts, and troubleshooting.*
+## Every document
 
-- [Architecture](ARCHITECTURE.md)  
-  *A module-by-module explanation of the data flow, matching logic, and the purpose of each C++ component.*
+| Document | What it is for | Kept honest by |
+|---|---|---|
+| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way: constraints, decisions, alternatives, evidence, limits | its headline block is re-run by `tools/check_docs.py`; its prose is checked for flags, models and tool paths by `tools/lint_prose.py` |
+| [Architecture](ARCHITECTURE.md) | What each module is, the data contracts between them, and the matching rules | marked blocks re-run by `tools/check_docs.py`; prose linted |
+| [Learning Path](LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference | prose linted |
+| [User Guide](USER_GUIDE.md) | Every mode, every flag, and the failure modes that waste an afternoon | prose linted, so a flag it forgets or invents fails the build |
+| [Performance](PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted | the ledger's claims are paired measurements from `tools/measure_l2_baseline.py` |
+| [Low-Latency Design](LATENCY_DESIGN.md) | Why each low-latency change is faster: problem, design, mechanism, verification, and the designs that were measured and rejected | prose linted; numbers traced to `tools/measure_l2_baseline.py` |
+| [Performance History](PERFORMANCE_HISTORY.md) | Superseded and current measurements in the order they were taken, kept as a lab notebook | marked blocks re-run by `tools/check_docs.py` |
+| [Data Files](../data/README.md) | Tick CSV format, runtime outputs, typical workflow | - |
 
-- [Performance](PERFORMANCE.md)  
-  *Workloads, how to measure on this host, the current stage breakdown, and the ledger of every
-  optimization attempted, including the ones that did not pay.*
+## What the project covers, and what it deliberately does not
 
-- [Low-Latency Design](LATENCY_DESIGN.md)  
-  *Why each low-latency change is faster: the problem, the design, the mechanism, and the verification.
-  Also the designs that were measured and rejected.*
+The loop is feed adapters, an order book, a strategy, a matching engine with an explicit queue model,
+execution reports, and a portfolio, in C++20 with CMake and a Python 3 toolchain for the measurement tools.
 
-- [Performance History](PERFORMANCE_HISTORY.md)  
-  *Superseded measurements in the order they were taken, kept as a lab notebook.*
-
----
-
-## What This Project Covers
-
-- **C++20 trading loop** for feed, order-book update, strategy decision, and matching.
-- **CSV and UDP market feeds** for reproduction and simulation.
-- **Order-book state and matching rules** with price-time priority and partial fills.
-- **Market-making strategies** including a baseline, a smoothed multi-level maker, and a BBO-aware
-  L1 maker with inventory and execution-quality diagnostics.
-- **Backtest-oriented reporting** covering execution summaries, equity, drawdown, and inventory
-  exposure, with L1-specific runtime metrics kept separate from the simplified offline PnL model.
-- **CTest-based validation** for the behaviors that matter most to this project.
-
-This project is intentionally educational and does not aim to reproduce a production exchange stack or a production-grade low-latency HFT system.
+It is not a production exchange stack, a connectivity layer, or a live-trading system. There is no market
+impact, no queue-position feedback from the strategy's own resting size, no persistence or recovery, and no
+risk gateway. Those exclusions are what keep the whole loop small enough to read in one sitting, and they are
+listed as limitations rather than hidden as gaps in the [Design Review](DESIGN_REVIEW.md).
