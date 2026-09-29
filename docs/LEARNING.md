@@ -85,7 +85,9 @@ Section 1 says a fill depends on the queue in front of a quote. That is easy to 
 because every fill rate the project prints is a total: 182 orders, 21 fills, 11.5%. `--trace-order=N`
 replaces the total with one order's sequence. Below is the complete trace of order 3 in the window the
 performance tables use, at the policy with the best measured capture, with the timestamps quoted as
-milliseconds after the order was sent and the columns the tool prints:
+milliseconds after the order was sent and the rows narrowed to the two columns that matter. The submit row
+has no queue to report and prints zero, because the order has not joined a level yet: the field belongs to a
+resting order's wait, not to the price.
 
 ```
 event   queue_ahead   change

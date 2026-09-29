@@ -238,7 +238,7 @@ the checks are split by what they are for:
 
 | Tier | Command | Cost | Purpose |
 |---|---|---|---|
-| 1 | `bash tools/verify_l2.sh fast` | ~3 s | L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
+| 1 | `bash tools/verify_l2.sh fast` | ~3 s | The unit tests, the L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
 | 2 | `bash tools/verify_l2.sh all` | ~20 s | adds the full-file stdout hash, before accepting |
 
 Tier 1 compares batch counts, order and fill counts, realised PnL and consumed queue position, which is
