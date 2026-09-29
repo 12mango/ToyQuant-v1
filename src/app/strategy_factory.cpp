@@ -45,17 +45,22 @@ ActiveL2MarketMakerConfig make_active_l2_config(const L2MarketMakerConfig& base)
 }  // namespace
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
-                                        const InstrumentSpec* instrument,
-                                        const FlowAwareMarketMakerConfig& flow_config,
-                                        double l1_risk_threshold,
-                                        double l1_stress_spread_multiplier,
-                                        double l1_minimum_stress_quantity_ratio,
-                                        double l1_fee_spread_multiplier,
-                                        uint64_t order_size_override,
-                                        int64_t inventory_limit_override,
-                                        double base_spread_ticks_override,
-                                        uint64_t refresh_price_ticks_override)
+                                        const StrategyFactoryConfig& config)
 {
+    // Bound by name rather than spelled config.* at every use, so the body below reads exactly as it did
+    // when these were parameters. What changed is that a caller can no longer pass them in the wrong
+    // order without naming the wrong field.
+    const InstrumentSpec* instrument = config.instrument;
+    const FlowAwareMarketMakerConfig& flow_config = config.flow_config;
+    const uint64_t order_size_override = config.order_size_override;
+    const int64_t inventory_limit_override = config.inventory_limit_override;
+    const double base_spread_ticks_override = config.base_spread_ticks_override;
+    const uint64_t refresh_price_ticks_override = config.refresh_price_ticks_override;
+    const double l1_risk_threshold = config.l1_risk_threshold;
+    const double l1_stress_spread_multiplier = config.l1_stress_spread_multiplier;
+    const double l1_minimum_stress_quantity_ratio = config.l1_minimum_stress_quantity_ratio;
+    const double l1_fee_spread_multiplier = config.l1_fee_spread_multiplier;
+
     const uint64_t derived_order_size =
         instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
                    : 100;

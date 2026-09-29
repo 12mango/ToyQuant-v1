@@ -25,19 +25,19 @@ uint64_t quantity_for_side(const std::vector<StrategyOrder>& orders, Side side)
 int main()
 {
     const auto instrument = btc_usdt_spec(100);
-    auto passive_l1 = make_strategy("passive_l1", &instrument);
+    auto passive_l1 = make_strategy("passive_l1", StrategyFactoryConfig{.instrument = &instrument});
     assert(passive_l1 != nullptr);
     assert(dynamic_cast<PassiveL1MarketMaker*>(passive_l1.get()) != nullptr);
 
-    auto inventory_aware_l1 = make_strategy("inventory_aware_l1", &instrument);
+    auto inventory_aware_l1 = make_strategy("inventory_aware_l1", StrategyFactoryConfig{.instrument = &instrument});
     assert(inventory_aware_l1 != nullptr);
     assert(dynamic_cast<InventoryAwareL1MarketMaker*>(inventory_aware_l1.get()) != nullptr);
 
-    auto flow_aware_l1 = make_strategy("flow_aware_l1", &instrument);
+    auto flow_aware_l1 = make_strategy("flow_aware_l1", StrategyFactoryConfig{.instrument = &instrument});
     assert(flow_aware_l1 != nullptr);
     assert(dynamic_cast<FlowAwareL1MarketMaker*>(flow_aware_l1.get()) != nullptr);
 
-    auto active_l1 = make_strategy("active_l1", &instrument);
+    auto active_l1 = make_strategy("active_l1", StrategyFactoryConfig{.instrument = &instrument});
     assert(active_l1 != nullptr);
     assert(dynamic_cast<ActiveL1MarketMaker*>(active_l1.get()) != nullptr);
 

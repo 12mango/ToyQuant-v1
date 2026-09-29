@@ -56,10 +56,15 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         orders << "ts,symbol,side,price,quantity,order_id\n";
         trades << "ts,symbol,side,price,quantity,order_id,liquidity_role,fee\n";
 
-        auto strategy = make_strategy(name, &instrument, flow_config, l1_risk_threshold,
-                          l1_stress_spread_multiplier,
-                                      l1_minimum_stress_quantity_ratio,
-                                      l1_fee_spread_multiplier);
+        auto strategy = make_strategy(name,
+                                      StrategyFactoryConfig{
+                                          .instrument = &instrument,
+                                          .flow_config = flow_config,
+                                          .l1_risk_threshold = l1_risk_threshold,
+                                          .l1_stress_spread_multiplier = l1_stress_spread_multiplier,
+                                          .l1_minimum_stress_quantity_ratio =
+                                              l1_minimum_stress_quantity_ratio,
+                                          .l1_fee_spread_multiplier = l1_fee_spread_multiplier});
         OrderBook order_book(instrument.tick_size);
         MatchingEngine engine(instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,
