@@ -62,6 +62,37 @@ Reproduce from the repository root:
   data/v2/test_bookTicker_5k.csv BTCUSDT 1000000
 ```
 
+## The L1 Line, Before the Queue Model
+
+The project began as a Binance Trade+BBO replay with a legacy CSV and a legacy UDP tick path, and the strategy
+line that came with it (`naive`, `passive_l1`, `inventory_aware_l1`, `flow_aware_l1`, `active_l1`,
+`optimized`) is still in the repository. Everything in this section is history: the design it describes was
+superseded, and the numbers stay because the L1 invariants are still one of the sets the fast gate compares.
+
+**What an L1 fill meant.** The feed carries trades and a best bid and offer, with quantities but no depth. The
+engine has no level to attach a queue to, so a resting order starts at the touch with nothing ahead of it and
+a trade printing through its price fills it. That is a price-touch model, and it answers a real question: did
+the market trade at or through my price. It cannot answer the question that decides whether a quote gets
+filled, which is what happened to the queue standing in front of it.
+
+**What it measured.** An L1 run is pinned as the second invariant set in the fast gate: 13,734 orders, 2,277
+fills, a fill rate of 0.175872, realized PnL of -33.7861 and equity of 966.196 on the recorded input, compared
+on every code change. That is the role the line has now. On strategy results the earlier note stands: an L1
+sample is unsuitable for profitability conclusions, and nothing here changes that.
+
+**Why the mainline moved to L2.** The question worth answering turned out to be the queue, and a top-of-book
+feed cannot see one. The Deribit depth replay added a book with levels, a per-level queue that a new order
+joins behind, and the queue models the rest of these documents measure. The same strategy code was then used
+to ask whether a fill is a price event or a queue event, and the answer — a median quote that never came
+within four percent of the front, on the window the main tables use — is the result this project is built
+around.
+
+**What stayed.** The L1 names remain available, the legacy CSV and UDP inputs remain as demo data, and the L1
+invariants remain in `tools/verify_l2.sh fast`. New strategy work belongs to the L2 path, and a change to the
+legacy makers that moves those numbers is a change to a recorded result rather than an improvement. The
+documentation that describes the line as it still runs is in
+[User Guide](USER_GUIDE.md#current-modes) and [Architecture](ARCHITECTURE.md).
+
 ## L2 Mainline Workload
 
 To cover the current mainline, `active_l2` was replayed against a 15-minute incremental Deribit

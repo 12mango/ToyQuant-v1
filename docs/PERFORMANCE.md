@@ -48,6 +48,12 @@ level updates per batch**, more than a thousand live levels per side, and a live
 
 ### W2: Binance L1 replay (regression)
 
+The line the project started with, kept as a regression workload. Its feed has no depth, so a resting order
+there has no queue in front of it and a fill is a price event rather than a queue event. The run pins the L1
+invariants that `tools/verify_l2.sh fast` compares on every change, and the history of the line — what it
+could and could not answer, and why the queue model moved to the L2 path — is in
+[Performance History](PERFORMANCE_HISTORY.md).
+
 ```bash
 ./out/build/linux-debug/toy_quant replay \
   data/v2/test_aggTrades_5k.csv data/v2/test_bookTicker_5k.csv BTCUSDT 0 optimized 1000000
