@@ -12,6 +12,14 @@
 //     (submitted orders, trade reports, fill rate, realised PnL, equity) on every edit, and by
 //     `bash tools/verify_l2.sh all`, which compares a full-file run byte for byte. A change in this file
 //     that moves those numbers is a change to a recorded result.
+// Archived L1 implementations, kept for reproducing earlier L1 replay and benchmark results.
+//
+// These are frozen compatibility implementations rather than a maintained strategy line: new strategy work
+// belongs to the L2 path, and a change here that moves the numbers is a change to a recorded result. Their
+// behaviour is pinned by invariants rather than described, so `tools/verify_l2.sh fast` checks the L1
+// invariants on every edit and `tools/verify_l2.sh all` compares a full-file run byte for byte. The reason
+// is in docs/ARCHITECTURE.md; the reason it is worth stating in the file is that a reader who arrives here
+// looking for the strategy code to modify should leave before changing anything.
 #pragma once
 // Frozen L1 replay strategies retained for compatibility and historical benchmarks.
 #include <algorithm>
