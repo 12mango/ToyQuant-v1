@@ -1177,3 +1177,44 @@ because it did not pay. `book-apply` and `market-view` were later rebuilt on `Ti
 engine's per-symbol maps were later re-keyed by integer id. Both are in the
 [optimization ledger](PERFORMANCE.md#5-optimization-ledger), with their mechanisms in
 [Low-Latency Design](LATENCY_DESIGN.md).
+
+## Queue Distribution Over Orders
+
+The one-order trace showed a quote joining a 7,200 contract queue and being cancelled with 169 contracts
+still in front of it. That was an illustration, and the claim it supports is about every order rather than
+about one, so the pipeline now profiles each order that rests: the queue in front of it when it rests, the
+closest that queue came while the order was alive, and the queue remaining when the order left. Five summary
+fields carry the aggregate. On the mainline window, quoting one tick wide and re-quoting after a four-tick
+move:
+
+| Field | Value | Meaning |
+|---|---:|---|
+| `queue_profile_orders` | 182 | Orders that rested and died, which is every submitted order in this window |
+| `queue_zero_orders` | 21 | Orders whose queue in front reached zero at some point |
+| `queue_min_fraction_p50` | 0.961474 | Median closest approach, as a fraction of the queue joined behind |
+| `queue_min_fraction_p10` | 0 | Tenth percentile of the same ratio |
+| `queue_end_fraction_p50` | 0.961474 | Median queue still in front when the order left |
+
+The median quote never came within four percent of the front, and the tenth percentile is zero, which is the
+21 fills and nothing else: on this window no order reached the front of its level and went unfilled, so being
+first in line was sufficient to trade and the fill rate is a statement about how long the strategy waits
+rather than about where it quotes.
+
+Two implementation facts are load-bearing, and both are covered by the pipeline test. The end-of-life queue
+is read **before** a cancel is issued rather than from the `Cancelled` report, because the engine erases a
+price level once no order rests in it: a reading taken after the order leaves would report an empty queue for
+a level that was not empty, and the two percentiles above would both collapse to zero. And a fill sets the
+closest approach to zero by construction, because a fill is what happens when the queue reaches zero, which
+is why `queue_zero_orders` can never be smaller than the fill count.
+
+The measurement is cheap: the audit map holds open orders only, so sampling every level we are resting in
+costs a handful of map lookups per event, on a stage that is 0.5% of the event already.
+
+**This changed the default summary, and the reference hash was re-recorded.** The five fields are printed
+unconditionally, so `tools/verify_l2.sh full` failed until the reference was refreshed. The re-record was
+taken deliberately and justified by proving the difference was exactly those fields: stripping them from the
+new output and hashing the remainder reproduces the previous reference, `079a955a`, byte for byte over the
+1.5 GB stream, and the tier 1 invariants on both the L2 and the L1 paths are unchanged. The only new
+interaction with the engine is a `const` accessor, so no run can behave differently because of this. A reader
+holding an older cached reference should run `tools/verify_l2.sh ref` once; the file lives in `/tmp` and is
+not tracked, which is why the change is recorded here rather than in the diff.

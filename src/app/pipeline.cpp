@@ -1,5 +1,6 @@
 #include "pipeline.h"
 
+#include <algorithm>
 #include <cmath>
 #include <type_traits>
 
@@ -46,6 +47,19 @@ void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
         << report.quantity << "," << report.order_id << "," << role << "," << report.fee << "\n";
 }
 
+// Nearest-rank percentile over a copy. One entry per order, so a sort per call is cheaper than anything
+// clever, and the rank is rounded to the nearest entry rather than interpolated because the values are
+// ratios between two integers and inventing intermediate values would suggest a precision they do not have.
+double percentile(std::vector<double> values, double fraction)
+{
+    if (values.empty()) return 0.0;
+    std::sort(values.begin(), values.end());
+    const double position = fraction * static_cast<double>(values.size() - 1);
+    const std::size_t index =
+        std::min(values.size() - 1, static_cast<std::size_t>(position + 0.5));
+    return values[index];
+}
+
 }  // namespace
 
 Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
@@ -63,6 +77,24 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
         [this](const ExecutionReport& report)
         {
             record_trace_report(report);
+            if (report.exec_type == ExecType::Resting)
+            {
+                const auto resting_audit = order_audit_.find(report.order_id);
+                if (resting_audit != order_audit_.end())
+                {
+                    OrderAudit& audit = resting_audit->second;
+                    audit.profiling = true;
+                    audit.symbol = report.symbol;
+                    audit.side = report.side == exchange::Side::Buy ? Side::Buy : Side::Sell;
+                    audit.price = report.price;
+                    // The queue this order joined behind. The engine has just created the level, and the
+                    // level exists only while one of our orders rests in it, which is why both ends of the
+                    // measurement are taken while the order is still there.
+                    audit.queue_at_rest =
+                        engine_.queue_ahead_at(audit.symbol, audit.side, audit.price);
+                    audit.min_queue_ahead = audit.queue_at_rest;
+                }
+            }
             if (report.owner == "MarketMaker") portfolio_.apply(report);
             if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
             {
@@ -178,12 +210,30 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                         ++execution_quality_.audited_filled_orders;
                     else
                         ++execution_quality_.audited_cancelled_orders;
+                    if (audit->second.profiling && audit->second.queue_at_rest > 0)
+                    {
+                        const double at_rest = static_cast<double>(audit->second.queue_at_rest);
+                        queue_min_fractions_.push_back(
+                            static_cast<double>(audit->second.min_queue_ahead) / at_rest);
+                        queue_end_fractions_.push_back(
+                            static_cast<double>(audit->second.queue_at_end) / at_rest);
+                        ++queue_profile_orders_;
+                        if (audit->second.min_queue_ahead == 0) ++queue_zero_orders_;
+                    }
                     order_audit_.erase(audit);
                 }
             }
             if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
             {
                 if (first_fill_order_id_ == 0) first_fill_order_id_ = report.order_id;
+                // A fill means the queue in front of this order reached zero, which is the fact the whole
+                // distribution is built on: the order was first in line and someone traded with it.
+                const auto fill_audit = order_audit_.find(report.order_id);
+                if (fill_audit != order_audit_.end() && fill_audit->second.profiling)
+                {
+                    fill_audit->second.min_queue_ahead = 0;
+                    fill_audit->second.queue_at_end = 0;
+                }
                 ++trade_reports_;
                 trade_report_quantity_ += report.executed_quantity();
             }
@@ -232,6 +282,20 @@ void Pipeline::record_trace_report(const ExecutionReport& report)
     trace_last_queue_ = queue;
     if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
         trace_level_known_ = false;
+}
+
+void Pipeline::sample_resting_queues()
+{
+    // The map holds open orders only, so this costs a handful of lookups per event. It is the difference
+    // between knowing one order's wait and knowing the distribution of waits, and it runs whether or not a
+    // trace was asked for, because the distribution is the claim and the trace is the illustration.
+    for (auto& entry : order_audit_)
+    {
+        OrderAudit& audit = entry.second;
+        if (!audit.profiling) continue;
+        const uint64_t queue = engine_.queue_ahead_at(audit.symbol, audit.side, audit.price);
+        if (queue < audit.min_queue_ahead) audit.min_queue_ahead = queue;
+    }
 }
 
 void Pipeline::process_event(const MarketEvent& event)
@@ -316,6 +380,10 @@ void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const
 {
     current_ts_ = ts;
     submit_strategy_actions(symbol, ts, top);
+    // The L1 path has no depth view to sample on, so it samples on its own updates; without this the
+    // profile would report that no L1 quote ever moved toward the front, which would be an absence of
+    // measurement rather than a fact.
+    sample_resting_queues();
 }
 
 void Pipeline::process_l2_market_view(const L2MarketView& view)
@@ -391,6 +459,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
     // Sampled last, so the row describes the queue the way this event left it: the engine has already
     // applied whatever quantity changes the view implied.
     record_trace_sample("view", view.ts);
+    sample_resting_queues();
 }
 
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)
@@ -399,6 +468,7 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
     strategy_.on_market_trade(trade);
     engine_.process_market_trade(trade);
     record_trace_sample("trade", trade.ts);
+    sample_resting_queues();
 }
 
 RunSummary Pipeline::summary() const
@@ -450,6 +520,11 @@ RunSummary Pipeline::summary() const
             .longest_wait_filled_cycles = longest_wait_filled_cycles_,
             .longest_wait_working_order_id = longest_working_id,
             .longest_wait_working_cycles = longest_working_cycles,
+            .queue_profile_orders = queue_profile_orders_,
+            .queue_zero_orders = queue_zero_orders_,
+            .queue_min_fraction_p50 = percentile(queue_min_fractions_, 0.50),
+            .queue_min_fraction_p10 = percentile(queue_min_fractions_, 0.10),
+            .queue_end_fraction_p50 = percentile(queue_end_fractions_, 0.50),
             .queue_trace = trace_rows_};
 }
 
@@ -467,6 +542,17 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
     {
         if (!pending_cancel_orders_.insert(order_id).second) continue;
         ++cancel_requests_;
+        const auto cancelled_audit = order_audit_.find(order_id);
+        if (cancelled_audit != order_audit_.end() && cancelled_audit->second.profiling)
+        {
+            // Read before the cancel and not from the Cancelled report: the engine erases a price level once
+            // no order rests in it, so a reading taken after the order is gone would report an empty queue
+            // for a level that was not empty. This is the number that says how much queue was still in front
+            // of a quote when the strategy gave up on it.
+            cancelled_audit->second.queue_at_end = engine_.queue_ahead_at(
+                cancelled_audit->second.symbol, cancelled_audit->second.side,
+                cancelled_audit->second.price);
+        }
         engine_.cancel_order(order_id);
     }
 
@@ -521,7 +607,7 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         write_order_csv_row(orders_out_, ts, order);
         strategy_.on_order_submitted(order);
         order_start_cycles_.insert_or_assign(order.order_id, quote_cycle_);
-        order_audit_.insert_or_assign(order.order_id, OrderAudit{quote_cycle_, false});
+        order_audit_.insert_or_assign(order.order_id, OrderAudit{.start_cycle = quote_cycle_});
         ++execution_quality_.audited_orders;
         if (order.order_id == trace_order_id_)
         {

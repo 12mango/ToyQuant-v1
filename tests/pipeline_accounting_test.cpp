@@ -114,6 +114,27 @@ int main()
     assert(l2_pipeline.summary().first_fill_order_id == 1);
     assert(l2_pipeline.summary().trace_requested);
 
+    // The distribution over orders, which is the statistic the trace illustrates. Order 1 (the bid) filled,
+    // so its closest approach and its queue at the end are both zero. Order 2 is still resting, so it has no
+    // profile yet: the profile is closed when an order dies, not when it is submitted.
+    assert(l2_pipeline.summary().queue_profile_orders == 1);
+    assert(l2_pipeline.summary().queue_zero_orders == 1);
+    assert(l2_pipeline.summary().queue_min_fraction_p50 == 0.0);
+    assert(l2_pipeline.summary().queue_end_fraction_p50 == 0.0);
+
+    // A view that moves the mid far enough to requote cancels the ask, whose queue was never touched. This is
+    // the case that proves the end-of-life reading is taken before the cancel: the engine erases a level once
+    // no order rests in it, so a reading taken after the Cancelled report would report zero here as well and
+    // the two percentiles would be indistinguishable.
+    l2_pipeline.process_l2_market_view(L2MarketView{.symbol = "L2",
+                                                    .ts = 13,
+                                                    .top = TopOfBook{101.5, 100, 102.5, 100},
+                                                    .micro_price = 102.0});
+    assert(l2_pipeline.summary().queue_profile_orders == 2);
+    assert(l2_pipeline.summary().queue_zero_orders == 1);
+    assert(l2_pipeline.summary().queue_min_fraction_p50 == 1.0);
+    assert(l2_pipeline.summary().queue_end_fraction_p50 == 1.0);
+
     MatchingEngine deribit_fee_engine(0.5,
         FeeSchedule{.maker_rate = 0.0002,
                     .taker_rate = 0.0005,

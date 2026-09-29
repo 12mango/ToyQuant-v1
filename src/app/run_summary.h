@@ -99,6 +99,16 @@ struct RunSummary
     uint64_t longest_wait_filled_cycles{0};
     uint64_t longest_wait_working_order_id{0};
     uint64_t longest_wait_working_cycles{0};
+    // The queue distribution over orders rather than over fills. `queue_min_fractions_` and
+    // `queue_end_fractions_` are per-order ratios: the closest the queue in front came to being clear
+    // (0 means the order was first in line at some point) and how much of it was still there when the
+    // order left (0 means it filled). A median near 1 on both means most quotes never came close and were
+    // pulled anyway, which is the mechanical statement behind a low fill rate.
+    uint64_t queue_profile_orders{0};
+    uint64_t queue_zero_orders{0};
+    double queue_min_fraction_p50{0.0};
+    double queue_min_fraction_p10{0.0};
+    double queue_end_fraction_p50{0.0};
     // One order's wait, when --trace-order names it: the queue it joined behind, every change in that
     // queue, and the report that ended it. It is the only place in this project where a mechanism is
     // shown as a sequence instead of as a total, which is what makes it the teaching artefact.
@@ -136,6 +146,11 @@ struct RunSummary
                << execution_quality.total_order_lifetime_cycles
                << " quote_at_touch_orders=" << execution_quality.quote_at_touch_orders
                << " quote_behind_touch_orders=" << execution_quality.quote_behind_touch_orders
+               << " queue_profile_orders=" << queue_profile_orders
+               << " queue_zero_orders=" << queue_zero_orders
+               << " queue_min_fraction_p50=" << queue_min_fraction_p50
+               << " queue_min_fraction_p10=" << queue_min_fraction_p10
+               << " queue_end_fraction_p50=" << queue_end_fraction_p50
                << " captured_edge=" << execution_quality.captured_edge
                << " captured_edge_per_unit_ticks="
                << (execution_quality.captured_edge_quantity > 0.0

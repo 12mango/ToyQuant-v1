@@ -144,8 +144,32 @@ class Pipeline
     {
         uint64_t start_cycle{0};
         bool filled{false};
+        // Queue profile. The level belongs to our order while it rests, so the queue behind it is measured
+        // when the order arrives and again before any cancel, never after it leaves: the engine erases a
+        // level once no order rests in it, and a reading taken after that would report an empty queue for a
+        // level that was not empty. `min_queue_ahead` is sampled after every event, which is what turns one
+        // order's trace into a distribution over all of them.
+        bool profiling{false};
+        Side side{Side::Unknown};
+        // Braced like every other member, because GCC's -Wmissing-field-initializers exempts members that
+        // have a default initializer and reports the one that does not.
+        std::string symbol{};
+        double price{0.0};
+        uint64_t queue_at_rest{0};
+        uint64_t min_queue_ahead{0};
+        uint64_t queue_at_end{0};
     };
     std::unordered_map<uint64_t, OrderAudit> order_audit_;
+    // One entry per order that rested and died, holding the two ratios worth aggregating: how close the
+    // queue in front came, and how much of it was still there when the order left.
+    std::vector<double> queue_min_fractions_;
+    std::vector<double> queue_end_fractions_;
+    uint64_t queue_profile_orders_{0};
+    uint64_t queue_zero_orders_{0};
+
+    // Samples the queue in front of every order we are resting. Called after each event that could have
+    // changed such a level; the map holds only open orders, so this is a handful of lookups per event.
+    void sample_resting_queues();
     std::unordered_set<uint64_t> pending_cancel_orders_;
     // Trace state. The level stays unknown until the traced order has been submitted, because until then
     // there is no price to look up and a trace that guessed one would be worse than no trace.

@@ -236,13 +236,16 @@ that stops being true fails a build rather than misinforming a reader.
 
 <!-- toyquant:check
 run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --trace-order=1
-then: submitted_orders=182 trade_reports=21 fill_rate=0.115385 cancel_rate=0.901099 captured_edge_per_unit_ticks=0.0952381 captured_edge_usd=0.00156518 fees_paid=0.042 realized_pnl=-0.109283 queue_ahead_consumed=47649 longest_wait_filled_order_id=45
+then: submitted_orders=182 trade_reports=21 fill_rate=0.115385 cancel_rate=0.901099 captured_edge_per_unit_ticks=0.0952381 captured_edge_usd=0.00156518 fees_paid=0.042 realized_pnl=-0.109283 queue_ahead_consumed=47649 longest_wait_filled_order_id=45 queue_profile_orders=182 queue_zero_orders=21 queue_min_fraction_p50=0.961474 queue_min_fraction_p10=0 queue_end_fraction_p50=0.961474
 -->
 
 **1. A fill is a statement about a queue, not about a price.** 182 quotes produced 21 fills, a fill rate of
-11.5%, and 90.1% of the quotes were cancelled rather than filled. The trace explains why: the order it
-follows joined a 7,200 contract queue and was pulled with 169 contracts still in front of it. The strategy
-changed its mind faster than the queue cleared, which no price-based fill rule can represent.
+11.5%, and 90.1% of the quotes were cancelled rather than filled. The distribution over all 182 orders says
+why: **the median quote never came closer than 96.1% of the queue it joined behind**, and the tenth
+percentile is zero, which is the 21 fills and nothing else. No quote reached the front of its level and went
+unfilled — `queue_zero_orders` equals the fill count exactly — so on this window being first in line was
+sufficient to trade. The strategy changed its mind long before the queue cleared, which no price-based fill
+rule can represent. The trace shows one instance of that; these five numbers count all of them.
 
 **2. Adverse selection takes most of the quoted spread.** The quote is placed half a tick from the mid, and
 the captured edge is 0.095 ticks per contract, about 19% of what was quoted. The other 81% is the cost of

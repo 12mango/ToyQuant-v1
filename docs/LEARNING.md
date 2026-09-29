@@ -154,6 +154,12 @@ The trace now times every row with the clock of the event being processed. And `
 summary, so the first traced run that used it printed nothing at all; the trace rides in the summary and is
 meant to be read with `grep QUEUE_TRACE`.
 
+The trace is one order; the distribution is all of them, and it is the version that carries the claim.
+`queue_profile_orders`, `queue_zero_orders` and the two `queue_..._fraction_p50` fields in the summary are
+the same measurement aggregated over every quote the strategy posted, and on the window above the median
+quote never came closer than 96.1% of the queue it joined behind. Section 1 of
+[Design Review](DESIGN_REVIEW.md) is the claim and section 4 is the evidence behind it.
+
 ## 7. Latency is two costs with opposite signs
 
 The natural way to model latency is a single number that makes everything slightly worse. Measured on this
@@ -201,6 +207,7 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `captured_edge`, `adverse_selection` | Raw sums of price differences; the tick and USD fields below are the readable form |
 | `captured_edge_per_unit_ticks`, `markout_per_unit_ticks` | Quantity-weighted averages in ticks, comparable with a half-spread |
 | `captured_edge_usd`, `markout_usd`, `fees_paid` | The same quantities in the unit fees are charged in |
+| `queue_profile_orders`, `queue_zero_orders`, `queue_min_fraction_p50`, `queue_min_fraction_p10`, `queue_end_fraction_p50` | The queue distribution over orders rather than over fills: how many orders were profiled, how many saw their queue reach zero, and the median and tenth-percentile closest approach and end-of-life queue, each as a fraction of the queue the order joined behind. Both fractions are zero on a path whose model gives a quote no queue at rest, which is the L1 replay. |
 | `markout_count` | Fills old enough for the five-cycle markout to have resolved |
 | `avg_abs_inventory`, `max_abs_inventory`, `inventory_sign_changes` | Inventory path statistics, updated where the position changes |
 | `max_abs_exposure_usd`, `starting_cash_usd`, `exposure_over_collateral_fills` | Marked exposure against the collateral the run began with |
