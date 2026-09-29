@@ -908,6 +908,36 @@ yet and these rows say nothing about a venue where cancels are slow.
 None of the rows supports a PnL conclusion: all six are below the thirty fills the project requires
 before a PnL statement, which is the case the gate exists for.
 
+### What a late cancel costs, and why the sign flips
+
+The other half of the lifecycle is `--cancel-latency-us`, the delay between the strategy asking to cancel
+and the exchange applying it. Same window, same policy, same model as the table above:
+
+| cancel latency us | fills | fill rate | captured ticks | markout ticks | edge USD | realized USD |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 21 | 11.5% | +0.095 | +0.095 | +0.002 | -0.109 |
+| 1000 | 27 | 16.9% | -0.315 | +0.574 | -0.007 | -0.130 |
+| 5000 | 25 | 16.9% | -0.480 | +0.820 | -0.009 | -0.123 |
+| 20000 | 25 | 17.1% | -0.440 | +0.700 | -0.009 | -0.156 |
+| 50000 | 23 | 19.3% | -0.196 | +0.435 | -0.004 | -0.158 |
+
+Entry latency made the capture larger. Cancel latency makes it **negative**. The quote stands through
+whatever the market did while the cancel was in flight, so the fills that arrive are the ones where a
+trade came through a price the strategy had already decided to leave: buying above the mid, which is what
+a negative capture means. The fill count rises rather than falls, 21 to 27, for the same reason, because
+a quote that is never pulled is always there to be hit.
+
+The markout column is worth reading carefully, because the cost does not appear where the classic story
+puts it. The markout five cycles later is positive in every row, so the loss is not a delayed drift after
+the fill: it is realised at the fill itself, in the price. Measured against the fee, the edge per contract
+goes from barely positive to about half the fee, and realized PnL gets worse as the cancel gets slower,
+while the entry-latency table got better in the same column. The two directions are opposite, and that
+asymmetry is the whole of what latency does to a market maker: being slow to arrive costs you fills,
+being slow to leave costs you money.
+
+None of these rows supports a PnL conclusion either. The largest fill count is 27, still below the thirty
+the project requires.
+
 ## Interpretation and Next Step
 
 

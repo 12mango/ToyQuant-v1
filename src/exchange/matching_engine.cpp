@@ -47,6 +47,8 @@ void MatchingEngine::send_order(const exchange::Order& order)
 
 void MatchingEngine::advance_to(uint64_t ts)
 {
+    // The clock has to move even when nothing is in flight, or a cancel latency would never expire.
+    now_us_ = std::max(now_us_, ts);
     if (in_flight_orders_.empty()) return;
     std::stable_sort(in_flight_orders_.begin(), in_flight_orders_.end(),
                      [](const auto& left, const auto& right)
@@ -374,10 +376,11 @@ void MatchingEngine::process_market_order(SymbolId id, const std::string& symbol
 
 void MatchingEngine::cancel_order(uint64_t order_id)
 {
-    if (cancel_delay_events_ > 0)
+    if (cancel_delay_events_ > 0 || cancel_latency_us_ > 0)
     {
         if (order_index_.contains(order_id))
-            pending_cancels_[order_id] = event_counter_ + cancel_delay_events_;
+            pending_cancels_[order_id] = {event_counter_ + cancel_delay_events_,
+                                          now_us_ + cancel_latency_us_};
         return;
     }
     cancel_order_immediate(order_id);
@@ -387,7 +390,7 @@ void MatchingEngine::apply_pending_cancels()
 {
     for (auto it = pending_cancels_.begin(); it != pending_cancels_.end();)
     {
-        if (it->second > event_counter_)
+        if (it->second.due_event > event_counter_ || it->second.due_time > now_us_)
         {
             ++it;
             continue;

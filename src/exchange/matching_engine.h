@@ -97,7 +97,8 @@ class MatchingEngine : public IMatchingEngine
                              uint64_t cancel_delay_events = 0,
                              QueueModel queue_model = QueueModel::ProRata,
                              uint64_t lump_chunks = 1, uint64_t random_seed = kDefaultQueueSeed,
-                             double arrival_share = 1.0, uint64_t order_latency_us = 0)
+                             double arrival_share = 1.0, uint64_t order_latency_us = 0,
+                             uint64_t cancel_latency_us = 0)
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
                     queue_model_(queue_model),
@@ -106,6 +107,7 @@ class MatchingEngine : public IMatchingEngine
                     arrival_share_(arrival_share < 0.0 ? 0.0
                                                        : arrival_share > 1.0 ? 1.0 : arrival_share),
                     order_latency_us_(order_latency_us),
+                    cancel_latency_us_(cancel_latency_us),
                     cancel_delay_events_(cancel_delay_events)
     {
     }
@@ -244,8 +246,21 @@ class MatchingEngine : public IMatchingEngine
     // uses; anything else is the one part of the order lifecycle that a replay can model directly, and
     // the reason the project can measure what being slow costs rather than only asserting that it does.
     uint64_t order_latency_us_{0};
+    // The other half of the order lifecycle, and the half that costs a market maker money: a quote that
+    // arrives late is merely stale, but a cancel that arrives late leaves the quote standing through
+    // whatever the market did in the meantime. Cancels are due when both the event count and the clock
+    // say so, so the original event-counted delay keeps working underneath this one.
+    uint64_t cancel_latency_us_{0};
+    // The last market event's timestamp, which is also the moment a strategy's decision was taken,
+    // because a strategy only ever acts on a market event.
+    uint64_t now_us_{0};
     std::vector<std::pair<uint64_t, exchange::Order>> in_flight_orders_;
     uint64_t event_counter_{0};
-    std::unordered_map<uint64_t, uint64_t> pending_cancels_;
+    struct PendingCancel
+    {
+        uint64_t due_event{0};
+        uint64_t due_time{0};
+    };
+    std::unordered_map<uint64_t, PendingCancel> pending_cancels_;
     uint64_t cancel_delay_events_{0};
 };

@@ -316,6 +316,25 @@ int main()
     latency_engine.process_market_trade({108, "LATENCY", 100.0, 10, Side::Sell, 0, "test"});
     assert(has_report(latency_reports, 95, ExecType::Trade, 10));
 
+    // A cancel takes effect only after its own latency. The order rests at ts=200, the cancel is sent at
+    // 200 with a cancels latency of 50, and the cancellation therefore lands at 250 rather than at the
+    // next event: through 240 the quote is still standing and still able to be filled.
+    MatchingEngine cancel_latency_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0,
+                                         50);
+    std::vector<ExecutionReport> cancel_latency_reports;
+    cancel_latency_engine.set_report_callback([&cancel_latency_reports](const ExecutionReport& report)
+                                              { cancel_latency_reports.push_back(report); });
+    cancel_latency_engine.process_l2_top({200, "CANCELLAT", 100.0, 50, 100.1, 40, 60, "test"});
+    cancel_latency_engine.send_order({96, "CANCELLAT", exchange::Side::Buy, exchange::OrderType::Limit,
+                                      100.0, 10, 10, 200, "MarketMaker"});
+    assert(has_report(cancel_latency_reports, 96, ExecType::Resting, 10));
+    cancel_latency_engine.cancel_order(96);
+    cancel_latency_reports.clear();
+    cancel_latency_engine.process_l2_top({240, "CANCELLAT", 100.0, 50, 100.1, 40, 61, "test"});
+    assert(!has_report(cancel_latency_reports, 96, ExecType::Cancelled, 10));
+    cancel_latency_engine.process_l2_top({250, "CANCELLAT", 100.0, 50, 100.1, 40, 62, "test"});
+    assert(has_report(cancel_latency_reports, 96, ExecType::Cancelled, 10));
+
     queued_reports.clear();
     queued_engine.cancel_order(52);
     queued_engine.send_order({53, "BTCUSDT", exchange::Side::Buy,

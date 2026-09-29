@@ -55,6 +55,9 @@ struct AppConfig
     // One-way latency between the strategy sending an order and the exchange having it, in microseconds.
     // 0 is a synchronous engine and is what every recorded run uses.
     uint64_t order_latency_us = 0;
+    // One-way latency between the strategy sending a cancel and the exchange applying it. 0 is a
+    // synchronous engine and is what every recorded run uses.
+    uint64_t cancel_latency_us = 0;
     // How far the fair price has to move before a resting quote is pulled and replaced, in ticks.
     // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
     // that is replaced on every twitch never holds a queue position long enough to reach the front.

@@ -25,6 +25,7 @@ constexpr std::string_view kQueueChunksPrefix = "--queue-chunks=";
 constexpr std::string_view kQueueSeedPrefix = "--queue-seed=";
 constexpr std::string_view kArrivalSharePrefix = "--arrival-share=";
 constexpr std::string_view kOrderLatencyPrefix = "--order-latency-us=";
+constexpr std::string_view kCancelLatencyPrefix = "--cancel-latency-us=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -257,12 +258,21 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
             }
+            else if (flag.compare(0, kCancelLatencyPrefix.size(), kCancelLatencyPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kCancelLatencyPrefix.size()), cfg.cancel_latency_us))
+                {
+                    error = "--cancel-latency-us must be a non-negative integer";
+                    return false;
+                }
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
                         "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
-                        "--queue-chunks=N, --queue-seed=N, --arrival-share=X, or --order-latency-us=N";
+                        "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
+                        "or --cancel-latency-us=N";
                 return false;
             }
         }

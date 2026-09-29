@@ -242,6 +242,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--queue-chunks=N` | Whole orders per level decrease, for `--queue-model=lumpy` | 1 |
 | `--queue-seed=N` | Makes a lumpy run reproducible | Fixed |
 | `--order-latency-us=N` | One-way latency between sending an order and the exchange having it | 0, a synchronous engine |
+| `--cancel-latency-us=N` | One-way latency between sending a cancel and the exchange applying it | 0, a synchronous engine |
 
 Of these, the requote threshold moves the fill count the most of anything measured so far, and the
 arrival share the least; `docs/PERFORMANCE_HISTORY.md` records the measured ordering.
