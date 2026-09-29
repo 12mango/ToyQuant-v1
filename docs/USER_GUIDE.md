@@ -216,8 +216,9 @@ python3 tools/analyze_l2_windows.py \
 The Deribit benchmark uses `0.02%` maker and `0.05%` taker fee assumptions. Results are
 educational replay measurements, not profitability claims. L2 replay uses a fixed one-market-event
 cancellation delay; it is not a millisecond latency model. Queue model defaults to `conservative`;
-`heuristic` and `optimistic` are sensitivity analyses only. Pass `--queue-model` to
-`analyze_l2_windows.py` when comparing these assumptions.
+`prorata` and `optimistic` are sensitivity analyses only, with `prorata` chosen because
+`tools/calibrate_queue_model.py` measures 99.96% of the size removed from a book level as cancellation
+rather than trade. Pass `--queue-model` to `analyze_l2_windows.py` when comparing these assumptions.
 
 ### Replay strategy choices
 

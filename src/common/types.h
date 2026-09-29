@@ -29,7 +29,7 @@ enum class ExecType : uint8_t
 enum class QueueModel : uint8_t
 {
     Conservative,
-    Heuristic,
+    ProRata,
     Optimistic
 };
 
@@ -39,8 +39,8 @@ inline const char* queue_model_name(QueueModel model)
     {
         case QueueModel::Conservative:
             return "conservative";
-        case QueueModel::Heuristic:
-            return "heuristic";
+        case QueueModel::ProRata:
+            return "prorata";
         case QueueModel::Optimistic:
             return "optimistic";
     }

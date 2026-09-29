@@ -843,11 +843,17 @@ markout, inventory, and refresh-cause metrics together.
 
 The matching engine supports three queue interpretations. `Conservative` (the default) advances
 the local queue only when a public trade matches the price; an aggregated displayed-quantity
-reduction is treated as ambiguous and does not create a fill. `Heuristic` advances a configurable
-fraction of such reductions, while `Optimistic` advances the full reduction. The latter two are
-sensitivity models, not claims about order-level truth. Run summaries report trade-driven queue
-consumption, quantity-change-driven consumption, and queue-clear counts separately so L2 results
-can be compared as a bounded execution range rather than as one unexplained fill rate.
+reduction is treated as ambiguous and does not create a fill. `ProRata` shrinks the queue ahead of a
+resting order by the same fraction that the level's displayed size fell, which is what a uniform
+distribution of cancellations across the queue gives. `tools/calibrate_queue_model.py` measures this
+feed to be consistent with that rule: over 200,000 incremental depth rows, 99.96% of the size removed
+from a level is cancel or amendment rather than trade, and the book churns about two thousand four
+hundred times the volume that actually trades. `Optimistic` advances the full reduction instead, and under both
+non-conservative models an order that arrives at a price where the queue ahead is unknown still
+starts behind the displayed size. The latter two remain models of information that aggregated L2 data
+does not carry, not claims about order-level truth. Run summaries report trade-driven queue
+consumption, quantity-change-driven consumption, and queue-clear counts separately so L2 results can
+be compared as a bounded execution range rather than as one unexplained fill rate.
 
 The C++ replay path supports both source types. The Python benchmark reconstructs a compact top-five
 timeline from grouped incremental updates so execution and markout fields use the same report shape
@@ -859,9 +865,11 @@ after fees. The strategy is structurally complete for this simulator, but those 
 establish live profitability.
 
 Every L2 replay records its queue model. `conservative` is the mainline result: only public
-trades advance the queue. `heuristic` and `optimistic` are sensitivity bounds for information
-lost by aggregated L2 data, not proof of live fill probability. A strategy comparison is useful
-only when its behavior remains reasonable across multiple windows, dates, and queue models.
+trades advance the queue, so it is a lower bound that the measured cancel share says is harsher than
+the mechanism. `prorata` is the interpretation the feed supports and `optimistic` is the upper
+bound. Both are models for information lost by aggregated L2 data, not proof of live fill
+probability. A strategy comparison is useful only when its behavior remains reasonable across
+multiple windows, dates, and queue models.
 
 The L2 replay applies a fixed one-market-event cancellation delay. Legacy CSV/UDP and ordinary
 snapshot replay use the configured delay path; this delay is event-count based, not milliseconds.

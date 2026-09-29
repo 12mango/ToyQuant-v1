@@ -222,8 +222,8 @@ int main()
         .warmup_trades = 2,
         .warmup_views = 2});
     assert(warming.on_l2_market_view(view).empty());
-    warming.on_market_trade(MarketTrade{101, view.symbol, 6421.5, 1, Side::Buy, 1});
-    warming.on_market_trade(MarketTrade{102, view.symbol, 6421.5, 1, Side::Sell, 2});
+    warming.on_market_trade(MarketTrade{101, view.symbol, 6421.5, 1, Side::Buy, 1, "test"});
+    warming.on_market_trade(MarketTrade{102, view.symbol, 6421.5, 1, Side::Sell, 2, "test"});
     assert(warming.on_l2_market_view(view).size() == 2);
 
     ActiveL2MarketMaker time_aware(ActiveL2MarketMakerConfig{

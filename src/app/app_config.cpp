@@ -51,7 +51,7 @@ bool parse_unsigned(const std::string& value, uint64_t& result)
 bool parse_queue_model(const std::string& value, QueueModel& result)
 {
     if (value == "conservative") result = QueueModel::Conservative;
-    else if (value == "heuristic") result = QueueModel::Heuristic;
+    else if (value == "prorata") result = QueueModel::ProRata;
     else if (value == "optimistic") result = QueueModel::Optimistic;
     else return false;
     return true;
@@ -73,7 +73,7 @@ void print_usage(const char* executable)
                      "--order-size=N and --inventory-limit=N override the values derived from the "
                      "instrument quantity scale\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
-        std::cerr << "   queue_model: conservative (default) | heuristic | optimistic\n";
+        std::cerr << "   queue_model: conservative (default) | prorata | optimistic\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -124,7 +124,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         }
         if (argc >= 9 && !parse_queue_model(argv[8], cfg.queue_model))
         {
-            error = "queue model must be conservative, heuristic, or optimistic";
+            error = "queue model must be conservative, prorata, or optimistic";
             return false;
         }
         for (int argument = 9; argument < argc; ++argument)

@@ -66,11 +66,11 @@ int main()
     assert(summary.dislocated_trades <= summary.trades);
 
     MarketDataValidator validator;
-    validator.validate(BboQuote{1, "TEST", 100.0, 10, 100.1, 20, 1});
+    validator.validate(BboQuote{1, "TEST", 100.0, 10, 100.1, 20, 1, "test"});
     bool rejected_crossed_quote = false;
     try
     {
-        validator.validate(BboQuote{2, "TEST", 100.2, 10, 100.1, 20, 2});
+        validator.validate(BboQuote{2, "TEST", 100.2, 10, 100.1, 20, 2, "test"});
     }
     catch (const std::invalid_argument&)
     {
@@ -79,11 +79,11 @@ int main()
     assert(rejected_crossed_quote);
 
     MarketDataValidator sequence_validator;
-    sequence_validator.validate(MarketTrade{1, "TEST", 100.0, 1, Side::Buy, 10});
+    sequence_validator.validate(MarketTrade{1, "TEST", 100.0, 1, Side::Buy, 10, "test"});
     bool rejected_sequence_regression = false;
     try
     {
-        sequence_validator.validate(MarketTrade{2, "TEST", 100.0, 1, Side::Buy, 9});
+        sequence_validator.validate(MarketTrade{2, "TEST", 100.0, 1, Side::Buy, 9, "test"});
     }
     catch (const std::invalid_argument&)
     {

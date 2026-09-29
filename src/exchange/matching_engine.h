@@ -89,14 +89,10 @@ class MatchingEngine : public IMatchingEngine
 
     explicit MatchingEngine(double tick_size = PRICE_TICK_SIZE, FeeSchedule fee_schedule = {},
                              uint64_t cancel_delay_events = 0,
-                             QueueModel queue_model = QueueModel::Conservative,
-                             double heuristic_cancel_ahead_ratio = 0.5,
-                             double heuristic_max_reduction_fraction = 0.25)
+                             QueueModel queue_model = QueueModel::Conservative)
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
                     queue_model_(queue_model),
-                    heuristic_cancel_ahead_ratio_(heuristic_cancel_ahead_ratio),
-                    heuristic_max_reduction_fraction_(heuristic_max_reduction_fraction),
                     cancel_delay_events_(cancel_delay_events)
     {
     }
@@ -211,8 +207,6 @@ class MatchingEngine : public IMatchingEngine
     uint64_t buy_queue_from_quantity_changes_{0};
     uint64_t sell_queue_from_quantity_changes_{0};
     QueueModel queue_model_{QueueModel::Conservative};
-    double heuristic_cancel_ahead_ratio_{0.5};
-    double heuristic_max_reduction_fraction_{0.25};
     uint64_t event_counter_{0};
     std::unordered_map<uint64_t, uint64_t> pending_cancels_;
     uint64_t cancel_delay_events_{0};

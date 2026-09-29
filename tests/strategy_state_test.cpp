@@ -67,8 +67,8 @@ int main()
     FlowAwareL1MarketMaker buy_flow_strategy(100, 2.0 * instrument.tick_size,
                                             static_cast<int64_t>(instrument.quantity_scale / 10),
                                             instrument.tick_size);
-    buy_flow_strategy.on_market_trade(MarketTrade{1, "BTCUSDT", 100.0, 100, Side::Buy, 10});
-    buy_flow_strategy.on_market_trade(MarketTrade{2, "BTCUSDT", 100.0, 100, Side::Buy, 10});
+    buy_flow_strategy.on_market_trade(MarketTrade{1, "BTCUSDT", 100.0, 100, Side::Buy, 10, "test"});
+    buy_flow_strategy.on_market_trade(MarketTrade{2, "BTCUSDT", 100.0, 100, Side::Buy, 10, "test"});
     const auto flow_orders = buy_flow_strategy.on_top_of_book("BTCUSDT", flow_top);
     assert(neutral_flow_orders.size() == 2);
     assert(flow_orders.size() == 2);
@@ -116,8 +116,8 @@ int main()
     L1MarketMaker buy_pressure_strategy(100, 0.2, 1000, 0.1);
     const TopOfBook pressure_top{100.0, 100, 100.1, 100};
     const auto neutral_orders = neutral_strategy.on_top_of_book("BTCUSDT", pressure_top);
-    buy_pressure_strategy.on_market_trade(MarketTrade{1, "BTCUSDT", 100.2, 100, Side::Buy, 1});
-    buy_pressure_strategy.on_market_trade(MarketTrade{2, "BTCUSDT", 100.2, 100, Side::Buy, 2});
+    buy_pressure_strategy.on_market_trade(MarketTrade{1, "BTCUSDT", 100.2, 100, Side::Buy, 1, "test"});
+    buy_pressure_strategy.on_market_trade(MarketTrade{2, "BTCUSDT", 100.2, 100, Side::Buy, 2, "test"});
     const auto pressure_orders = buy_pressure_strategy.on_top_of_book("BTCUSDT", pressure_top);
     assert(pressure_orders.size() == 2);
     assert(pressure_orders[0].price < neutral_orders[0].price);
@@ -145,12 +145,12 @@ int main()
     L1MarketMaker time_ordered_imbalance(100, 0.2, 1000, 0.1);
     time_ordered_imbalance.trade_imbalance_window = 4;
     const std::array<MarketTrade, 6> mixed_flow = {
-        MarketTrade{1, "BTCUSDT", 100.0, 100, Side::Buy, 4},
-        MarketTrade{2, "BTCUSDT", 100.0, 100, Side::Buy, 4},
-        MarketTrade{3, "BTCUSDT", 100.0, 100, Side::Sell, 1},
-        MarketTrade{4, "BTCUSDT", 100.0, 100, Side::Sell, 1},
-        MarketTrade{5, "BTCUSDT", 100.0, 100, Side::Sell, 1},
-        MarketTrade{6, "BTCUSDT", 100.0, 100, Side::Buy, 4},
+        MarketTrade{1, "BTCUSDT", 100.0, 100, Side::Buy, 4, "test"},
+        MarketTrade{2, "BTCUSDT", 100.0, 100, Side::Buy, 4, "test"},
+        MarketTrade{3, "BTCUSDT", 100.0, 100, Side::Sell, 1, "test"},
+        MarketTrade{4, "BTCUSDT", 100.0, 100, Side::Sell, 1, "test"},
+        MarketTrade{5, "BTCUSDT", 100.0, 100, Side::Sell, 1, "test"},
+        MarketTrade{6, "BTCUSDT", 100.0, 100, Side::Buy, 4, "test"},
     };
     for (const auto& trade : mixed_flow) time_ordered_imbalance.on_market_trade(trade);
     const auto time_ordered_orders =
@@ -160,11 +160,11 @@ int main()
     assert(time_ordered_orders[1].price > 100.1);
 
     L1MarketMaker stale_trade_strategy(100, 0.2, 1000, 0.1);
-    const BboQuote stale_reference{1000, "BTCUSDT", 99.9, 100, 100.1, 100, 1};
-    stale_trade_strategy.on_market_trade(MarketTrade{2001, "BTCUSDT", 100.0, 100, Side::Buy, 1},
+    const BboQuote stale_reference{1000, "BTCUSDT", 99.9, 100, 100.1, 100, 1, "test"};
+    stale_trade_strategy.on_market_trade(MarketTrade{2001, "BTCUSDT", 100.0, 100, Side::Buy, 1, "test"},
                                          &stale_reference);
     assert(stale_trade_strategy.buy_volume == 0);
-    stale_trade_strategy.on_market_trade(MarketTrade{1001, "BTCUSDT", 110.0, 100, Side::Buy, 2},
+    stale_trade_strategy.on_market_trade(MarketTrade{1001, "BTCUSDT", 110.0, 100, Side::Buy, 2, "test"},
                                          &stale_reference);
     assert(stale_trade_strategy.buy_volume == 0);
 

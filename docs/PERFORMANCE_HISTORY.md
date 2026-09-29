@@ -391,13 +391,17 @@ The queue model is the lever, and the same window shows its spread:
 
 | Queue model | `passive_l2` orders / fills / net PnL | `active_l2` orders / fills / net PnL |
 |---|---:|---:|
-| `conservative` | 657 / 2 / -0.020 | 414 / 0 / 0.000 |
-| `heuristic` | 657 / 2 / -0.020 | 273 / 5 / -0.002 |
-| `optimistic` | 664 / 4 / -0.013 | 286 / 8 / -0.014 |
+| `conservative` | 647 / 4 / -0.0205 | 406 / 1 / -0.0020 |
+| `prorata` | 652 / 4 / -0.0135 | 381 / 3 / -0.0068 |
+| `optimistic` | 652 / 4 / -0.0135 | 279 / 7 / +0.0189 |
 
-`heuristic` treats part of a displayed size decrease as cancellations ahead of the resting order and
-`optimistic` treats all of it that way. Neither is calibrated against real fills, so these rows are a
-sensitivity range rather than a measurement.
+These rows were re-measured when the ad-hoc `heuristic` model was replaced, on the same 200,000-row
+depth slice at default order sizing, because the earlier numbers belonged to a model that no longer
+exists. `prorata` shrinks the queue ahead of a resting order by the fraction the displayed size fell;
+`optimistic` treats the whole decrease that way. For `passive_l2`, which always rests at the touch
+where the queue ahead starts equal to the displayed size, the two coincide. Neither row predicts live
+fills: they are the range that aggregated L2 data leaves open. The only profitable cell is
+`optimistic` on `active_l2`, which is a warning about the fill assumption rather than a result.
 
 One scale note, corrected later. `L2MarketMakerConfig::order_size` was `1` and `inventory_limit` was
 `1`, because `strategy_factory.cpp` derives both from the instrument's `quantity_scale`:
@@ -424,16 +428,17 @@ becomes about something:
 | default (`order_size` 1), conservative | 406 | 406 | 1 | -0.002 |
 | `--order-size=10 --inventory-limit=100`, conservative | 406 | 4060 | 1 | -0.02 |
 | `--order-size=100 --inventory-limit=1000`, conservative | 406 | 40600 | 1 | -0.2 |
-| default, heuristic | 268 | 268 | 5 | -0.0123 |
-| `--order-size=10 --inventory-limit=100`, heuristic | 408 | 4080 | 7 | **-0.550** |
+| default, prorata | 381 | 381 | 3 | -0.0068 |
+| `--order-size=10 --inventory-limit=100`, prorata | 408 | 4080 | 3 | -0.0678 |
 | `--order-size=10 --inventory-limit=100`, optimistic | 411 | 4110 | 7 | **-0.605** |
 
 Two conclusions. **Order size scales the PnL linearly and never changes the fill count**, under any queue
-model; what sets the fill count is the queue model. And **at a realistic size the strategy loses money
-per fill**, by roughly thirty times more per fill than at the old scale, because an order of ten
-contracts moves the strategy's own inventory skew by ten times as much. Seven fills still prove nothing
-statistically, but they are now large enough to be about something, which the previous scale could not
-express at all.
+model: `prorata` fills three times at the default size and three times at ten times the size, with ten
+times the PnL, and `conservative` and `optimistic` keep their counts fixed the same way. What sets the
+fill count is the queue model. And **at a realistic size the strategy loses more per fill in absolute
+terms**, because an order of ten contracts moves the strategy's own inventory skew by ten times as
+much. Three fills still prove nothing statistically, but they are now large enough to be about
+something, which the previous scale could not express at all.
 
 The size change also exposed a reporting gap, and three fixes went in with it. `[EXECUTION]` printed a
 subset of `ExecutionQualityMetrics`, while `[STRATEGY_METRICS]` printed the same quantities from the
@@ -448,10 +453,12 @@ traded. The legacy maker's positional `StrategyMetrics` initialiser became a nam
 because inserting into that struct silently mis-assigned every field after the insertion point.
 
 With those, the same run answers the question a market maker exists to answer. At
-`--order-size=10 --inventory-limit=100` under `heuristic` it reports `captured_edge=2.75`,
-`adverse_selection=-1.5` and `markout_count=6` of 7 fills, so most of the edge captured at the fill is
-given back five cycles later. Under `conservative` it reports `captured_edge=1.25` and no resolved
-markouts, because the one fill arrives too late in the run to have one.
+`--order-size=10 --inventory-limit=100` under `prorata` it reports `captured_edge=1.75`,
+`adverse_selection=-0.5` and `markout_count=2` of 3 fills, so a third of the edge captured at the fill
+is given back five cycles later. Under `conservative` it reports `captured_edge=1.25` and no resolved
+markouts, because the one fill arrives too late in the run to have one. The numbers describe the fill
+model as much as the strategy: `optimistic` reports `captured_edge=2.75`, `adverse_selection=-1.5` and
+`markout_count=6` of 7 fills, which is what the removed `heuristic` produced as well.
 
 Two modelling choices that the earlier notes called limitations are better closed with arithmetic than
 with code, because their effect is bounded below anything a run here can measure:
@@ -480,6 +487,45 @@ through its level. Those fills are selectively optimistic, because they appear e
 market is moving against the resting side. Correcting this removed four of the six fills the window
 previously produced; the two that remain are `passive_l2` quotes that sat at the touch, where the
 old and new estimates agree.
+
+### Calibrating the queue model against the feed
+
+The fraction of a displayed-size decrease that a queue model honours was the last part of the fill
+model resting on a number nobody had measured, so it was measured. `tools/calibrate_queue_model.py`
+walks the incremental depth stream, tracks every price level, and attributes each fall in a level's
+displayed size to the trades printed at that price on that side between the level's previous update
+and that one. Whatever is left over is cancel or amendment.
+
+Over the first 200,000 incremental depth rows, which span 898 seconds of 2020-04-01:
+
+| Quantity | Value |
+|---|---:|
+| level decreases observed | 98,922 |
+| total size removed from levels | 5,162,246,010 |
+| explained by trades at the same price | 2,136,580 (0.04%) |
+| therefore cancelled or amended | 5,160,109,430 (99.96%) |
+| decrease events at least 99% cancellation | 98,268 (99.3%) |
+| events where trades exceeded the decrease | 2 (0.0%) |
+
+Two checks say the attribution is not an artefact of the window logic. The trade file holds 1,334
+trades and 2,146,690 contracts inside that same 898 seconds, and the windows captured 2,136,580 of
+them, or 99.5%, so essentially all of the traded volume is accounted for rather than falling between
+updates. And only two of 98,922 decreases had more trade volume attributed to them than the level
+actually lost, which is what a misalignment between the two files would produce in bulk.
+
+So the displayed book churns **about two thousand four hundred times the volume that actually
+trades**. On this instrument a level's size is mostly a quotation that is withdrawn and replaced: a
+resting order's queue ahead of it is dissolved by cancellations far more often than it is consumed by
+trades. That is what made the old ad-hoc `heuristic` untenable, since its two constants, a cap on the
+reduction it honoured and then a fixed fraction of it, had no reading that matches this measurement,
+and it is also why `conservative` should be read as a floor rather than as a neutral assumption.
+
+What the data cannot show is *where* in a level's queue those cancellations sat, because that is not
+public. `prorata` therefore assumes they are uniform and shrinks the queue ahead in proportion to the
+displayed size, which the two measurable extremes bracket: nothing moves (`conservative`) or all of it
+does (`optimistic`). The measurement narrowed the range rather than closing it, and the sensitivity
+table above shows what is still at stake in it: three fills against seven on one window, and one
+profitable cell out of six.
 
 ## Interpretation and Next Step
 

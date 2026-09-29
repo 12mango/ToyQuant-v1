@@ -212,13 +212,14 @@ int main()
     assert(has_report(optimistic_queue_reports, 81, ExecType::Trade, 10));
     assert(optimistic_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 50);
 
-    MatchingEngine heuristic_queue_engine(0.1, {}, 0, QueueModel::Heuristic, 0.5);
-    heuristic_queue_engine.process_l2_top({34, "HEURISTIC", 100.0, 50, 100.1, 40, 2, "test"});
-    heuristic_queue_engine.send_order({82, "HEURISTIC", exchange::Side::Buy,
-                                       exchange::OrderType::Limit, 100.0, 10, 10, 35,
-                                       "MarketMaker"});
-    heuristic_queue_engine.process_l2_top({36, "HEURISTIC", 100.0, 0, 100.1, 40, 3, "test"});
-    assert(heuristic_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) <= 13);
+    // The proportional model: a level that empties takes the whole queue ahead with it.
+    MatchingEngine prorata_queue_engine(0.1, {}, 0, QueueModel::ProRata);
+    prorata_queue_engine.process_l2_top({34, "PRORATA", 100.0, 50, 100.1, 40, 2, "test"});
+    prorata_queue_engine.send_order({82, "PRORATA", exchange::Side::Buy,
+                                     exchange::OrderType::Limit, 100.0, 10, 10, 35,
+                                     "MarketMaker"});
+    prorata_queue_engine.process_l2_top({36, "PRORATA", 100.0, 0, 100.1, 40, 3, "test"});
+    assert(prorata_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 50);
 
     queued_reports.clear();
     queued_engine.cancel_order(52);

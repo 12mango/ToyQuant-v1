@@ -430,7 +430,7 @@ def main():
     parser.add_argument("--max-depth", type=int, help="optional cap on sliced depth rows")
     parser.add_argument("--depth-every", type=int, default=1)
     parser.add_argument("--quantity-scale", type=int, default=1)
-    parser.add_argument("--queue-model", choices=("conservative", "heuristic", "optimistic"),
+    parser.add_argument("--queue-model", choices=("conservative", "prorata", "optimistic"),
                         default="conservative")
     parser.add_argument("--include-experimental", action="store_true", help="also run internal L2 signal aliases")
     parser.add_argument("--csv", type=Path, help="optional output CSV path")

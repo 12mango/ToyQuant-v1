@@ -89,16 +89,27 @@ void MatchingEngine::process_bbo_for(SymbolId id, const BboQuote& quote)
     if (book_it == books_.end()) return;
     if (queue_model_ == QueueModel::Conservative) return;
 
-    const auto advance_quantity = [this](uint64_t reduction, uint64_t previous_quantity)
+    // How much of the queue ahead of a resting order disappears when a level's displayed size falls.
+    //
+    // Measured on this feed by tools/calibrate_queue_model.py: 99.96% of the displayed size decrease at
+    // a level is cancel or amendment rather than trade, and the book churns about two thousand four
+    // hundred times the volume that actually trades. The queue ahead of a resting order is therefore
+    // removed mostly by cancellations, and the only assumption about where those cancels sit that the
+    // data supports is that they are uniform, which shrinks the queue in proportion to the displayed
+    // size:
+    //
+    //     queue_ahead -= queue_ahead * reduction / previous_quantity
+    //
+    // A level that empties takes the whole queue with it, which is what that expression gives at
+    // reduction == previous_quantity. Optimistic treats every unit of the decrease as a cancel ahead.
+    const auto advance_quantity = [this](uint64_t reduction, uint64_t previous_quantity,
+                                         uint64_t queue_ahead)
     {
         if (queue_model_ == QueueModel::Optimistic) return reduction;
-        const uint64_t bounded_reduction = std::min(
-            reduction, static_cast<uint64_t>(std::llround(
-                           static_cast<double>(previous_quantity) *
-                           std::clamp(heuristic_max_reduction_fraction_, 0.0, 1.0))));
-        return static_cast<uint64_t>(std::llround(
-            static_cast<double>(bounded_reduction) *
-            std::clamp(heuristic_cancel_ahead_ratio_, 0.0, 1.0)));
+        if (previous_quantity == 0) return queue_ahead;
+        return static_cast<uint64_t>((static_cast<double>(queue_ahead) *
+                                      static_cast<double>(reduction)) /
+                                     static_cast<double>(previous_quantity));
     };
     const auto apply_quantity_change = [&](Side side, PriceTick price, uint64_t reduction,
                                            uint64_t previous_quantity)
@@ -118,8 +129,8 @@ void MatchingEngine::process_bbo_for(SymbolId id, const BboQuote& quote)
                 queue_ahead = &level->second.external_queue_ahead;
         }
         if (queue_ahead == nullptr || *queue_ahead == 0) return;
-        const uint64_t inferred = std::min(*queue_ahead,
-                           advance_quantity(reduction, previous_quantity));
+        const uint64_t inferred =
+            std::min(*queue_ahead, advance_quantity(reduction, previous_quantity, *queue_ahead));
         *queue_ahead -= inferred;
         if (side == Side::Buy)
             buy_queue_from_quantity_changes_ += inferred;

@@ -12,14 +12,14 @@
 int main()
 {
     OrderBook book;
-    book.on_bbo({1, "BTCUSDT", 69900.10, 12, 69900.20, 34, 100});
+    book.on_bbo({1, "BTCUSDT", 69900.10, 12, 69900.20, 34, 100, "test"});
     auto bbo = book.market_top("BTCUSDT");
     assert(std::abs(bbo.bid_price - 69900.10) < 1e-9);
     assert(bbo.bid_size == 12);
     assert(std::abs(bbo.ask_price - 69900.20) < 1e-9);
     assert(bbo.ask_size == 34);
 
-    book.on_bbo({2, "BTCUSDT", 69899.90, 20, 69900.00, 25, 101});
+    book.on_bbo({2, "BTCUSDT", 69899.90, 20, 69900.00, 25, 101, "test"});
     bbo = book.market_top("BTCUSDT");
     assert(std::abs(bbo.bid_price - 69899.90) < 1e-9);
     assert(std::abs(bbo.ask_price - 69900.00) < 1e-9);
