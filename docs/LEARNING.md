@@ -57,6 +57,13 @@ markout that never resolves is not evidence of anything.
 
 ## 3. Fees decide whether the spread was worth earning
 
+A maker pays a fee on every fill, so the spread only matters if it exceeds that fee. On the mainline policy
+it does not: the captured edge is 0.095 ticks per contract against a fee worth 2.57 ticks of the same
+contract, so the strategy earns about 4% of the fee it pays. Widening the quote fixes the ratio and destroys
+the fills: the two cross near five ticks, where the window holds one observation. Both tables, and the code
+that turns the width into a price (`src/strategy/l2_market_maker.h:295`), are in
+[Performance History](PERFORMANCE_HISTORY.md).
+
 One BTC-PERPETUAL contract has a fixed 10 USD face value at a price near 6,421, so a half-dollar tick
 is worth `10 * 0.5 / 6421 = 0.0008` USD, while a 0.02% maker fee on the same contract is `0.002` USD.
 Covering the fee takes about 2.5 ticks of capture per side; a quote at the touch earns 0.4 to 0.7.

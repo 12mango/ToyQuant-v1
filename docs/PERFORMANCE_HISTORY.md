@@ -93,6 +93,54 @@ legacy makers that moves those numbers is a change to a recorded result rather t
 documentation that describes the line as it still runs is in
 [User Guide](USER_GUIDE.md#current-modes) and [Architecture](ARCHITECTURE.md).
 
+## Quote Width and the Fee Frontier
+
+The mainline policy quotes one tick wide while the fee is worth 2.57 ticks of the same contract, so the
+strategy question with an answer is not "can it beat the market" but "where does the fee stop being the whole
+story". The knob is `config_.base_spread`, and widening it moves both sides away from the fair price before
+the tick rounding and the clamp that stops a quote from being more aggressive than the touch:
+
+```cpp
+// src/strategy/l2_market_maker.h:295
+const double raw_bid_price = std::floor((fair_price - config_.base_spread - inventory_shift -
+                                         weak_flow_spread_shift) / config_.tick_size) * config_.tick_size;
+const double raw_ask_price = std::ceil((fair_price + config_.base_spread - inventory_shift +
+                                        weak_flow_spread_shift) / config_.tick_size) * config_.tick_size;
+```
+
+Sweep on the 200,000-row window, `--refresh-price-ticks=4`, `prorata`:
+
+| `--base-spread-ticks` | fills | fill rate | captured ticks/contract | captured USD | fees USD | realized USD |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 21 | 11.5% | 0.095 | 0.00157 | 0.042 | -0.109 |
+| 2 | 13 | 5.9% | 0.154 | 0.00156 | 0.026 | -0.052 |
+| 3 | 5 | 1.8% | 1.2 | 0.00470 | 0.010 | -0.017 |
+| **5** | 1 | 0.35% | 5.5 | 0.00432 | 0.002 | -0.002 |
+| 8 | 1 | 0.35% | 8.5 | 0.00667 | 0.002 | -0.002 |
+| 12 | 1 | 0.35% | 12.5 | 0.00981 | 0.002 | -0.002 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=5 --refresh-price-ticks=4
+then: submitted_orders=285 trade_reports=1 fill_rate=0.00350877 captured_edge_per_unit_ticks=5.5 captured_edge_usd=0.00431508 fees_paid=0.002 realized_pnl=-0.002
+-->
+
+Three things fall out of the table, and the third is the one that matters.
+
+1. **Captured edge per contract rises with width**, from 0.095 to 12.5 ticks. A quote further from the mid is
+   a better price on the side that gets filled, which is the same mechanism the arrival latency sweep found.
+2. **Fees fall** from 0.042 to 0.002 USD, because they are charged per fill and the fills disappear.
+3. **The two cross at about five ticks**, and that is the result. At one tick the strategy earns 3.7% of the
+   fee it pays; at five ticks it earns 2.2 times the fee for the first time. It cannot have both, because the
+   width that pays the fee is the width at which the queue in front stops clearing: the queue distribution's
+   median closest approach is 0.961 at one tick and exactly 1.0 from two ticks upward, so the deeper quote is
+   a quote that never reaches the front at all.
+
+**The fill counts are the caveat, and they forbid any stronger reading.** At 5, 8 and 12 ticks the run
+produces one fill each, and the identical fill rate means the three runs submitted the same 285 orders and
+filled one of them. Those rows establish a direction, not a result. The project's floor is thirty fills, so
+the honest sentence is: at a width that can pay the fee, this window holds one observation, and the reason is
+structural rather than a matter of tuning.
+
 ## L2 Mainline Workload
 
 To cover the current mainline, `active_l2` was replayed against a 15-minute incremental Deribit

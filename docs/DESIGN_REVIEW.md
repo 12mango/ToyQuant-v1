@@ -73,6 +73,21 @@ Each decision is written as the situation, the alternative that was considered a
 the evidence, and what the choice costs. The costs are included because a design document that lists only
 advantages is a brochure.
 
+### Where each decision lives in the code
+
+Read the code from here rather than from the prose: each row is the file and the function that implements the
+decision above it, and the last row is the gate that keeps the numbers honest.
+
+| Decision | Where it lives | Read this first |
+|---|---|---|
+| D1 matching | `src/exchange/matching_engine.cpp` | `match()`, which consumes the queue ahead of a resting order before it trades with it |
+| D2 queue models | `src/common/types.h`, `src/exchange/matching_engine.cpp` | `enum class QueueModel` and `apply_quantity_change()`, the pro-rata share |
+| D3 fees on face value | `src/common/instrument_spec.h` | `unit_notional_at()`, the one function the fee model and the portfolio share |
+| D4 two latency legs | `src/exchange/matching_engine.cpp` | `send_order()`, `cancel_order()` and `advance_to()`, the in-flight list and the cancel timer |
+| D5 per-contract reporting | `src/app/pipeline.cpp` | the report callback, where the capture and markout accumulators live |
+| D6 trace and distribution | `src/exchange/matching_engine.cpp`, `src/app/pipeline.cpp` | `queue_ahead_at()`, then `record_trace_sample()` and `sample_resting_queues()` |
+| the gate | `tools/verify_l2.sh` | tiers 0 to 2, then the marked blocks and the prose lint behind them |
+
 ### D1 — Simulate the matching instead of inferring fills from prints
 
 **Situation.** A replay-only backtester has no way to represent a quote waiting behind other orders. The
