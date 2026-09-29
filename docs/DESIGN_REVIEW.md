@@ -310,32 +310,47 @@ evidence, and every absolute number in the performance documents is labelled as 
 
 ## 6. What the next version does
 
-In rough priority order, with the argument for the order rather than a wish list.
+The order below follows one rule: a change is worth doing when it produces a number the gate can check. The
+simulator, its fee model, its queue model and its gate are good enough that more *mechanism* would add surface
+rather than knowledge, and the weakest part of the project is no longer a component. It is that the strongest
+claim here is supported by one order's trace, and that the strategy and risk layers cannot be measured at 0 to
+2 fills per window. Every item below adds evidence.
 
-**1. Parse the depth file in blocks rather than a row at a time.** Parsing is 61% of the event cost and the
-two number conversions inside it are already gone, so the remaining shape change is the only lever left.
-The two attempts to tune the row loop further both measured as no effect, which is what makes this the next
-thing to try rather than more of the same.
+**1. Turn the trace into a distribution.** The trace answers "why did this order not fill" for one order. The
+claim it supports is about all of them, so the next step is an aggregation over orders: how many quotes were
+pulled with the queue still mostly intact, the distribution of wait times, and the share of fills where the
+queue actually reached zero. The machinery is already there — the pipeline knows each order's level and the
+engine exposes the queue in front of it — so this is the cheapest item per line of code in the list, and it
+converts the project's central claim from an anecdote into a statistic that counts every order rather than
+every fill.
 
-**2. Measure the engine's book container on a workload with real order flow.** The ledger's container result
-is the argument for replacing the per-price-level `std::map` with the same flat ladder the market-data book
-uses, but this workload submits 406 orders over 117,288 batches, so the experiment cannot show anything yet.
-The prerequisite is a workload, not a change.
+**2. Test the conclusions on a day they were not derived from.** A snapshot set for 2020-05-01 sits next to
+the 2020-04-01 incremental file, and the L1 path has three days of BTCUSDT from 2024, so an out-of-sample
+check does not need new data. The things worth re-testing are the fee-versus-spread arithmetic and the sign of
+the captured edge, because those are the conclusions a reader would otherwise be entitled to call one day's
+artifact.
 
-**3. Run the strategy comparison on a window where the strategies actually fill.** The regression matrix
-currently reports 0 to 2 fills per strategy, so the inventory, toxicity and volatility knobs inside the
-mainline strategy are effectively unmeasured. A wider spread, a tighter requote threshold, or a longer and
-more volatile window would all produce a comparison with enough fills to mean something, and only then do
-the strategy's own parameters become design decisions rather than defaults.
+**3. Make the economics a frontier instead of a point.** Sweep the quote width against the fee tier and report
+captured against paid per contract with the fill count beside it: at what spread does this become viable, and
+how much of the answer is the fee assumption rather than the strategy? The unit is per contract, so the result
+does not need thirty fills to be stable. It needs one small flag to override the maker rate, in the same shape
+as the existing spread overrides, and a table that says where the boundary is.
 
-**4. Give the one-order trace a companion.** It answers "why did this order not fill". The natural
-completion is a distribution over orders: how many quotes died behind a queue that never cleared, how long
-the survivors waited, and what fraction of fills came from a queue that reached zero. The trace machinery is
-already there; what is missing is an aggregation instead of a sequence.
+**4. Pool windows before adding strategies.** No new strategy should be written until the numbers can tell one
+apart from another: the regression matrix reports 0 to 2 fills per strategy. A pooled per-contract table over
+several windows is the prerequisite, and it is also the point at which the inventory, toxicity and volatility
+knobs inside the mainline strategy become design decisions instead of defaults.
 
-**5. Only then revisit the risk controls.** The halt threshold and the position gate both deserve a
-measurement under the workload from item 3, since both are the kind of parameter that looks reasonable and
-is unverifiable until fills exist.
+**5. Close the parsing question with one bounded experiment.** Parsing is 61% of the event cost, and the ledger
+already shows the field split within 12% of a hand-tuned scan and two attempts to tune the row loop paying
+nothing, so the one shape change left is parsing a block at a time. Doing it once turns "we do not know" into
+"the headroom is not there", which is a result, and it lets the performance line be closed rather than left
+open indefinitely. The same applies to the matcher's book container, which is waiting on a workload with order
+flow rather than on a container.
+
+Explicitly not on this list: more strategies, more knobs, or any connectivity, persistence or risk-gateway
+work. The non-goals are load-bearing, and each of them would make the loop harder to read without making a
+single number more trustworthy.
 
 ## 7. The interview versions
 
@@ -400,7 +415,7 @@ Walk it in this order, and stop wherever the questions go:
 | "Is this HFT?" | It is a simulator that models the economics of latency, not a low-latency system. The latency work is about which leg of an order's life costs money, and the answer is that the cancel leg does while the arrival leg can help. |
 | "What surprised you?" | Three things, all measured rather than assumed: a single latency number hides effects of opposite sign; a queue collapses in a few events instead of eroding, so an average is the wrong summary of it; and my own cost intuition was off by 3 to 10x in a consistent direction, which is why the ledger is a table of attempts. |
 | "What would you do differently?" | Build the gate before the features. It caught two undocumented flags, a stale paragraph and a red test — all of them mine — and each was found later than it should have been. I would also have started with the fee model and the queue model, because everything downstream is a measurement of those two. |
-| "What next?" | Section 6: parse in blocks, because parsing is 61% of the event cost and the row loop has already paid nothing twice; then run the strategy comparison on a window with enough fills that the strategy's own knobs become measurable. |
+| "What next?" | Section 6: aggregate the one-order trace into a distribution over orders, because the central claim is about all of them; then re-test the conclusions on a day they were not derived from, which this repository has data for. |
 
 ### Showing it live
 
