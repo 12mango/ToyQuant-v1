@@ -89,7 +89,7 @@ milliseconds after the order was sent and the columns the tool prints:
 
 ```
 event   queue_ahead   change
-submit  0
+submit  -
 rest    7200                      <- the queue the order joined behind
 view    7199          1
 view    2135          5064        <- one cancellation ahead removed 70% of the queue

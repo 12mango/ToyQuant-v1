@@ -335,14 +335,18 @@ int main()
     cancel_latency_engine.process_l2_top({250, "CANCELLAT", 100.0, 50, 100.1, 40, 62, "test"});
     assert(has_report(cancel_latency_reports, 96, ExecType::Cancelled, 10));
 
-    // The queue trace reads its numbers from this accessor, so it has to report the queue the order
-    // actually joined behind and the queue a level decrease actually shrinks.
+    // The queue trace reads its numbers from this accessor, so it has to report the queue our order
+    // actually joined behind and the queue a level decrease actually shrinks. Before our order is in the
+    // level there is no queue to report: the field belongs to the order's wait, not to the price, and the
+    // trace's submit row therefore reads zero while the rest row that follows reads the joined queue.
     MatchingEngine traced_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0, 0);
     traced_engine.process_l2_top({100, "TRACEIT", 100.0, 50, 100.1, 40, 5, "test"});
-    assert(traced_engine.queue_ahead_at("TRACEIT", Side::Buy, 100.0) == 50);
+    assert(traced_engine.queue_ahead_at("TRACEIT", Side::Buy, 100.0) == 0);
     traced_engine.send_order({97, "TRACEIT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10,
                               10, 100, "MarketMaker"});
+    // Arrival share 1.0, so the order joins behind the whole displayed size of the level it reached.
     assert(traced_engine.queue_ahead_at("TRACEIT", Side::Buy, 100.0) == 50);
+    // The level's display falls by 10 from 50, so the queue in front loses the same tenth of itself.
     traced_engine.process_l2_top({110, "TRACEIT", 100.0, 40, 100.1, 40, 6, "test"});
     assert(traced_engine.queue_ahead_at("TRACEIT", Side::Buy, 100.0) == 40);
     // A price with no level has no queue, and an unknown symbol has no book.

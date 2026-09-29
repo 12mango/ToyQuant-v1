@@ -6,18 +6,21 @@
 # every edit. This splits the checks into what a change has to pass immediately and what it has to
 # pass before it is accepted:
 #
+#   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
 #   tier 1  (~1 s)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #
 # Tier 1 catches essentially everything a reader or book change can get wrong, because it compares
 # event counts, order and fill counts, realised PnL and consumed queue position. Tier 2 is what makes
-# a timing claim defensible: it rules out every explanation except cost.
+# a timing claim defensible: it rules out every explanation except cost. Tier 0 was added after a
+# commit landed carrying a failing assertion: this script compared replay outputs only, so the unit
+# tests could be red while the gate reported success.
 #
 # Usage:
-#   tools/verify_l2.sh fast [binary]   # tier 1 only, the per-edit loop
+#   tools/verify_l2.sh fast [binary]   # tier 0 and tier 1, the per-edit loop
 #   tools/verify_l2.sh ref  [binary]   # store the current full-file output as the reference
 #   tools/verify_l2.sh full [binary]   # tier 2 only, against the stored reference
-#   tools/verify_l2.sh all  [binary]   # both, for accepting a change
+#   tools/verify_l2.sh all  [binary]   # all tiers, for accepting a change
 #
 # Binary defaults to out/build/linux-debug/toy_quant. Output is one line per tier on success, and
 # the expected/actual values on failure. Exit status is 0 when every requested tier matched.
@@ -49,6 +52,20 @@ tokens() { tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' '; }
 
 L2_WANT=$(printf '%s' "incremental_batches=117288 submitted_orders=406 trade_reports=1 queue_ahead_consumed=55460 realized_pnl=-0.002 equity=1000" | tokens)
 L1_WANT=$(printf '%s' "submitted_orders=13734 trade_reports=2277 fill_rate=0.175872 realized_pnl=-33.7861 equity=966.196" | tokens)
+
+tier0() {
+  local build_dir log
+  build_dir=$(dirname "$BIN")
+  log=$(ctest --test-dir "$build_dir" 2>&1 | grep -E 'tests passed')
+  if printf '%s' "$log" | grep -q '100% tests passed'; then
+    echo "tier0 OK"
+    return 0
+  fi
+  echo "tier0 MISMATCH"
+  echo "  ${log:-ctest produced no result; is $build_dir built?}"
+  ctest --test-dir "$build_dir" --rerun-failed --output-on-failure 2>&1 | tail -20 | sed 's/^/  /'
+  return 1
+}
 
 tier1() {
   local l2 l1 rc=0
@@ -111,9 +128,9 @@ tier2() {
 }
 
 case "${1:-fast}" in
-  fast) ensure_slices; tier1 ;;
+  fast) ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; exit $rc ;;
   ref)  ensure_slices; full_hash > "$REF_HASH"; echo "reference stored: $(cat "$REF_HASH")" ;;
   full) ensure_slices; tier2 ;;
-  all)  ensure_slices; rc=0; tier1 || rc=1; tier2 || rc=1; exit $rc ;;
+  all)  ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; tier2 || rc=1; exit $rc ;;
   *)    echo "usage: tools/verify_l2.sh fast|ref|full|all [binary]" >&2; exit 2 ;;
 esac

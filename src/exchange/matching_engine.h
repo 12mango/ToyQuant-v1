@@ -78,8 +78,10 @@ class IMatchingEngine
     }
 
     // The queue standing in front of a resting order at this price, which is the same number the engine
-    // matches against when a trade arrives. Exposed so the pipeline can show one order's wait rather than
-    // only its outcome: a trace is how a reader sees that a fill is decided by a queue and not by a price.
+    // matches against when a trade arrives. It is the order's wait rather than a property of the price:
+    // the field is written when an order of ours joins the level or when the touch moves to it, so a
+    // level we are not in reports zero. Exposed so the pipeline can show one order's wait rather than
+    // only its outcome, because a fill is decided by a queue and not by a price.
     virtual uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const
     {
         (void)symbol;
