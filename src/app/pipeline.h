@@ -170,6 +170,12 @@ class Pipeline
     // Samples the queue in front of every order we are resting. Called after each event that could have
     // changed such a level; the map holds only open orders, so this is a handful of lookups per event.
     void sample_resting_queues();
+
+    // Unwinds the pipeline's own bookkeeping for an order the engine refused. Nothing rests, so no report
+    // will ever arrive for it, and the strategy is told what a venue would tell it rather than left quoting
+    // around a level it is not in.
+    void handle_rejected_order(const exchange::Order& exchange_order, const StrategyOrder& strategy_order,
+                               uint64_t ts);
     std::unordered_set<uint64_t> pending_cancel_orders_;
     // Trace state. The level stays unknown until the traced order has been submitted, because until then
     // there is no price to look up and a trace that guessed one would be worse than no trace.
