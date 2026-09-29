@@ -10,6 +10,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -25,45 +26,59 @@ int main()
     const auto trades = (root / "data/v2/test_aggTrades_5k.csv").string();
     const auto quotes = (root / "data/v2/test_bookTicker_5k.csv").string();
 
-    const InstrumentSpec instrument = btc_usdt_spec();
-    auto readers = make_market_data_readers("binance", trades, quotes, instrument);
-    MarketEvent event;
-    assert(readers.trades->next(event));
-    const auto& trade = std::get<MarketTrade>(event);
-    assert(trade.symbol == "BTCUSDT");
-    assert(trade.ts > 0);
-    assert(trade.price > 0.0);
-    assert(trade.quantity > 0);
-    assert(trade.aggressor_side == Side::Buy || trade.aggressor_side == Side::Sell);
-    assert(trade.exchange == "binance");
+    // Two sections below read the repository fixtures under data/v2/, which are not tracked: a fresh clone
+    // has none of them, so those sections report that they were skipped instead of failing. Skipping
+    // loudly is the point, because a silent skip and a passing check are indistinguishable in a log.
+    // line_reader_test uses the same pattern for the same fixture.
+    const bool have_l1_fixtures = std::filesystem::exists(trades) && std::filesystem::exists(quotes);
 
-    assert(readers.quotes->next(event));
-    const auto& quote = std::get<BboQuote>(event);
-    assert(quote.ts > 0);
-    assert(quote.bid_price > 0.0);
-    assert(quote.ask_price > quote.bid_price);
-    assert(quote.bid_quantity > 0);
-    assert(quote.ask_quantity > 0);
-    assert(quote.exchange == "binance");
+    if (have_l1_fixtures)
+    {
+        const InstrumentSpec instrument = btc_usdt_spec();
+        auto readers = make_market_data_readers("binance", trades, quotes, instrument);
+        MarketEvent event;
+        assert(readers.trades->next(event));
+        const auto& trade = std::get<MarketTrade>(event);
+        assert(trade.symbol == "BTCUSDT");
+        assert(trade.ts > 0);
+        assert(trade.price > 0.0);
+        assert(trade.quantity > 0);
+        assert(trade.aggressor_side == Side::Buy || trade.aggressor_side == Side::Sell);
+        assert(trade.exchange == "binance");
 
-    std::vector<uint64_t> timestamps;
-    ReplayFeed feed(
-        make_market_data_readers("binance", trades, quotes, instrument),
-        [&timestamps](const MarketEvent& value)
-        { timestamps.push_back(std::visit([](const auto& item) { return item.ts; }, value)); });
-    feed.run();
-    assert(!timestamps.empty());
-    for (std::size_t index = 1; index < timestamps.size(); ++index)
-        assert(timestamps[index - 1] <= timestamps[index]);
+        assert(readers.quotes->next(event));
+        const auto& quote = std::get<BboQuote>(event);
+        assert(quote.ts > 0);
+        assert(quote.bid_price > 0.0);
+        assert(quote.ask_price > quote.bid_price);
+        assert(quote.bid_quantity > 0);
+        assert(quote.ask_quantity > 0);
+        assert(quote.exchange == "binance");
 
-    const auto& summary = feed.validation_summary();
-    assert(summary.events > 0);
-    assert(summary.trades > 0);
-    assert(summary.quotes > 0);
-    assert(summary.events == summary.trades + summary.quotes);
-    assert(summary.trades_without_bbo == 0);
-    assert(summary.stale_trades <= summary.trades);
-    assert(summary.dislocated_trades <= summary.trades);
+        std::vector<uint64_t> timestamps;
+        ReplayFeed feed(
+            make_market_data_readers("binance", trades, quotes, instrument),
+            [&timestamps](const MarketEvent& value)
+            { timestamps.push_back(std::visit([](const auto& item) { return item.ts; }, value)); });
+        feed.run();
+        assert(!timestamps.empty());
+        for (std::size_t index = 1; index < timestamps.size(); ++index)
+            assert(timestamps[index - 1] <= timestamps[index]);
+
+        const auto& summary = feed.validation_summary();
+        assert(summary.events > 0);
+        assert(summary.trades > 0);
+        assert(summary.quotes > 0);
+        assert(summary.events == summary.trades + summary.quotes);
+        assert(summary.trades_without_bbo == 0);
+        assert(summary.stale_trades <= summary.trades);
+        assert(summary.dislocated_trades <= summary.trades);
+        std::cout << "market_data_adapter_test: L1 fixture checks ran\n";
+    }
+    else
+    {
+        std::cout << "market_data_adapter_test: data/v2 L1 fixtures missing, skipped the replay checks\n";
+    }
 
     MarketDataValidator validator;
     validator.validate(BboQuote{1, "TEST", 100.0, 10, 100.1, 20, 1, "test"});
@@ -121,17 +136,24 @@ int main()
     std::filesystem::remove(snapshot_path);
 
     const auto deribit_trades = root / "data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz";
-    auto deribit_trade_reader = make_deribit_trade_reader(deribit_trades.string());
-    MarketEvent deribit_trade_event;
-    assert(deribit_trade_reader->next(deribit_trade_event));
-    const auto& deribit_trade = std::get<MarketTrade>(deribit_trade_event);
-    assert(deribit_trade.exchange == "deribit");
-    assert(deribit_trade.symbol == "BTC-PERPETUAL");
-    assert(deribit_trade.ts > 0);
-    assert(deribit_trade.sequence == 70745369);
-    assert(deribit_trade.price == 6421.5);
-    assert(deribit_trade.quantity == 190);
-    assert(deribit_trade.aggressor_side == Side::Buy);
+    if (std::filesystem::exists(deribit_trades))
+    {
+        auto deribit_trade_reader = make_deribit_trade_reader(deribit_trades.string());
+        MarketEvent deribit_trade_event;
+        assert(deribit_trade_reader->next(deribit_trade_event));
+        const auto& deribit_trade = std::get<MarketTrade>(deribit_trade_event);
+        assert(deribit_trade.exchange == "deribit");
+        assert(deribit_trade.symbol == "BTC-PERPETUAL");
+        assert(deribit_trade.ts > 0);
+        assert(deribit_trade.sequence == 70745369);
+        assert(deribit_trade.price == 6421.5);
+        assert(deribit_trade.quantity == 190);
+        assert(deribit_trade.aggressor_side == Side::Buy);
+    }
+    else
+    {
+        std::cout << "market_data_adapter_test: the Deribit trades fixture is missing, skipped\n";
+    }
 
     // Incremental book reader: batches group rows by local_timestamp, the snapshot batch
     // starts the stream, CRLF rows are accepted, and the final row has no newline.
