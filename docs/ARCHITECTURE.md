@@ -670,7 +670,11 @@ quantities and position, and stale quotes are cancelled before replacement.
 
 L1 strategies are frozen compatibility implementations. Their CLI names remain available for
 reproducing earlier L1 replay and benchmark results; new strategy work belongs to the L2 path.
-The archived implementations are in `src/legacy/l1_market_maker.h`.
+The archived implementations are in `src/legacy/l1_market_maker.h`. Their behaviour is pinned rather than described: `bash tools/verify_l2.sh fast` checks the L1
+invariants on every edit and `bash tools/verify_l2.sh all` compares a full-file run byte for byte,
+so a change in those makers that moves the numbers is a change to a recorded result. Execution
+quality is not computed inside them; `ExecutionQualityMetrics` in the pipeline owns edge, markout,
+quote lifetime and inventory for every strategy, and prints them in `[EXECUTION]`.
 
 `L1MarketMaker` is the replay-oriented single-level strategy. It consumes BBO updates for quoting
 and venue trades for order-flow information. Its behavior is intentionally layered so each risk

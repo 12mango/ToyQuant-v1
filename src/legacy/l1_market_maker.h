@@ -1,3 +1,17 @@
+// Legacy L1 market makers: PassiveL1, InventoryAwareL1, FlowAwareL1, L1 and ActiveL1.
+//
+// This file is frozen. The five strategies reproduce the recorded L1 results and are reachable by name
+// for exactly that reason; the quoting logic is deliberately left as it is and is not a development
+// target. Two consequences are written down here so they do not have to be rediscovered:
+//
+//   * Execution quality is not computed here. Edge, markout, quote lifetime and inventory belong to
+//     ExecutionQualityMetrics in the pipeline, which sees every report and every market event, and are
+//     printed in [EXECUTION]. These makers used to keep a second copy of the same quantities from their
+//     own view of the mid; it was deleted because the two could disagree and nothing compared them.
+//   * The behaviour is pinned by `bash tools/verify_l2.sh fast`, which checks the L1 invariants
+//     (submitted orders, trade reports, fill rate, realised PnL, equity) on every edit, and by
+//     `bash tools/verify_l2.sh all`, which compares a full-file run byte for byte. A change in this file
+//     that moves those numbers is a change to a recorded result.
 #pragma once
 // Frozen L1 replay strategies retained for compatibility and historical benchmarks.
 #include <algorithm>
@@ -1020,8 +1034,6 @@ class ActiveL1MarketMaker : public Strategy
     std::unordered_map<uint64_t, StrategyOrder> open_orders;
     int64_t position{0};
     double last_mid{0.0};
-    double last_bid{0.0};
-    double last_ask{0.0};
     uint64_t quote_age{0};
     bool cancel_pending{false};
     uint64_t submitted_quantity{0};
@@ -1174,8 +1186,6 @@ class ActiveL1MarketMaker : public Strategy
         if (sell_quantity > 0) orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
 
         last_mid = mid;
-        last_bid = tob.bid_price;
-        last_ask = tob.ask_price;
         quote_age = 0;
         if (!orders.empty()) ++quote_count;
         return orders;

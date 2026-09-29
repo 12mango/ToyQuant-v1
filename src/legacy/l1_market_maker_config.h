@@ -1,3 +1,5 @@
+// Configuration for the frozen L1 market makers in l1_market_maker.h. Every field here is read by
+// those makers; nothing in this header is decorative.
 #pragma once
 
 #include <cstddef>
