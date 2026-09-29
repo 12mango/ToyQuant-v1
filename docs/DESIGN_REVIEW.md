@@ -351,6 +351,17 @@ nothing, so the one shape change left is parsing a block at a time. Doing it onc
 open indefinitely. The same applies to the matcher's book container, which is waiting on a workload with order
 flow rather than on a container.
 
+**6. Only after item 3: a pre-trade depth filter, not a cancel rule.** The queue distribution invites one
+conclusion the measurements already rule out and one they support. Ruled out: do not keep a quote because its
+queue is nearly clear. That delays a cancel, and a delayed cancel has been measured — the cancel latency sweep
+flips the captured edge from +0.095 to -0.315 ticks at its smallest step, 1 ms, because a quote that outlives
+its price is filled at a price the strategy would no longer post. Keeping a near-front quote through a small
+price move is the same experiment with the same sign. Supported: the same distribution says that 90.1% of the
+cancels land on quotes that never came close, so the decision it should change is **whether to quote at all**.
+A level whose queue cannot clear within the strategy's own holding time is a quote that cannot win, and that is
+a pre-trade test rather than a cancel rule. It sits behind item 3 because filtering which levels to quote on a
+book that loses money per fill only changes how many losing fills there are.
+
 Explicitly not on this list: more strategies, more knobs, or any connectivity, persistence or risk-gateway
 work. The non-goals are load-bearing, and each of them would make the loop harder to read without making a
 single number more trustworthy.
