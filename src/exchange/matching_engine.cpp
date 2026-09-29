@@ -35,6 +35,34 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
 
 void MatchingEngine::send_order(const exchange::Order& order)
 {
+    if (order_latency_us_ == 0)
+    {
+        send_order_now(order);
+        return;
+    }
+    // Held until the clock reaches it. The delivery time is taken from the order's own timestamp, so a
+    // replay of a feed at a different rate injects the same latency rather than a different one.
+    in_flight_orders_.emplace_back(order.ts + order_latency_us_, order);
+}
+
+void MatchingEngine::advance_to(uint64_t ts)
+{
+    if (in_flight_orders_.empty()) return;
+    std::stable_sort(in_flight_orders_.begin(), in_flight_orders_.end(),
+                     [](const auto& left, const auto& right)
+                     { return left.first < right.first; });
+    while (!in_flight_orders_.empty() && in_flight_orders_.front().first <= ts)
+    {
+        const exchange::Order order = in_flight_orders_.front().second;
+        in_flight_orders_.erase(in_flight_orders_.begin());
+        // The landing is the synchronous path, so latency decides when an order exists and nothing
+        // about how it behaves once it does.
+        send_order_now(order);
+    }
+}
+
+void MatchingEngine::send_order_now(const exchange::Order& order)
+{
     if (order.id == 0 || order.qty == 0 || order.remaining == 0 || order.remaining > order.qty ||
         order_index_.contains(order.id))
     {
@@ -169,6 +197,9 @@ void MatchingEngine::process_bbo_for(SymbolId id, const BboQuote& quote)
 void MatchingEngine::process_bbo(const BboQuote& quote)
 {
     ++event_counter_;
+    // The clock advances before the event is applied, so an order whose latency expired at this
+    // timestamp is in the book by the time this event can trade against it.
+    advance_to(quote.ts);
     apply_pending_cancels();
     if (!is_usable_quote(quote))
     {
@@ -184,6 +215,7 @@ void MatchingEngine::process_bbo(const BboQuote& quote)
 void MatchingEngine::process_l2_top(const BboQuote& quote)
 {
     ++event_counter_;
+    advance_to(quote.ts);
     apply_pending_cancels();
     const SymbolId id = symbol_id(quote.symbol);
     queue_ahead_ids_.insert(id);
@@ -286,6 +318,7 @@ void MatchingEngine::match_external_bbo(SymbolId id, Order& order)
 void MatchingEngine::process_market_trade(const MarketTrade& trade)
 {
     ++event_counter_;
+    advance_to(trade.ts);
     const SymbolId id = symbol_id(trade.symbol);
     if (trade.aggressor_side == Side::Sell)
         last_bid_trade_ts_[id] = std::max(last_bid_trade_ts_[id], trade.ts);

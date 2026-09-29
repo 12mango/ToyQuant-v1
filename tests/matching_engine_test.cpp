@@ -294,6 +294,28 @@ int main()
     arrival_front.process_market_trade({65, "ARRIVALFRONT", 100.0, 10, Side::Sell, 0, "test"});
     assert(has_report(arrival_front_reports, 94, ExecType::Trade, 10));
 
+    // Latency decides when an order exists, not how it behaves. With a seven-microsecond latency an order
+    // sent at ts=100 lands on the first event whose clock reaches 107, so a print at 100 cannot reach it
+    // and a print after the clock has passed 107 can. Note the field order of the market events: the
+    // timestamp is the first member, not a sequence number.
+    MatchingEngine latency_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 0.0, 7);
+    std::vector<ExecutionReport> latency_reports;
+    latency_engine.set_report_callback([&latency_reports](const ExecutionReport& report)
+                                       { latency_reports.push_back(report); });
+    latency_engine.process_l2_top({100, "LATENCY", 100.0, 50, 100.1, 40, 70, "test"});
+    latency_engine.send_order({95, "LATENCY", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10,
+                               10, 100, "MarketMaker"});
+    assert(!has_report(latency_reports, 95, ExecType::Resting, 10));  // still in flight
+    latency_reports.clear();
+    latency_engine.process_market_trade({100, "LATENCY", 100.0, 10, Side::Sell, 0, "test"});
+    assert(!has_report(latency_reports, 95, ExecType::Trade, 10));  // the exchange does not have it yet
+    latency_reports.clear();
+    latency_engine.process_l2_top({107, "LATENCY", 100.0, 50, 100.1, 40, 72, "test"});
+    assert(has_report(latency_reports, 95, ExecType::Resting, 10));  // the clock passed the delivery
+    latency_reports.clear();
+    latency_engine.process_market_trade({108, "LATENCY", 100.0, 10, Side::Sell, 0, "test"});
+    assert(has_report(latency_reports, 95, ExecType::Trade, 10));
+
     queued_reports.clear();
     queued_engine.cancel_order(52);
     queued_engine.send_order({53, "BTCUSDT", exchange::Side::Buy,

@@ -52,6 +52,9 @@ struct AppConfig
     // The share of the displayed size a new quote starts behind, in [0, 1]. 1.0 is the FIFO arrival rule
     // the engine uses by default; smaller values place the quote inside the queue instead of at its back.
     double arrival_share = 1.0;
+    // One-way latency between the strategy sending an order and the exchange having it, in microseconds.
+    // 0 is a synchronous engine and is what every recorded run uses.
+    uint64_t order_latency_us = 0;
     // How far the fair price has to move before a resting quote is pulled and replaced, in ticks.
     // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
     // that is replaced on every twitch never holds a queue position long enough to reach the front.

@@ -97,7 +97,7 @@ class MatchingEngine : public IMatchingEngine
                              uint64_t cancel_delay_events = 0,
                              QueueModel queue_model = QueueModel::ProRata,
                              uint64_t lump_chunks = 1, uint64_t random_seed = kDefaultQueueSeed,
-                             double arrival_share = 1.0)
+                             double arrival_share = 1.0, uint64_t order_latency_us = 0)
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
                     queue_model_(queue_model),
@@ -105,6 +105,7 @@ class MatchingEngine : public IMatchingEngine
                     queue_rng_(random_seed),
                     arrival_share_(arrival_share < 0.0 ? 0.0
                                                        : arrival_share > 1.0 ? 1.0 : arrival_share),
+                    order_latency_us_(order_latency_us),
                     cancel_delay_events_(cancel_delay_events)
     {
     }
@@ -226,13 +227,24 @@ class MatchingEngine : public IMatchingEngine
     // every model but the conservative one removes the whole decrease. The arrival share, not the queue
     // model, is therefore what sets the headline fill count, and the models only separate once q < 1.
     uint64_t scale_arrival(uint64_t displayed) const;
-    double arrival_share_{1.0};
+    // Delivers every order whose one-way latency has expired, in the order the exchange clock reaches
+    // them. With zero latency there is nothing in flight and this costs one empty check per event.
+    void advance_to(uint64_t ts);
+    void send_order_now(const exchange::Order& order);
+
     QueueModel queue_model_{QueueModel::ProRata};
     // Chunks per level decrease for QueueModel::Lumpy, and the generator that draws them. The seed is
     // fixed so a lumpy run is reproducible: one seed is a replication, not a random experiment, and
     // the spread across seeds is the quantity worth reporting.
     uint64_t lump_chunks_{1};
     std::mt19937_64 queue_rng_{kDefaultQueueSeed};
+    double arrival_share_{1.0};
+    // Orders do not exist in the book until the exchange has had them for this long, measured on the
+    // clock the market events carry. Zero is a synchronous engine, which is what every recorded run
+    // uses; anything else is the one part of the order lifecycle that a replay can model directly, and
+    // the reason the project can measure what being slow costs rather than only asserting that it does.
+    uint64_t order_latency_us_{0};
+    std::vector<std::pair<uint64_t, exchange::Order>> in_flight_orders_;
     uint64_t event_counter_{0};
     std::unordered_map<uint64_t, uint64_t> pending_cancels_;
     uint64_t cancel_delay_events_{0};

@@ -241,6 +241,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--arrival-share=X` | Share of the displayed size a new quote starts behind | 1.0, which is FIFO |
 | `--queue-chunks=N` | Whole orders per level decrease, for `--queue-model=lumpy` | 1 |
 | `--queue-seed=N` | Makes a lumpy run reproducible | Fixed |
+| `--order-latency-us=N` | One-way latency between sending an order and the exchange having it | 0, a synchronous engine |
 
 Of these, the requote threshold moves the fill count the most of anything measured so far, and the
 arrival share the least; `docs/PERFORMANCE_HISTORY.md` records the measured ordering.

@@ -870,6 +870,44 @@ whether a cancellation is allowed to help us at all, which is exactly the mean o
 are second-order on this book because trades, the only thing that breaks the fixed point, are 0.04% of
 what moves a level.
 
+### What entry latency costs, and what it does not
+
+The engine takes `--order-latency-us`, which holds an order for that long on the exchange clock before it
+exists in the book. Zero is the synchronous behaviour every other recorded number uses, and the mode is
+exercised by a unit test that sends an order at one timestamp and checks it is not resting until an event
+whose clock has passed the delivery time.
+
+Quoted at the touch with a four-tick requote threshold, under the calibrated model:
+
+| latency us | fills | fill rate | captured ticks | markout ticks | fees USD | realized USD |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 21 | 11.5% | 0.095 | +0.095 | 0.042 | -0.109 |
+| 100 | 21 | 11.5% | 0.095 | +0.095 | 0.042 | -0.109 |
+| 1000 | 21 | 11.5% | 0.095 | +0.095 | 0.042 | -0.109 |
+| 5000 | 11 | 15.1% | 4.23 | +0.15 | 0.022 | -0.008 |
+| 20000 | 11 | 16.9% | 4.09 | +0.45 | 0.025 | -0.016 |
+| 50000 | 10 | 20.4% | 8.45 | -0.06 | 0.023 | -0.017 |
+
+The first thing to read is a check rather than a result. **Sub-millisecond latency changes nothing at
+all**, because this feed's views arrive every 8.5 ms on average, so an order that lands before the next
+view lands in the book the strategy was looking at. The sweep is flat from 0 to 1 ms for that reason and
+not because the parameter is inert.
+
+The second is the mechanism, and it points the opposite way to the usual warning. **Entry latency makes a
+quote stale in the favourable direction.** The strategy picks a price from the view at T, the order lands
+at T + L at that now-stale price, and a fill there is a purchase below the current mid. The capture per
+contract rises from 0.095 ticks to 8.45 and the fill count falls from 21 to 10: being slow at entry is
+equivalent to quoting wider, and the fee per fill falls with the fill count.
+
+What the table therefore does not contain is the leg that costs a market maker money, which is the
+**cancel**. A late entry delays a quote that would have been good; a late cancel leaves a quote exposed
+after the market has moved against it, and that is where adverse selection enters. Cancellation delay is
+still counted in market events rather than in microseconds, so the classic latency cost is not modelled
+yet and these rows say nothing about a venue where cancels are slow.
+
+None of the rows supports a PnL conclusion: all six are below the thirty fills the project requires
+before a PnL statement, which is the case the gate exists for.
+
 ## Interpretation and Next Step
 
 
