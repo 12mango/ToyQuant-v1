@@ -20,6 +20,11 @@ legacy CSV / UDP / Binance ─────────────────�
 **This is a demo, not a trading system.** No connectivity, no persistence, no risk gateway, no market impact.
 The loop is meant to be readable in one sitting. What is worth reading is the engineering in sections 2 to 4.
 
+**What this document is not.** It is not the module reference — [Architecture](ARCHITECTURE.md) is — and it is
+not the measurement record: the numbers here are summaries of records that live in
+[Performance History](PERFORMANCE_HISTORY.md) and [Performance](PERFORMANCE.md). Its job is the argument, and
+the boundaries between the documents are listed in the [documentation index](index.md).
+
 ## 1. The loop, in code
 
 Three interfaces carry the design, each with one production implementation:
@@ -109,7 +114,122 @@ of the exercise — the rejected alternative is a result, and it also says the t
 shape. Two smaller choices inside the class earned their place the same way: `set()` returns early when the
 slot already holds the requested quantity, which an incremental feed does constantly, and `top_levels()`
 produces the touch and the summed depth in **one** walk, where asking `nth()` per level restarted from the
-best slot and crossed the near-touch slots about five times over.
+### `TickLadder` in full: one array, one hint, one growth margin
+
+The container is a single `std::vector<uint64_t>` of quantities indexed by `tick - base_`, plus the remembered
+best slot. Every lookup is an address computation:
+
+```cpp
+// src/orderbook/tick_ladder.h
+std::size_t slot_of(PriceTick tick) const { return static_cast<std::size_t>(tick - base_); }
+bool in_range(PriceTick tick) const
+{
+    return tick >= base_ && tick - base_ < static_cast<PriceTick>(quantity_.size());
+}
+```
+
+Growth is where a flat array goes wrong, so it is written to be rare and to be cheap when it happens. The
+range starts at 2048 slots centred on the first price seen, and each growth adds a 1024-slot margin on both
+sides, so a drifting market does not reallocate on consecutive updates:
+
+```cpp
+// src/orderbook/tick_ladder.cpp
+constexpr std::size_t kInitialSlots = 2048;
+constexpr std::size_t kGrowthMargin = 1024;
+...
+new_base = std::min(base_, tick) - static_cast<PriceTick>(kGrowthMargin);
+const PriceTick new_top = std::max(old_top, tick + 1) + static_cast<PriceTick>(kGrowthMargin);
+new_slots = static_cast<std::size_t>(new_top - new_base);
+if (new_base < 0)
+{
+    // Ticks are derived from positive prices, but keep the base non-negative so that slot
+    // arithmetic stays in unsigned range.
+    new_slots += static_cast<std::size_t>(-new_base);
+    new_base = 0;
+}
+std::vector<uint64_t> grown(new_slots, uint64_t{0});
+...copy the old contents at an offset...
+quantity_.swap(grown);
+```
+
+Three details there are the design. The **margin** turns growth from a per-update event into a per-run one.
+The **clamp at zero** is what makes `slot_of` legal as unsigned arithmetic: without it, `tick - base_` would
+wrap for a tick below the base, and the slot index would become enormous instead of invalid. And rebuilding
+into a new vector and calling `swap` keeps the old contents alive until the new buffer is complete, so a
+failure during growth cannot leave a half-copied ladder behind.
+
+Finding the next best level when the best one empties is the other hot path. It walks **one slot at a time**
+from the emptied slot rather than scanning, which is the shape assumption written into code:
+
+```cpp
+void TickLadder::advance_best_hint()
+{
+    std::size_t slot = slot_of(best_);
+    if (descending_) { while (slot > 0) { --slot; if (quantity_[slot] != 0) { best_ = base_ + slot; return; } } }
+    else             { while (++slot < quantity_.size()) { ... } }
+    best_ = kNoBest;   // the side is empty
+}
+```
+
+Real books are dense near the touch, so the next populated level is usually the next slot. The same reasoning
+is why `top_levels()` exists next to `nth()`: asking for each of five levels separately restarted the walk
+from the best slot every time and crossed the near-touch slots about five times over.
+
+### Why not `std::pmr`
+
+The usual answer for a hot path with allocations is a pool — `std::pmr::monotonic_buffer_resource` and
+containers that take an allocator. This project has **no allocator plumbing at all**
+(`grep -rn 'pmr\|memory_resource\|allocator' src/` returns nothing), and the reason is a measurement rather
+than a preference.
+
+What the profile of the pinned run says about allocation: **279 `read` syscalls per run** (the 1 MiB block
+reader) with 3.4% system time, **0 major page faults**, and 8 MB peak RSS while streaming 1.5 GB. There is no
+allocator cost in the profile to reclaim, because the design already removed the allocations a pool would have
+served:
+
+| Where an allocation would naturally happen | What it does instead |
+|---|---|
+| per input line | one 1 MiB block, reused; `next_line()` hands back a `string_view` into it |
+| per field split | a caller-owned `std::vector<std::string_view>` that is `clear()`ed and re-`reserve()`d |
+| per book level change | a slot in an array that grows a handful of times per run |
+| per resting order | one `std::list` node: cancel is O(1) and nothing shifts, at the cost of one allocation that 406 orders over 117,288 batches makes unmeasurable |
+| per strategy | one `std::unique_ptr<Strategy>` at start-up; 16 `make_unique` calls in the repository |
+
+There is a second cost that `pmr` would add: **types**. `std::pmr::vector` is a different type from
+`std::vector`, so the allocator would spread into the book's interface, the engine's containers and the tests,
+in exchange for a cost the RSS number says is not there. The rule the project already follows is the deciding
+factor: no change without a measurement behind it. If a future workload allocated per event — a map per
+update, or an object per order — the same profile would show it, and this is the tool to reach for then.
+
+### What the C++ actually uses, and what it deliberately does not
+
+Counts from the repository, so this is an inventory rather than a slogan:
+
+| Feature | Where it earns its place |
+|---|---|
+| `std::string_view` — 66 uses | the whole data path: the block reader, the field split, the parsers, symbol lookup. The lifetime contract is written down in `LineReader` rather than assumed |
+| `constexpr` — 46 | the block size, the parse bounds (`kMaxExactMantissa`, `kMaxFastDecimals`), the tick conversion, the ladder's growth constants |
+| `if constexpr` — 10, with `std::variant` + `std::visit` — 9 | one `Pipeline::process_event` for four input formats, resolved at compile time, no vtable |
+| `std::unique_ptr` / `make_unique` — 18 / 16 | the strategy factory hands ownership to the caller; nothing else in the loop is heap-owned by policy |
+| `enum class` — 11 | `Side`, `ExecType`, `QueueModel`, `LiquidityRole`, `AppMode`, `Stage`: scoped, and a mix-up does not compile |
+| `= delete` — 2 | `LineReader` copy construction and assignment: it owns a file handle, so a copy would double-close it |
+| `std::stable_sort` — 2 vs `std::sort` — 4 | where the order *is* the semantics (in-flight orders) against where any order is fine |
+| `std::deque` — 8 | rolling trade windows and the markout queue: append at the back, remove at the front, nothing shifts |
+| `std::list` — one per price level | one node per resting order: cancel is O(1) instead of moving the rest of the level |
+| `std::from_chars` — 7 | the boundary parsers, with an integer fast path in front of the `double` case |
+| `std::array` — 9 | fixed tables, such as the power-of-ten lookup the price parser indexes |
+
+**Deliberately not used, and why:**
+
+* **`std::pmr` and allocators** — the profile has no allocation cost to reclaim, and `std::pmr` containers are
+  different types, so the allocator would spread into the book's interface, the engine and the tests.
+* **Concepts and ranges** — nothing in this repository is generic. The containers have concrete element types
+  and the algorithms are three-line loops; a constraint would document a template that does not exist.
+* **Exceptions on the hot path** — the parsers validate and fall back to a slow path instead of throwing, so a
+  malformed field costs time rather than control flow. Exceptions stay at the boundaries, where a missing
+  input file should stop the program.
+* **`[[nodiscard]]`** — zero uses, which is a gap worth naming: `TickLadder::nth()` returns a `bool` that a
+  caller can drop silently today.
 
 ### Typed events without a vtable
 

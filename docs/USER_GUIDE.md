@@ -4,6 +4,10 @@ ToyQuant is a small C++20 market-making simulator. Its current v2 path replays B
 trades and BBO updates as `MarketEvent` values, while legacy CSV and UDP modes remain available for
 simple scenarios and compatibility.
 
+**This document is the how-to-run reference**: modes, flags, inputs, outputs and troubleshooting. It does not
+explain *why* the software is shaped the way it is — that is [Design Review](DESIGN_REVIEW.md) — and it is not
+the module-by-module implementation reference, which is [Architecture](ARCHITECTURE.md).
+
 ## Requirements
 
 - CMake 3.16 or newer

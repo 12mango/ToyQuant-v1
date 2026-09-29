@@ -20,16 +20,16 @@ for talking about it out loud.
 
 ## Every document
 
-| Document | What it is for | Kept honest by |
-|---|---|---|
-| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way: constraints, decisions, alternatives, evidence, limits, and an appendix on the container and API choices module by module | its headline block is re-run by `tools/check_docs.py`; its prose is checked for flags, models and tool paths by `tools/lint_prose.py` |
-| [Architecture](ARCHITECTURE.md) | What each module is, the data contracts between them, and the matching rules | marked blocks re-run by `tools/check_docs.py`; prose linted |
-| [Learning Path](LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference | prose linted |
-| [User Guide](USER_GUIDE.md) | Every mode, every flag, and the failure modes that waste an afternoon | prose linted, so a flag it forgets or invents fails the build |
-| [Performance](PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted | the ledger's claims are paired measurements from `tools/measure_l2_baseline.py` |
-| [Low-Latency Design](LATENCY_DESIGN.md) | Why each low-latency change is faster: problem, design, mechanism, verification, and the designs that were measured and rejected | prose linted; numbers traced to `tools/measure_l2_baseline.py` |
-| [Performance History](PERFORMANCE_HISTORY.md) | Superseded and current measurements in the order they were taken, kept as a lab notebook | marked blocks re-run by `tools/check_docs.py` |
-| [Data Files](../data/README.md) | Tick CSV format, runtime outputs, typical workflow | - |
+| Document | What it is for | Not the place for | Kept honest by |
+|---|---|---|---|
+| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way, the C++ decisions with code anchors and measured effects, the headline results, the limitations, and the interview versions | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked for flags, queue models and tool paths by `tools/lint_prose.py` |
+| [Architecture](ARCHITECTURE.md) | What each module is, the data contracts between them, and the matching rules | the rationale and trade-offs (`DESIGN_REVIEW`) | marked blocks re-run by `tools/check_docs.py`; prose linted |
+| [Learning Path](LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference | engineering decisions, or how to run anything | prose linted |
+| [User Guide](USER_GUIDE.md) | Every mode, every flag, and the failure modes that waste an afternoon | why anything is designed the way it is (`DESIGN_REVIEW`) | prose linted, so a flag it forgets or invents fails the build |
+| [Performance](PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted | the mechanism behind each accepted change (`LATENCY_DESIGN`) | the ledger's claims are paired measurements from `tools/measure_l2_baseline.py` |
+| [Low-Latency Design](LATENCY_DESIGN.md) | Why each low-latency change is faster: problem, mechanism, and the designs that were measured and rejected | the numbers themselves (`PERFORMANCE`) | prose linted |
+| [Performance History](PERFORMANCE_HISTORY.md) | Measurements in the order they were taken, kept as a lab notebook, superseded ones included | the current set of conclusions | marked blocks re-run by `tools/check_docs.py` |
+| [Data Files](../data/README.md) | Tick CSV format, runtime outputs, typical workflow | - | - |
 
 ## What the project covers, and what it deliberately does not
 
