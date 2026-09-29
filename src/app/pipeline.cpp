@@ -65,9 +65,19 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
             if (report.owner == "MarketMaker") portfolio_.apply(report);
             if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
             {
+                const int64_t previous_position = position_;
                 position_ += report.side == exchange::Side::Buy
                                  ? static_cast<int64_t>(report.executed_quantity())
                                  : -static_cast<int64_t>(report.executed_quantity());
+                // The position only changes here, so this is where the peak and the sign changes
+                // belong. Sampling the peak from a market view instead missed a fill that arrived as
+                // the last event, and the summary then reported a maximum inventory of zero next to an
+                // open marked position. The sign changes were never counted at all.
+                execution_quality_.max_abs_inventory =
+                    std::max(execution_quality_.max_abs_inventory, std::abs(position_));
+                if (previous_position != 0 && position_ != 0 &&
+                    (previous_position < 0) != (position_ < 0))
+                    ++execution_quality_.inventory_sign_changes;
                 execution_quality_.captured_edge +=
                     report.side == exchange::Side::Buy ? last_mid_ - report.price
                                                        : report.price - last_mid_;
@@ -183,8 +193,6 @@ void Pipeline::process_event(const MarketEvent& event)
                 execution_quality_.average_abs_inventory +=
                     (abs_inventory - execution_quality_.average_abs_inventory) /
                     static_cast<double>(inventory_samples_);
-                execution_quality_.max_abs_inventory =
-                    std::max(execution_quality_.max_abs_inventory, std::abs(position_));
                 process_top_of_book(value.symbol, value.ts, top);
             }
             else
@@ -225,6 +233,19 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
         profiler_begin(Stage::TopBookKeeping);
         last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
         ++quote_cycle_;
+        // The report callback above pushes a markout for every fill, but only the L1 path drained
+        // them, so on this path adverse selection stayed at zero however many fills there were. Same
+        // five cycle horizon as the L1 branch.
+        while (!pending_markouts_.empty() &&
+               quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
+        {
+            const auto observation = pending_markouts_.front();
+            pending_markouts_.pop_front();
+            execution_quality_.adverse_selection +=
+                observation.side == Side::Buy ? observation.price - last_mid_
+                                              : last_mid_ - observation.price;
+            ++execution_quality_.markout_count;
+        }
         profiler_end(Stage::TopBookKeeping);
     }
 

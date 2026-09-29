@@ -105,15 +105,12 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
 TopOfBook L2OrderBook::top_of_book() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    PriceTick bid_tick = 0;
-    PriceTick ask_tick = 0;
-    uint64_t bid_quantity = 0;
-    uint64_t ask_quantity = 0;
-    if (!bids_.nth(0, bid_tick, bid_quantity) || !asks_.nth(0, ask_tick, ask_quantity) ||
-        bid_tick >= ask_tick)
+    const TickLadder::TopLevels bid = bids_.top_levels(1);
+    const TickLadder::TopLevels ask = asks_.top_levels(1);
+    if (bid.tick == TickLadder::kNoBest || ask.tick == TickLadder::kNoBest || bid.tick >= ask.tick)
         return {};
-    return TopOfBook{price_from_tick(bid_tick), bid_quantity, price_from_tick(ask_tick),
-                     ask_quantity};
+    return TopOfBook{price_from_tick(bid.tick), bid.quantity, price_from_tick(ask.tick),
+                     ask.quantity};
 }
 
 L2MarketView L2OrderBook::market_view(std::size_t levels) const
@@ -124,24 +121,17 @@ L2MarketView L2OrderBook::market_view(std::size_t levels) const
     view.ts = timestamp_;
     view.local_ts = local_timestamp_;
 
-    PriceTick bid_tick = 0;
-    PriceTick ask_tick = 0;
-    uint64_t bid_quantity = 0;
-    uint64_t ask_quantity = 0;
-    if (levels == 0 || !bids_.nth(0, bid_tick, bid_quantity) ||
-        !asks_.nth(0, ask_tick, ask_quantity) || bid_tick >= ask_tick)
+    // One bounded walk per side produces the touch and the depth sum together. The previous shape asked
+    // nth() for each level separately, which restarted the walk from the best slot every time.
+    const TickLadder::TopLevels bid = bids_.top_levels(levels);
+    const TickLadder::TopLevels ask = asks_.top_levels(levels);
+    if (bid.tick == TickLadder::kNoBest || ask.tick == TickLadder::kNoBest || bid.tick >= ask.tick)
         return view;
 
-    view.top = TopOfBook{price_from_tick(bid_tick), bid_quantity, price_from_tick(ask_tick),
-                         ask_quantity};
-
-    const std::size_t bid_count = std::min(levels, bids_.size());
-    const std::size_t ask_count = std::min(levels, asks_.size());
-    PriceTick tick = 0;
-    for (std::size_t index = 0; index < bid_count; ++index)
-        if (bids_.nth(index, tick, bid_quantity)) view.bid_depth += bid_quantity;
-    for (std::size_t index = 0; index < ask_count; ++index)
-        if (asks_.nth(index, tick, ask_quantity)) view.ask_depth += ask_quantity;
+    view.top = TopOfBook{price_from_tick(bid.tick), bid.quantity, price_from_tick(ask.tick),
+                         ask.quantity};
+    view.bid_depth = bid.depth;
+    view.ask_depth = ask.depth;
 
     const uint64_t total_depth = view.bid_depth + view.ask_depth;
     if (total_depth > 0)

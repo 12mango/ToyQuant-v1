@@ -145,6 +145,21 @@ To replay the connected incremental L2 file, pass it as the depth argument:
 The reader groups rows by `local_timestamp` and emits one decision per update batch. Snapshot
 depth files remain supported through the original full-snapshot reader.
 
+Two optional flags override the sizing that is otherwise derived from the instrument's quantity scale
+(`order_size = quantity_scale/1000`, `inventory_limit = quantity_scale/10`). For an instrument whose
+quantities are already contract counts that derivation is wrong: `BTC-PERPETUAL` declares
+`quantity_scale = 1` and therefore ran with an order size of one contract and an inventory limit of one,
+which makes every PnL a few cents and the inventory logic unreachable.
+
+```bash
+./build/toy_quant l2_replay \
+  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  BTC-PERPETUAL 0 active_l2 1 conservative --order-size=10 --inventory-limit=100
+```
+
+The remaining `l2_replay` flags are `--no-output`, `--fast-validation` and `--profile-stages[=N]`.
+
 When the benchmark is given an incremental file, the tool reconstructs a compact top-five timeline
 from the grouped updates and reports the same output fields. Python `markout_5/20` means the
 mid-price difference at the fifth/twentieth subsequent sampled depth record; it is not the same

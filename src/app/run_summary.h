@@ -78,6 +78,14 @@ struct RunSummary
                << execution_quality.cancelled_before_fill_orders
                << " total_order_lifetime_cycles="
                << execution_quality.total_order_lifetime_cycles
+               << " captured_edge=" << execution_quality.captured_edge
+               << " adverse_selection=" << execution_quality.adverse_selection
+               << " markout_count=" << execution_quality.markout_count
+               << " avg_abs_inventory=" << execution_quality.average_abs_inventory
+               << " max_abs_inventory=" << execution_quality.max_abs_inventory
+               << " inventory_sign_changes=" << execution_quality.inventory_sign_changes
+               << " total_quote_lifetime=" << execution_quality.total_quote_lifetime
+               << " max_quote_lifetime=" << execution_quality.max_quote_lifetime
                << " working_orders=" << working_orders << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string();
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();

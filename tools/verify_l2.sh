@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+#
+# Tiered behaviour check for the L2 replay path.
+#
+# The full-file comparison is the strong check, but it reads 1.5 GB, so it is not worth running on
+# every edit. This splits the checks into what a change has to pass immediately and what it has to
+# pass before it is accepted:
+#
+#   tier 1  (~1 s)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead
+#   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
+#
+# Tier 1 catches essentially everything a reader or book change can get wrong, because it compares
+# event counts, order and fill counts, realised PnL and consumed queue position. Tier 2 is what makes
+# a timing claim defensible: it rules out every explanation except cost.
+#
+# Usage:
+#   tools/verify_l2.sh fast [binary]   # tier 1 only, the per-edit loop
+#   tools/verify_l2.sh ref  [binary]   # store the current full-file output as the reference
+#   tools/verify_l2.sh full [binary]   # tier 2 only, against the stored reference
+#   tools/verify_l2.sh all  [binary]   # both, for accepting a change
+#
+# Binary defaults to out/build/linux-debug/toy_quant. Output is one line per tier on success, and
+# the expected/actual values on failure. Exit status is 0 when every requested tier matched.
+
+set -u
+cd "$(dirname "$0")/.." || exit 1
+
+BIN="${2:-out/build/linux-debug/toy_quant}"
+TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
+L1_TRADES=data/v2/test_aggTrades_5k.csv
+L1_BBO=data/v2/test_bookTicker_5k.csv
+FULL_DEPTH=data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv
+SLICE_200K=/tmp/depth_200k_base.csv
+SLICE_2M=/tmp/depth_2m.csv
+REF_HASH=/tmp/l2_full_ref.sha256
+
+# The slices are cut from the tracked depth file. /tmp is volatile, so cut them again on demand
+# rather than failing with a confusing "input file does not exist".
+ensure_slices() {
+  [ -f "$SLICE_200K" ] || head -n 200001 "$FULL_DEPTH" > "$SLICE_200K"
+  [ -f "$SLICE_2M" ] || head -n 2000001 "$FULL_DEPTH" > "$SLICE_2M"
+}
+
+# Sort the tokens so the comparison does not depend on the order the summary lines happen to print in.
+tokens() { tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' '; }
+
+L2_WANT=$(printf '%s' "incremental_batches=117288 submitted_orders=406 trade_reports=1 queue_ahead_consumed=55460 realized_pnl=-0.002 equity=1000" | tokens)
+L1_WANT=$(printf '%s' "submitted_orders=13734 trade_reports=2277 fill_rate=0.175872 realized_pnl=-33.7861 equity=966.196" | tokens)
+
+tier1() {
+  local l2 l1 rc=0
+  l2=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 conservative \
+        --fast-validation 2>&1 | grep -oE 'incremental_batches=117288|submitted_orders=406|trade_reports=1|queue_ahead_consumed=55460|realized_pnl=-0.002|equity=1000' | tokens)
+  l1=$("$BIN" replay "$L1_TRADES" "$L1_BBO" BTCUSDT 0 optimized 1000000 2>&1 |
+        grep -oE 'submitted_orders=13734|trade_reports=2277|fill_rate=0.175872|realized_pnl=-33.7861|equity=966.196' | tokens)
+  [ "$l2" = "$L2_WANT" ] || rc=1
+  [ "$l1" = "$L1_WANT" ] || rc=1
+  if [ $rc -eq 0 ]; then
+    echo "tier1 OK"
+    return 0
+  fi
+  echo "tier1 MISMATCH"
+  [ "$l2" = "$L2_WANT" ] || { echo "  L2 want: $L2_WANT"; echo "  L2 got : $l2"; }
+  [ "$l1" = "$L1_WANT" ] || { echo "  L1 want: $L1_WANT"; echo "  L1 got : $l1"; }
+  return 1
+}
+
+full_hash() {
+  "$BIN" l2_replay "$TRADES" "$FULL_DEPTH" BTC-PERPETUAL 0 active_l2 1 conservative \
+    --fast-validation 2>&1 | sha256sum | cut -d' ' -f1
+}
+
+tier2() {
+  if [ ! -f "$REF_HASH" ]; then
+    echo "tier2 SKIP (no reference yet; run: tools/verify_l2.sh ref)"
+    return 0
+  fi
+  local now
+  now=$(full_hash)
+  if [ "$now" = "$(cat "$REF_HASH")" ]; then
+    echo "tier2 OK"
+    return 0
+  fi
+  echo "tier2 MISMATCH"
+  echo "  reference: $(cat "$REF_HASH")"
+  echo "  current  : $now"
+  return 1
+}
+
+case "${1:-fast}" in
+  fast) ensure_slices; tier1 ;;
+  ref)  ensure_slices; full_hash > "$REF_HASH"; echo "reference stored: $(cat "$REF_HASH")" ;;
+  full) ensure_slices; tier2 ;;
+  all)  ensure_slices; rc=0; tier1 || rc=1; tier2 || rc=1; exit $rc ;;
+  *)    echo "usage: tools/verify_l2.sh fast|ref|full|all [binary]" >&2; exit 2 ;;
+esac

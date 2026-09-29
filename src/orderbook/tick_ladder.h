@@ -86,6 +86,57 @@ class TickLadder
         return best_;
     }
 
+    // The touch and the summed depth of the best `levels` populated slots, produced by one walk.
+    // Asking nth() for each level separately restarts the walk from the best slot every time, so a
+    // five level view used to cross the near-touch slots about five times over.
+    struct TopLevels
+    {
+        PriceTick tick{kNoBest};
+        uint64_t quantity{0};
+        uint64_t depth{0};
+    };
+
+    TopLevels top_levels(std::size_t levels) const
+    {
+        TopLevels result;
+        if (levels == 0 || best_ == kNoBest) return result;
+
+        std::size_t found = 0;
+        const auto count_slot = [&](std::size_t slot)
+        {
+            const uint64_t quantity = quantity_[slot];
+            if (quantity == 0) return false;
+            if (found == 0)
+            {
+                result.tick = base_ + static_cast<PriceTick>(slot);
+                result.quantity = quantity;
+            }
+            result.depth += quantity;
+            return ++found == levels;
+        };
+
+        if (descending_)
+        {
+            std::size_t slot = slot_of(best_);
+            for (;;)
+            {
+                if (count_slot(slot)) break;
+                if (slot == 0) break;
+                --slot;
+            }
+        }
+        else
+        {
+            const std::size_t slots = quantity_.size();
+            for (std::size_t slot = slot_of(best_);;)
+            {
+                if (count_slot(slot)) break;
+                if (++slot >= slots) break;
+            }
+        }
+        return result;
+    }
+
     // The index-th best level. Returns false when this side holds fewer levels.
     bool nth(std::size_t index, PriceTick& tick, uint64_t& quantity) const
     {

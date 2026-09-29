@@ -399,10 +399,74 @@ The queue model is the lever, and the same window shows its spread:
 `optimistic` treats all of it that way. Neither is calibrated against real fills, so these rows are a
 sensitivity range rather than a measurement.
 
-One scale note: `L2MarketMakerConfig::order_size` defaults to `1`, which on a 10 USD contract is 10
-USD of notional. One tick of price move is then worth about `10 * 0.5 / 6374 = 0.0008` USD, so every
-net PnL above is a few cents and rounding dominates it. The matrix is usable for detecting
-behavioural drift, not for judging edge.
+One scale note, corrected later. `L2MarketMakerConfig::order_size` was `1` and `inventory_limit` was
+`1`, because `strategy_factory.cpp` derives both from the instrument's `quantity_scale`:
+
+```cpp
+order_size      = max(min_order_quantity, quantity_scale / 1000)
+inventory_limit = max(1,                   quantity_scale / 10)
+```
+
+That derivation assumes `quantity_scale` encodes an economic scale. For Binance `BTCUSDT` it is
+`1000000`, so the L1 workload runs with an order size of 1000 units and an inventory limit of 100000.
+For Deribit the depth quantities are already contract counts, so the spec sets `quantity_scale = 1` and
+the same derivation produces an order size of **one contract** and an inventory limit of **one
+contract**: `10 * 0.5 / 6374 = 0.0008` USD per tick of move, so every net PnL was a few cents and
+rounding dominated it. The L2 workload was running 10^6 below the L1 workload's scale, and the strategy
+it was describing was not the strategy anyone would have chosen.
+
+`--order-size=N` and `--inventory-limit=N` now override the derivation without changing any existing
+command line, verified by the full-file comparison still matching byte for byte. With them the matrix
+becomes about something:
+
+| Run, `active_l2`, 200k slice | orders | quantity | fills | realised PnL |
+|---|---:|---:|---:|---:|
+| default (`order_size` 1), conservative | 406 | 406 | 1 | -0.002 |
+| `--order-size=10 --inventory-limit=100`, conservative | 406 | 4060 | 1 | -0.02 |
+| `--order-size=100 --inventory-limit=1000`, conservative | 406 | 40600 | 1 | -0.2 |
+| default, heuristic | 268 | 268 | 5 | -0.0123 |
+| `--order-size=10 --inventory-limit=100`, heuristic | 408 | 4080 | 7 | **-0.550** |
+| `--order-size=10 --inventory-limit=100`, optimistic | 411 | 4110 | 7 | **-0.605** |
+
+Two conclusions. **Order size scales the PnL linearly and never changes the fill count**, under any queue
+model; what sets the fill count is the queue model. And **at a realistic size the strategy loses money
+per fill**, by roughly thirty times more per fill than at the old scale, because an order of ten
+contracts moves the strategy's own inventory skew by ten times as much. Seven fills still prove nothing
+statistically, but they are now large enough to be about something, which the previous scale could not
+express at all.
+
+The size change also exposed a reporting gap, and three fixes went in with it. `[EXECUTION]` printed a
+subset of `ExecutionQualityMetrics`, while `[STRATEGY_METRICS]` printed the same quantities from the
+strategy's own copy, which only the legacy L1 maker fills; on the L2 path that copy stayed at zero, so
+the line showed `captured_edge=0 adverse_selection=0 markout_count=0 max_abs_inventory=0` beside an open
+marked position. `[EXECUTION]` now prints the authoritative values from the one place that computes
+them. `max_abs_inventory` is now updated where the position changes rather than sampled from a market
+view, which had missed a fill arriving as the last event, and `inventory_sign_changes` is counted there
+too instead of never. And the markout queue is now drained on the L2 path, which only the L1 path had
+done, so adverse selection had been structurally zero on this workload however often the strategy
+traded. The legacy maker's positional `StrategyMetrics` initialiser became a named one in passing,
+because inserting into that struct silently mis-assigned every field after the insertion point.
+
+With those, the same run answers the question a market maker exists to answer. At
+`--order-size=10 --inventory-limit=100` under `heuristic` it reports `captured_edge=2.75`,
+`adverse_selection=-1.5` and `markout_count=6` of 7 fills, so most of the edge captured at the fill is
+given back five cycles later. Under `conservative` it reports `captured_edge=1.25` and no resolved
+markouts, because the one fill arrives too late in the run to have one.
+
+Two modelling choices that the earlier notes called limitations are better closed with arithmetic than
+with code, because their effect is bounded below anything a run here can measure:
+
+- **Funding is not modelled.** A Deribit perpetual pays funding every eight hours, typically around
+  0.01% of notional per interval. A position held for the seconds a maker holds one crosses a boundary
+  with probability of order `hold/28800`, so the expected cost is about
+  `0.0001 * notional * hold / 28800`. At 10 contracts, $100 of notional, held for a minute, that is
+  roughly `2e-6` USD against fills worth about 0.08 USD each. Modelling it would add a rate input that
+  is not in the data and whose effect is four orders of magnitude below the PnL it would adjust.
+- **Collateral is cash only.** The engine holds no margin and no leverage, so exposure cannot exceed
+  cash. That is not an approximation while `inventory_limit * unit_notional <= equity`: at
+  `--inventory-limit=100` on a 10 USD contract the maximum position is 1000 USD against 1000 USD of
+  starting cash, so the model sits exactly at the boundary where a margin model would begin to matter.
+  Past that boundary a run would need one, rather than silently ignoring it.
 
 These are single-run replay reference values, not profitability evidence. Repeat a row with the same
 input hashes when checking exact output determinism.
@@ -483,6 +547,11 @@ Two conclusions matter more than the 1.44x on the line layer itself:
   than by bytes scanned. Within this layer the field split, not the line split, is the next target.
   The stage timings below show that the field split is in fact only a small part of the parser's
   total cost, so this isolation result should not be read as the overall priority.
+
+  **Corrected later:** the `memchr` half of that reasoning is wrong. A byte loop measured the same
+  speed as `std::string_view::find`, so this host's `memchr` is not slow for ten byte fields, and the
+  only variant that beat it was a word-at-a-time scan, by about 12% — below the measurement floor. See
+  [Low-Latency Design](LATENCY_DESIGN.md#a-word-at-a-time-scan-for-the-field-split).
 
 ### End-to-end
 
@@ -626,6 +695,13 @@ batch is roughly:
 cost.** It is two `std::from_chars<double>` and three `parse_uint64` calls per row. This corrects
 the priority that the isolation benchmark implied, because that benchmark could only see the line
 layer and pointed at field splitting, which is about 7% of the event.
+
+That prediction was right, and acting on it took longer than it should have. Both halves — the
+`from_chars<double>` for the price and a hand written integer path for the timestamps — were attacked
+and rejected on isolation comparisons that under-measured them. Both were eventually reimplemented as
+exactly equivalent fast paths, verified byte-identical on the full file, and accepted: together about
+20% of `read+parse`. See [Low-Latency Design section 5](LATENCY_DESIGN.md#5-the-number-conversions) and
+the [ledger](PERFORMANCE.md#5-optimization-ledger).
 
 Updated order of work:
 

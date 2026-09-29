@@ -880,11 +880,22 @@ class L1MarketMaker : public Strategy
 
     StrategyMetrics metrics() const override
     {
-        StrategyMetrics result{submitted_quantity,   filled_quantity,       fill_count,
-                               cancel_count,         quote_count,           fees_paid,
-                               captured_edge,        adverse_selection,     markout_count,
-                               total_quote_lifetime, max_quote_lifetime,    average_abs_inventory,
-                               max_abs_inventory,    inventory_sign_changes};
+        // Named rather than positional: the positional form silently mis-assigned every field after
+        // any insertion into StrategyMetrics, which is what the narrowing warnings were pointing at.
+        StrategyMetrics result{.submitted_quantity = submitted_quantity,
+                               .filled_quantity = filled_quantity,
+                               .fill_count = fill_count,
+                               .cancel_count = cancel_count,
+                               .quote_count = quote_count,
+                               .fees_paid = fees_paid,
+                               .captured_edge = captured_edge,
+                               .adverse_selection = adverse_selection,
+                               .markout_count = markout_count,
+                               .total_quote_lifetime = total_quote_lifetime,
+                               .max_quote_lifetime = max_quote_lifetime,
+                               .average_abs_inventory = average_abs_inventory,
+                               .max_abs_inventory = max_abs_inventory,
+                               .inventory_sign_changes = inventory_sign_changes};
         result.available = true;
         return result;
     }

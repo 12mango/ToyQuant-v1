@@ -227,9 +227,32 @@ bool nth(std::size_t index, PriceTick& tick, uint64_t& quantity) const
 
 The cost is `O(index + empty slots crossed)`, and the second term is why the choice is safe: a real
 book is dense near the touch, so the walk crosses a handful of slots. The measured figure is about
-5.6 slots per call. `market_view` restarts the walk for each of the five levels, so it visits about
-28 slots per batch — recorded in [section 6](PERFORMANCE.md#6-where-the-remaining-time-is) as a known
-remaining cost with an obvious fix.
+5.6 slots per call.
+
+### One walk for the whole view
+
+`nth()` turned out to be the wrong shape for `market_view`, which needs the touch *and* the summed depth
+of the best five levels. Asking for each level separately restarts the walk from the best slot, so
+producing one five-level view crossed the near-touch slots about five times over — roughly 28 slot
+visits per batch to read 10 levels, with `nth(0)` paid twice.
+
+`TickLadder::top_levels(levels)` answers both questions in one pass:
+
+```cpp
+TopLevels top_levels(std::size_t levels) const;   // { touch tick, touch quantity, summed depth }
+```
+
+It walks outward from the best slot, accumulating the first `levels` populated slots and recording the
+first as the touch. The same view now costs about 12 slot visits instead of 28, and the caller got
+simpler: `market_view` no longer needs `std::min(levels, size())`, because a walk that runs out of book
+returns what it found.
+
+Two details of the measurement are worth keeping. `read+parse` and `book-apply` were recorded in the
+same paired runs as controls and both came back unchanged (468.5 -> 465.5 ns, 45.8 -> 45.6 ns), which is
+what a change confined to one container's read path has to look like. And the effect sizes are lopsided
+in a reassuring way: the stage moved `-28.5%` at `t = -25.3` while the end-to-end wall clock moved
+`-5.9%` at `t = -2.61`. **A stage result that strong next to an end-to-end result that weak is the
+expected pairing**, because the stage is about 11% of the event and nothing more.
 
 ### Keeping the hint valid: `advance_best_hint`
 
@@ -530,7 +553,117 @@ which never ran contribute nothing, that a multi-region event is recorded as the
 that the report names every stage and flags a run too short to sample, and that the measured clock
 overhead is positive.
 
-## 5. Designs that were measured and rejected
+## 5. The number conversions
+
+Ledger row: [Integer-plus-scale price parse](PERFORMANCE.md#5-optimization-ledger).
+
+### Problem
+
+The parse layer is 61% of an event, and two earlier attempts at it had both failed because both had been
+tuning the instructions *around* the thing that actually cost time. What they missed is that
+**libstdc++ defines `std::from_chars<double>` out of line**, in the shared library, so a call to it looks
+to a function-level profile like a leaf with no body: the conversion was invisible to the instrument
+being used to choose targets.
+
+That call happens once per row to convert the price column, 2,000,000 times per run. The same was true
+of the two timestamps and the size, which go through `std::from_chars<uint64>` three times per row, and
+the cold path those functions carried.
+
+An earlier version of this section explained the invisibility differently, as gprof accounting for only
+half of `read+parse` with the other half in library code. That comparison was invalid — it set a
+RelWithDebInfo `-pg` build against a Debug build across two sessions — and when the candidates were
+counted directly they were all too small to matter. See
+[section 6 of the performance reference](PERFORMANCE.md#6-where-the-remaining-time-is).
+
+### Design
+
+The feed spells prices as plain decimals and the book works in integer ticks, so the conversion can be
+integer arithmetic. The fast path accepts only the shape it can reproduce exactly — optional sign, one
+or more integer digits, an optional `.` plus at most five fraction digits, and a mantissa within 2^53 —
+and everything else falls back to the general parser:
+
+```cpp
+const double magnitude = static_cast<double>(mantissa) / kPow10[decimals];
+return negative ? -magnitude : magnitude;
+```
+
+### Why the result is bit-identical rather than merely close
+
+The mantissa is exact in a `double` because it is below 2^53, `10^decimals` is exact, and IEEE division
+is correctly rounded. So the quotient is the correctly rounded value of the exact decimal, which is
+precisely what `std::from_chars` produces. **For every input the fast path accepts, the two
+implementations return the same bits.**
+
+That equivalence is what makes this measurement trustworthy: the full 1.5 GB replay produces
+byte-identical output over 11,403,032 batches, so nothing downstream can differ, so **any timing
+difference is the parse and only the parse.** There is no confound available.
+
+### The ablation that over-reported by 4x
+
+Before writing the fix, the same call was removed the crude way: replace `parse_double` with
+`return 6000.0 + value.size()`, which keeps the control flow but destroys the prices. That measured
+**-259 ns** on `read+parse`, `t = -22.3`.
+
+The real fix measures **-65.5 ns**. The ablation was wrong by four times, and why is worth recording:
+**collapsing every price to one of two values also collapsed the order book**, from thousands of levels
+to two, shrinking the whole program's working set. The reader then ran faster because the change had
+emptied the cache, not because the call was gone.
+
+An ablation is only evidence if it changes *only* the thing under test. The reliable way to guarantee
+that is not to make the ablated code cheap but to make its output identical — at which point the
+ablation has become the fix.
+
+### The same treatment for the integer fields
+
+Once the price was dealt with, attribution pointed at `parse_uint64`, which gprof charges 16.0% of
+application time: two 16-digit timestamps and a five digit size per row, 3.3 calls per row. An
+isolation bench on the real formats showed the shape of the cost rather than the digits:
+
+```
+from_chars + the inlined throwing path   26.3-28.2 ns
+the same, with the cold path split out   21.9-24.1 ns
+two digits per step, validation folded   13.4-14.3 ns
+```
+
+Two independent mechanisms, and both were worth taking:
+
+- **The cold path belongs in its own function.** Constructing the error string and throwing were
+  reachable from the hot function, so the hot path carried them as inlined code. Moving them into a
+  `[[noreturn]]` helper alone was worth about 15%.
+- **Two digits per step.** Reading both digits with independent loads and folding the validation into
+  the same loop removes half the iterations and all the separate checking passes.
+
+Equivalence is again the reason the result is trustworthy. A value of at most 18 digits cannot exceed
+2^64-1, so the loop needs no overflow check, and because it validates every character it consumes it
+accepts exactly what `std::from_chars` accepts and returns the same value. Anything longer, or empty,
+goes through the general parser, which keeps the previous behaviour for the lengths that could
+overflow. The full-file output is byte-identical, so the only thing that changed is cost.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| W1 full file, 11,403,032 batches, stdout | byte identical |
+| W1 200k slice, L2 invariants | exact |
+| W2, L1 invariants | exact |
+| `ctest` | 15/15 |
+| New compiler warnings | none |
+
+### Result
+
+The price conversion: `read+parse` p50 `-65.5 ns (-11.3%)`, 5/5 pairs, `t = -5.9`. Reproduced at
+`-71 ns` in a second session twenty minutes later, while the host was 1.4x slower: the sign and
+magnitude held, the absolutes did not. End-to-end wall clock `-7.6%`, `t = -2.83`.
+
+The integer conversions: `read+parse` p50 `-44.8 ns (-9.2%)`, 5/5 pairs, `t = -6.2`; end-to-end wall
+clock `-6.0%`, `t = -4.49`.
+
+`engine` and `book-apply` were unchanged in both same-session comparisons, which is what a change
+confined to the reader has to look like. And the two results triangulate with the attribution that
+motivated them: gprof charged `parse_uint64` 16% of application time, the isolation bench showed the
+two-digit loop about 47% faster, and the end-to-end effect came out at 6%.
+
+## 6. Designs that were measured and rejected
 
 These matter as much as the accepted ones, because each was expected to win. Keeping them written down
 is what stops the same idea being tried twice.
@@ -550,20 +683,54 @@ two drawbacks offset.
 Lesson: when two very different structures measure within 10% of each other, neither structure is the
 problem — look for the property they share.
 
-### Fixed-point price parsing
+### Fixed-point price parsing — rejected first, then vindicated
 
 `parse_uint64` and two `std::from_chars<double>` calls per row were identified as the largest single
 item in the whole run, near a third of the per-event cost, so the plan was to parse prices into integer
-ticks without a floating-point step at all. Measured against the same workload, it returned nothing.
+ticks without a floating-point step. That plan was **rejected on an isolation comparison**:
+`from_chars<double>` measured `16.6-17.3 ns` on `"6376.5"` while a hand-written integer path measured
+`9.5-10.1 ns`. A 1.7x gain looked too small to justify the code.
 
-The likely reason is that `std::from_chars` for `double` is already an Eisel-Lemire implementation:
-correctly-rounded, branch-light, and hard to beat by a special-case parser for a single format. The
-task-order consequence was to stop treating "make the conversion cheaper" as the path forward and to
-look at the *shape* of the parse instead, which is what
-[section 6 of the performance reference](PERFORMANCE.md#6-where-the-remaining-time-is) recommends.
+**The rejection was wrong, and by about three times.** In context the call costs roughly `48 ns`, not
+`17`, because the isolated benchmark feeds it one fixed string: the parser's internal branches are
+perfectly predicted and its code stays resident in the instruction cache, and neither is true when the
+column varies in length and digit count across two million rows. Reimplemented as an exactly equivalent
+integer path and measured with the output held byte-identical, it is worth `-11%` of `read+parse` and
+now lives in [section 5](#5-the-number-conversions).
 
-Lesson: an optimization that only shaves constants off a well-optimized library routine has to be
-measured, not reasoned about, because the library routine is already the product of that reasoning.
+Two lessons, and they are different:
+
+- **A rejection needs an in-context measurement too.** "Only 1.7x" was a decision made from the one
+  kind of measurement that cannot support it. What it threw away was the largest single remaining win
+  in the program.
+- **Isolation benchmarks are optimistic about branchy parsing specifically.** A fixed input makes every
+  branch predictable, so this class of benchmark systematically under-reports anything that branches on
+  data — which is what parsing is.
+
+### A word-at-a-time scan for the field split
+
+`split_csv_views` was the next attribution candidate after the number conversions: gprof charges it 8.8%
+of application time, and the earlier record claimed its cost was dominated by `memchr` call setup,
+since `std::string_view::find(',')` emits a libc `memchr` call per field and the fields are about ten
+bytes wide.
+
+The mechanism bench, on the two row shapes that dominate the file, refutes that. All three variants
+produce identical fields, checked before timing:
+
+| Delimiter search | 76 byte row | 78 byte row |
+|---|---:|---:|
+| `std::string_view::find`, the current code | 60-63 ns | 54-60 ns |
+| byte loop | 61-64 ns | 53-57 ns |
+| word at a time (SWAR) | 53-56 ns | 47-49 ns |
+
+A byte loop is **the same speed as `memchr`**, so the call is not the cost: this host's `memchr` is fast
+even for ten byte inputs. Only the word-at-a-time scan wins, by about 12%, which is 8 ns per row or
+about 1.5% of the event at 1.69 rows per event.
+
+**1.5% is below the measurement floor**, so the change is not shipped. It is recorded because the
+mechanism result matters twice over: it retires the `memchr` explanation, and it puts the field split
+close to its own floor, which means the remaining `read+parse` cost is not in the delimiter search that
+someone would otherwise tune next.
 
 ### Removing the book mutex
 
@@ -591,7 +758,7 @@ micro-structure is not where the remaining 61% lives.
 Lesson: "this removes work" and "this is measurable" are different claims. The second one needs a
 number, and a null result is a result.
 
-## 6. The transferable lessons
+## 7. The transferable lessons
 
 Ordered by how much they changed decisions here, not by how general they are.
 
@@ -628,13 +795,23 @@ restatement of it. A test written from the new code's logic cannot catch a misun
 it. And for a container swap, the strongest check was not a unit test at all: it was diffing 11.4M
 batches of real output.
 
-**7. Predict, then measure, and expect the prediction to be optimistic.** Every cost estimate in this
+**7. An ablation is only evidence if it changes only the thing under test.** Removing a call the crude
+way — replace it with a constant — measured `-259 ns` for a change that is really worth `-65.5 ns`. The
+gap was not noise: destroying the price column also collapsed the order book, which shrank the whole
+program's working set and let the reader ride the emptied cache. **Make the ablated code cheap and you
+have changed two things at once; make its output identical and you have measured one.**
+
+**8. Predict, then measure, and expect the prediction to be optimistic.** Every cost estimate in this
 project was wrong by 3-10x in the same direction, and the failures were the most informative events in
 it. The ledger in the performance reference exists because of that bias: it records attempts, not wins.
+The single estimate that was wrong in the *other* direction — a rejection that should have been an
+acceptance — cost more than all of them combined.
 
-**8. Verify behavior on the largest input available before claiming a number.** Every behavioral
+**9. Verify behavior on the largest input available before claiming a number.** Every behavioral
 guarantee in this document rests on a full-file comparison, not on a slice. A slice can hide a rare
-path, and the rare path is exactly what a rewrite is most likely to break.
+path, and the rare path is exactly what a rewrite is most likely to break. The price-parse change is the
+clearest case: its timing claim is only defensible *because* 11.4M batches of output are byte-identical,
+which rules out every other explanation for the speedup.
 
 
 

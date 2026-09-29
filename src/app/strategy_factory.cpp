@@ -41,20 +41,25 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                         double l1_risk_threshold,
                                         double l1_stress_spread_multiplier,
                                         double l1_minimum_stress_quantity_ratio,
-                                        double l1_fee_spread_multiplier)
+                                        double l1_fee_spread_multiplier,
+                                        uint64_t order_size_override,
+                                        int64_t inventory_limit_override)
 {
-    const uint64_t order_size =
+    const uint64_t derived_order_size =
         instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
                    : 100;
+    const uint64_t order_size = order_size_override > 0 ? order_size_override : derived_order_size;
     const double tick_size = instrument ? instrument->tick_size : PRICE_TICK_SIZE;
     const double spread = instrument ? 2.0 * instrument->tick_size : 0.000003;
 
     if (strategy_name == "naive")
         return std::make_unique<NaiveMarketMaker>(order_size, spread, tick_size);
 
-    const int64_t inventory_limit =
+    const int64_t derived_inventory_limit =
         instrument ? std::max<int64_t>(1, static_cast<int64_t>(instrument->quantity_scale / 10))
                    : 1000;
+    const int64_t inventory_limit =
+        inventory_limit_override != 0 ? inventory_limit_override : derived_inventory_limit;
     if (strategy_name == "passive_l1")
         return std::make_unique<PassiveL1MarketMaker>(order_size, spread, inventory_limit,
                                                       tick_size);
