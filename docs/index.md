@@ -22,7 +22,7 @@ for talking about it out loud.
 
 | Document | What it is for | Kept honest by |
 |---|---|---|
-| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way: constraints, decisions, alternatives, evidence, limits | its headline block is re-run by `tools/check_docs.py`; its prose is checked for flags, models and tool paths by `tools/lint_prose.py` |
+| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way: constraints, decisions, alternatives, evidence, limits, and an appendix on the container and API choices module by module | its headline block is re-run by `tools/check_docs.py`; its prose is checked for flags, models and tool paths by `tools/lint_prose.py` |
 | [Architecture](ARCHITECTURE.md) | What each module is, the data contracts between them, and the matching rules | marked blocks re-run by `tools/check_docs.py`; prose linted |
 | [Learning Path](LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference | prose linted |
 | [User Guide](USER_GUIDE.md) | Every mode, every flag, and the failure modes that waste an afternoon | prose linted, so a flag it forgets or invents fails the build |

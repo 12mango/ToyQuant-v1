@@ -409,6 +409,154 @@ tools/verify_l2.sh fast`. Then the trace, which the hints turn into a two-step �
 waited longest, then name it in a second run, or let `tools/trace_order.sh` do both. Then the two latency
 sweeps as a pair, since the surprise is that they disagree in sign.
 
+## Appendix — Technical decisions, module by module
+
+[Architecture](ARCHITECTURE.md) says what each module *is*. This appendix is the argument for the shapes
+inside them: the container, the algorithm, or the API form, with the alternative that was measured and lost.
+One-off or trivial choices are left out on purpose, and where a decision was deliberately **not** taken it is
+listed with its reason, so that "considered and skipped" stays distinguishable from "nobody looked".
+
+Two rules apply to every row. A change here is accepted only with a **paired measurement** and a
+**byte-identical output** on the pinned run, because a container swap that is 20% faster and 0.01% different
+is not a container swap. And the deciding number is quoted from the ledger in
+[Performance](PERFORMANCE.md), not from an isolation benchmark, because those two disagree by up to four
+times on this codebase — an example of which is below.
+
+| Module | Choice | The alternative that lost | Deciding measurement | Status |
+|---|---|---|---|---|
+| line layer (`src/market/line_reader.*`) | 1 MiB blocks, `memchr` boundaries, `string_view` into the block | `std::getline` / `gzgets` per character into a `std::string` | line layer 0.115 -> 0.080 s (1.44x), within 10% of the `memchr`-only floor; end-to-end -16.0% on the 2M slice | kept |
+| market book container (`src/orderbook/tick_ladder.h`) | flat array indexed by price tick, learned price range, remembered best slot | `std::map`; **and** a sorted `std::vector` | `book-apply` p50 193 -> 51; in-process book -25.9%; end-to-end -9.5% (t = -2.83) | kept |
+| the top-level walk (`TickLadder::top_levels`) | one bounded walk per side | `nth()` per level, each restarting from the best slot | `market-view` p50 95.7 -> 68.4 ns (-28.5%); end-to-end -5.9% (t = -2.61) | kept |
+| number parsing (`src/market/market_data_adapter.cpp`) | integer mantissa plus a power-of-ten scale, for the shape this feed uses | `std::from_chars<double>`, which libstdc++ defines out of line | `read+parse` p50 -65.5 ns (-11.3%) | kept |
+| engine per-symbol state (`src/exchange/matching_engine.h`) | integer symbol ids, one flat map | string keys on the hot path | `engine` p50 141 -> 111 (-21.3%), 5/5 pairs | kept |
+| reader micro-optimizations | four inline update slots, a column-role jump table, first-character boolean dispatch | the straightforward versions | **no measurable effect**: paired mean +5.4 ns, SE 12.4 | kept, unproven |
+| matching book per level (`MEOrderBook`) | `std::map<PriceTick, PriceLevel>` | the same flat ladder the market book uses | cannot be measured yet: 406 orders over 117,288 batches | left alone |
+| the market book's mutex | `std::mutex` around every call | removing it | 4.2 ns, 0.7% | left alone |
+
+### The line layer, and a piece of reasoning that was wrong
+
+`std::getline` and `gzgets` are both per-character loops, and the feed is 1.5 GB of short rows, so the layer
+was replaced before any parsing work: pull a 1 MiB block, find line boundaries with `memchr`, and hand back a
+`string_view` into the block. A line crossing a block boundary is compacted to the front, so an owned copy is
+only needed for a line larger than a block. All five readers use it, which also deleted the comma-counting
+pre-pass the old `split_csv(std::string)` needed to size its reserve.
+
+The appendix mentions it for the mistake as much as for the win. The first write-up argued that the remaining
+cost in the field split was `memchr` **call setup** rather than bytes scanned, and the document said so. A
+byte loop then measured the same, so the reasoning was wrong: on this data the scan was never the cost. The
+correction is still in [Performance History](PERFORMANCE_HISTORY.md) next to the original claim, which is the
+only reason it is findable, and it is the reason the ledger keeps a table of attempts rather than a list of
+wins.
+
+### The market book container, and the alternative that looked obviously better
+
+The L2 book stores one side as a flat array indexed by price tick. The header states the argument and it is
+worth repeating, because it is a *shape* argument rather than a constant-factor one: a red-black tree descends
+about ten pointer levels per lookup, and a sorted vector moves kilobytes on every insertion once the book
+holds a thousand levels. This feed keeps more than a thousand live levels per side across a span of about
+twenty thousand ticks, so both structures pay for a shape the data does not have. Indexing by tick turns a
+level change into one computed address and a bounds check.
+
+The interesting part is the alternative that lost. A sorted `std::vector` is the usual first suggestion, and
+it was implemented and measured: 1.02 to 1.11x over the `std::map` in isolation, which is not enough to buy a
+thousand-element `memmove` per insertion and a binary search per lookup in exchange for a container with
+worse failure modes. That measurement is what makes the rejection a result rather than a preference, and it
+says something about the tree as well: the two structures pay for the same shape.
+
+Three details inside the class are decisions in their own right:
+
+* **The price range is learned, not configured.** The array is sized around the first tick it sees and grows
+  when an update arrives outside the current range, so no window is assumed and no update is dropped. The cost
+  is a growth margin that decides how many empty slots a walk crosses; that margin is untuned and is listed as
+  such rather than described as chosen.
+* **A repeated value writes nothing.** `set()` returns early when the slot already holds the requested
+  quantity, which an incremental feed does constantly, and `clear()` skips the fill when the count is already
+  zero.
+* **The top-level walk is one walk.** `top_levels(levels)` produces the touch and the summed depth of the
+  first `levels` populated slots in a single pass, where asking `nth()` for each level restarts from the best
+  slot and crossed the near-touch slots about five times over. It is the cheapest accepted change in the
+  ledger at -28.5% of its stage and -5.9% end to end, and its output was pinned byte for byte over 11,403,032
+  batches.
+
+### Number parsing: faster without being different
+
+Prices in this feed are plain decimals and the book works in integer ticks, so the conversion is done as
+`mantissa / 10^decimals` with integer arithmetic. The fast path accepts only shapes it can reproduce
+**exactly** — an optional sign, at least one integer digit, at most five fraction digits, and a mantissa a
+double holds exactly — and falls back to `std::from_chars<double>` for everything else. The comment in
+`src/market/market_data_adapter.cpp` states the guarantee that makes this legitimate, and it is why the pinned
+output does not move: both operands are exact and IEEE division is correctly rounded, so the result is the
+correctly rounded value of the exact decimal, which is what the general parser would have produced. A trailing
+dot, an exponent or a stray character takes the slow path deliberately.
+
+The cost it avoids is not arithmetic but a call. `std::from_chars<double>` is defined out of line in
+libstdc++, so it is a real function call per row, about 48 ns in context, and removing it is 11.3% of a stage
+that is 61% of the event. Two related attempts in the same file are worth knowing about: a fast path for
+64-bit integers paid -9.2%, and an ablation that collapsed the price to two distinct values appeared to pay
+259 ns. That second number was wrong by about four times, because collapsing the price also shrank the whole
+run's memory footprint, so most of what it measured was cache effect. An ablation measures the call *and*
+everything that changes with it, which is the most reusable warning in this repository.
+
+### Per-symbol state, and why the isolation benchmark disagrees with the run
+
+The matching engine used to key its per-symbol state by the symbol string. Keying it by a small integer id
+instead, assigned on first sight, moved the `engine` stage from a p50 of 141 to 111 ns (-21.3%, 5/5 pairs,
+t = -2.85). The interesting number is the one next to it: the isolation benchmark predicted about 55 ns for
+roughly ten string lookups on this path, and the real loop saved about 30. The isolation benchmark measures a
+dependency chain in which the hash is the only work; the pipeline's loop overlaps the hash with other work
+and pays less for it. Both readings are correct, and only one of them is the number a user experiences, which
+is why the ledger quotes in-context differences.
+
+The same map is now the one place where a container choice was deliberately *not* made. `MEOrderBook` still
+holds a `std::map` per price level, and the market-data result is the argument for measuring the same flat
+ladder there. The obstacle is not the container: this workload submits 406 orders over 117,288 batches, so any
+difference would be buried in noise. The prerequisite is a workload with order flow, and it is listed that way
+in section 6 rather than left as an open question.
+
+### Small choices that carry a reason
+
+Grouped rather than each getting a section, because each one is a line of reasoning rather than a measurement:
+
+* **`std::stable_sort` for in-flight orders** (`MatchingEngine::advance_to`). Delivery times can collide, and
+  when they do the order that was sent first has to land first, or a replay is not reproducible. A plain
+  `sort` would leave that to the implementation, so stability is a correctness requirement here rather than a
+  preference.
+* **`std::deque<FillObservation>` for pending markouts** (`Pipeline`). Markouts are resolved in arrival order
+  and drained from the front, so the container has to remove from the front in constant time.
+* **`std::variant` plus `std::visit` for market events**, rather than a base class. The set of event types is
+  closed and known, so the dispatch is a jump table, the compiler enforces that every alternative is handled,
+  and there is no vtable on the event path.
+* **Designated initializers for every configuration struct** (`L2MarketMakerConfig`, `FeeSchedule`,
+  `StrategyFactoryConfig`). The last of those replaced eleven positional arguments, seven of them doubles, in
+  which a transposed pair of the four L1 fractions would still have compiled. Named fields make that class of
+  mistake unwritable, and the C++20 rule that initializers follow declaration order is what makes a call site
+  readable at review time.
+
+### What was deliberately left alone
+
+* **Reader micro-optimizations** — four inline update slots per batch, a column-role jump table and a
+  first-character boolean dispatch. Measured as no effect (paired mean +5.4 ns, SE 12.4). They are kept and
+  labelled unproven rather than reverted, because the label is the useful part: the next reader knows the idea
+  has been tried.
+* **The market book's mutex**, 4.2 ns and 0.7% of the run. Removing it would be a correctness change for a
+  measurement that does not exist.
+* **The TickLadder growth margin.** It sets how many empty slots a walk crosses and it has never been measured,
+  which is stated in [Performance](PERFORMANCE.md) as an untuned knob rather than implied to be tuned.
+* **Copying `BboQuote` into three places per batch.** It is a known remaining cost inside the `engine` stage
+  and it is recorded as remaining work, not as a decision.
+
+### How a change in this layer is accepted
+
+The same gate as everywhere else, which is what makes the appendix safe to write: a paired measurement
+(`tools/measure_l2_baseline.py`, repeated runs, t-statistics) for the speed claim, and byte-identical output
+on the pinned run for the behaviour claim. The accepted changes above were each verified as identical over
+11,403,032 batches, which is what a container swap has to prove before it is worth its speed. The default
+run's full output is hashed as tier 2, so a change here that is faster but different is caught even if nobody
+thought to check.
+
+
+
+
 
 
 
