@@ -19,6 +19,13 @@ ToyQuant replays market data through the complete trading loop — market events
 
 It is a toy project for learning and experimentation, not a production trading system. APIs, scenarios, and strategy behavior may change between versions.
 
+## Versions
+
+The line that predates the queue model — the Binance Trade+BBO replay, the legacy CSV and UDP inputs, and the
+L1 strategy set — is frozen at the tag `v1.0-demo` and stays downloadable for reproducing the earlier
+results. This branch is the current line: the [Changelog](CHANGELOG.md) says what changed and why, and
+[docs/ROADMAP.md](docs/ROADMAP.md) says what comes next.
+
 ## Demo
 
 ```console
@@ -189,6 +196,7 @@ ToyQuant deliberately excludes real exchange connectivity, FIX, a risk gateway, 
 | [Low-Latency Design](docs/LATENCY_DESIGN.md) | Why each low-latency change is faster, how it was verified, and what was measured and rejected |
 | [Performance History](docs/PERFORMANCE_HISTORY.md) | Superseded measurements in the order they were taken |
 | [Documentation Index](docs/index.md) | Which document to read for which question, and what keeps each of them honest |
+| [Roadmap](docs/ROADMAP.md) | The phases from this demo to a personal execution system, and what is deliberately not planned |
 | [Data Files](data/README.md) | Tick CSV format, runtime outputs, typical workflow |
 
 ## Contributing

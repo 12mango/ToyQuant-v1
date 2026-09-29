@@ -1,0 +1,38 @@
+name: build-and-test
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset linux-debug
+
+      - name: Build
+        run: cmake --build out/build/linux-debug -j 2
+
+      - name: Unit tests
+        run: ctest --test-dir out/build/linux-debug --output-on-failure
+
+      # The two checks that need no market data. The replay tiers of tools/verify_l2.sh read a 1.5 GB depth
+      # file that is not in the repository, so they stay local; everything that can run on source alone runs
+      # here, which is the part that catches a stale flag, a missing tool path or a summary field that
+      # nothing computes.
+      - name: Every summary field is written
+        run: python3 tools/check_written_fields.py
+
+      - name: Every documented flag, queue model and tool path exists
+        run: |
+          python3 tools/lint_prose.py \
+            docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
+            docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md \
+            docs/index.md docs/ROADMAP.md

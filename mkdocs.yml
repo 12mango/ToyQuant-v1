@@ -33,6 +33,9 @@ theme:
 
 nav:
   - Home: index.md
+  - Design Review: DESIGN_REVIEW.md
+  - Learning Path: LEARNING.md
+  - Roadmap: ROADMAP.md
   - User Guide: USER_GUIDE.md
   - Architecture: ARCHITECTURE.md
   - Performance: PERFORMANCE.md
