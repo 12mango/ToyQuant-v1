@@ -1,6 +1,7 @@
 #include "matching_engine.h"
 
 #include <algorithm>
+#include <iostream>
 
 #include "common/instrument_spec.h"
 #include "execution_report.h"
@@ -80,11 +81,31 @@ void MatchingEngine::advance_to(uint64_t ts)
     }
 }
 
+void MatchingEngine::reject_order(const exchange::Order& order, const char* reason)
+{
+    ++rejected_orders_;
+    std::cerr << "[ENGINE_REJECT] order=" << order.id << " symbol=" << order.symbol
+              << " qty=" << order.qty << " reason=" << reason << " lot_size=" << lot_size_
+              << " min_order_quantity=" << min_order_quantity_ << "\n";
+}
+
 void MatchingEngine::send_order_now(const exchange::Order& order)
 {
+    // Every refusal is counted and printed. A rejection used to be a silent return, so a strategy that
+    // believed it had a quote resting had none, the pipeline's reserved quantity was never released, and
+    // the instrument's own ordering constraints were not enforced at all because the engine had never been
+    // told them.
     if (order.id == 0 || order.qty == 0 || order.remaining == 0 || order.remaining > order.qty ||
         order_index_.contains(order.id))
     {
+        reject_order(order, order.id == 0 ? "missing id"
+                            : order_index_.contains(order.id) ? "duplicate id"
+                                                              : "malformed quantities");
+        return;
+    }
+    if (order.qty % lot_size_ != 0 || order.qty < min_order_quantity_)
+    {
+        reject_order(order, "below the instrument's lot size or minimum quantity");
         return;
     }
 

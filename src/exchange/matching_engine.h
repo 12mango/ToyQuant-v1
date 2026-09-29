@@ -89,6 +89,13 @@ class IMatchingEngine
         (void)price;
         return 0;
     }
+
+    // Orders the engine refused. A refusal produces no execution report, so without this count a rejected
+    // order is indistinguishable from an accepted one from the caller's side.
+    virtual uint64_t rejected_orders() const
+    {
+        return 0;
+    }
 };
 
 // The engine keys every per-symbol map by this id rather than by the symbol string. A run touches
@@ -111,7 +118,8 @@ class MatchingEngine : public IMatchingEngine
                              QueueModel queue_model = QueueModel::ProRata,
                              uint64_t lump_chunks = 1, uint64_t random_seed = kDefaultQueueSeed,
                              double arrival_share = 1.0, uint64_t order_latency_us = 0,
-                             uint64_t cancel_latency_us = 0)
+                             uint64_t cancel_latency_us = 0, uint64_t lot_size = 1,
+                             uint64_t min_order_quantity = 1)
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
                     queue_model_(queue_model),
@@ -121,7 +129,9 @@ class MatchingEngine : public IMatchingEngine
                                                        : arrival_share > 1.0 ? 1.0 : arrival_share),
                     order_latency_us_(order_latency_us),
                     cancel_latency_us_(cancel_latency_us),
-                    cancel_delay_events_(cancel_delay_events)
+                    cancel_delay_events_(cancel_delay_events),
+                    lot_size_(lot_size == 0 ? 1 : lot_size),
+                    min_order_quantity_(min_order_quantity == 0 ? 1 : min_order_quantity)
     {
     }
 
@@ -130,6 +140,9 @@ class MatchingEngine : public IMatchingEngine
     void process_l2_top(const BboQuote& quote) override;
     void process_market_trade(const MarketTrade& trade) override;
     void cancel_order(uint64_t order_id) override;
+
+    // Counts a refusal and says why, on stderr, because a refusal emits no report.
+    void reject_order(const exchange::Order& order, const char* reason);
 
     uint64_t queue_ahead_consumed() const override
     {
@@ -152,8 +165,19 @@ class MatchingEngine : public IMatchingEngine
                                  : sell_queue_from_quantity_changes_;
     }
 
+    // Orders the engine refused, and the reason it keeps the count. A refusal used to be a silent return,
+    // so a strategy that believed it was quoting had nothing resting and nothing told it otherwise. The
+    // count is what the tests assert on, and every refusal also writes one line to stderr.
+    uint64_t rejected_orders() const override
+    {
+        return rejected_orders_;
+    }
+
     uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const override;
 
+    // A rejected order used to disappear without a trace: the caller was told nothing, so a strategy that
+    // believed it had a quote resting had none, and the instrument's own minimum quantity was never
+    // enforced because the engine had never been given it. Every refusal is now counted and printed.
     void set_report_callback(ReportCallback cb) override
     {
         report_cb_ = std::move(cb);
@@ -192,6 +216,8 @@ class MatchingEngine : public IMatchingEngine
         if (inserted) ++next_symbol_id_;
         return entry->second;
     }
+
+    uint64_t rejected_orders_{0};
 
     // Returns the id for `symbol`, or kUnknownSymbol without registering it. Used where the symbol
     // is only being looked up, so a rejected event does not grow the registry.
@@ -278,4 +304,8 @@ class MatchingEngine : public IMatchingEngine
     };
     std::unordered_map<uint64_t, PendingCancel> pending_cancels_;
     uint64_t cancel_delay_events_{0};
+    // The instrument's order constraints, which every venue has and which this engine did not enforce until
+    // it was given them: a quantity below the minimum or off the lot grid is not a tradeable order anywhere.
+    uint64_t lot_size_{1};
+    uint64_t min_order_quantity_{1};
 };

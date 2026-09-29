@@ -135,6 +135,10 @@ int main()
     assert(l2_pipeline.summary().queue_min_fraction_p50 == 1.0);
     assert(l2_pipeline.summary().queue_end_fraction_p50 == 1.0);
 
+    // A normal run never has an order refused: the guard, the lot size and the minimum are all checked on
+    // every submit, and a refusal would show up here rather than as a missing quote.
+    assert(l2_engine.rejected_orders() == 0);
+
     MatchingEngine deribit_fee_engine(0.5,
         FeeSchedule{.maker_rate = 0.0002,
                     .taker_rate = 0.0005,

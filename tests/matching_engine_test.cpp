@@ -335,6 +335,33 @@ int main()
     cancel_latency_engine.process_l2_top({250, "CANCELLAT", 100.0, 50, 100.1, 40, 62, "test"});
     assert(has_report(cancel_latency_reports, 96, ExecType::Cancelled, 10));
 
+    // A refused order used to vanish without a report, which is indistinguishable from an accepted one on
+    // the caller's side. It now counts, warns on stderr, and the instrument's own ordering constraints are
+    // enforced: lot size 5 and a minimum of 10 make four of these five orders untradeable.
+    MatchingEngine strict_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0, 0, 5, 10);
+    std::vector<ExecutionReport> strict_reports;
+    strict_engine.set_report_callback([&strict_reports](const ExecutionReport& report)
+                                      { strict_reports.push_back(report); });
+    strict_engine.process_l2_top({100, "STRICT", 100.0, 50, 100.1, 40, 5, "test"});
+    // Off the lot grid.
+    strict_engine.send_order({1, "STRICT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 7, 7,
+                              100, "MarketMaker"});
+    // On the grid, under the minimum.
+    strict_engine.send_order({2, "STRICT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 5, 5,
+                              100, "MarketMaker"});
+    // Zero quantity was never a tradeable order.
+    strict_engine.send_order({3, "STRICT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 0, 0,
+                              100, "MarketMaker"});
+    // The acceptable order rests, and the same id sent twice is refused rather than resting twice.
+    strict_engine.send_order({4, "STRICT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 20, 20,
+                              100, "MarketMaker"});
+    strict_engine.send_order({4, "STRICT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 20, 20,
+                              100, "MarketMaker"});
+    assert(strict_engine.rejected_orders() == 4);
+    // One report, from the one order that was accepted.
+    assert(strict_reports.size() == 1);
+    assert(has_report(strict_reports, 4, ExecType::Resting, 20));
+
     // The queue trace reads its numbers from this accessor, so it has to report the queue our order
     // actually joined behind and the queue a level decrease actually shrinks. Before our order is in the
     // level there is no queue to report: the field belongs to the order's wait, not to the price, and the

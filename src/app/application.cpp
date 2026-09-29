@@ -174,7 +174,8 @@ void Application::run_replay_mode() const
                           1, cfg_.queue_model, cfg_.queue_lump_chunks,
                           cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
                           cfg_.arrival_share, cfg_.order_latency_us,
-                          cfg_.cancel_latency_us);
+                          cfg_.cancel_latency_us, instrument.lot_size,
+                          instrument.min_order_quantity);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, instrument.tick_size);
@@ -253,7 +254,8 @@ void Application::run_l2_replay_mode() const
                           1, cfg_.queue_model, cfg_.queue_lump_chunks,
                           cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
                           cfg_.arrival_share, cfg_.order_latency_us,
-                          cfg_.cancel_latency_us);
+                          cfg_.cancel_latency_us, instrument.lot_size,
+                          instrument.min_order_quantity);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
                       portfolio, instrument.tick_size);
