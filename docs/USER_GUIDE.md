@@ -24,6 +24,15 @@ cmake --build --preset linux-debug
 ctest --preset linux-debug
 ```
 
+The same code also builds and tests under AddressSanitizer and UndefinedBehaviorSanitizer, which is the
+gate's tier 3 (`bash tools/verify_l2.sh asan`):
+
+```bash
+cmake --preset linux-asan
+cmake --build out/build/linux-asan
+ctest --preset linux-asan
+```
+
 The main programs are `out/build/linux-debug/toy_quant` for simulation/replay and
 `out/build/linux-debug/backtest_main` for legacy metrics from recorded Tick data.
 

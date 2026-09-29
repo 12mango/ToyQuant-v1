@@ -9,17 +9,21 @@
 #   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
 #   tier 1  (~3 s, including a 2M-row replay behind one marked block)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
+#   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
 # Tier 1 catches essentially everything a reader or book change can get wrong, because it compares
 # event counts, order and fill counts, realised PnL and consumed queue position. Tier 2 is what makes
 # a timing claim defensible: it rules out every explanation except cost. Tier 0 was added after a
 # commit landed carrying a failing assertion: this script compared replay outputs only, so the unit
-# tests could be red while the gate reported success.
+# tests could be red while the gate reported success. Tier 3 is the one standard C++ check the project
+# did not run: a leak in the block reader, an out-of-range slot in the ladder or a signed overflow in
+# the parser is invisible in a normal build.
 #
 # Usage:
 #   tools/verify_l2.sh fast [binary]   # tier 0 and tier 1, the per-edit loop
 #   tools/verify_l2.sh ref  [binary]   # store the current full-file output as the reference
 #   tools/verify_l2.sh full [binary]   # tier 2 only, against the stored reference
+#   tools/verify_l2.sh asan            # tier 3 only, the sanitizer build
 #   tools/verify_l2.sh all  [binary]   # all tiers, for accepting a change
 #
 # Binary defaults to out/build/linux-debug/toy_quant. Output is one line per tier on success, and
@@ -128,10 +132,48 @@ tier2() {
   return 1
 }
 
+# Tier 3 sanitizes the code that the other tiers only measure. A leak in the block reader, an out-of-range
+# slot in the ladder or a signed overflow in the parser is invisible in a normal build. The build is
+# incremental, so the cost is a rebuild of whatever changed plus a few seconds of running, and
+# -fno-sanitize-recover=all makes the first undefined behaviour abort instead of warning, so a finding cannot
+# be missed by reading the log too quickly. If the toolchain has no sanitizers the tier skips rather than
+# failing: a missing compiler feature is not a regression in this code.
+tier3() {
+  local asan_build_dir=out/build/linux-asan
+  local log
+  log=$(mktemp)
+  if ! cmake --preset linux-asan > "$log" 2>&1; then
+    echo "tier3 SKIP (the sanitizer preset did not configure on this toolchain)"
+    return 0
+  fi
+  if ! cmake --build "$asan_build_dir" >> "$log" 2>&1; then
+    echo "tier3 MISMATCH (sanitizer build failed)"
+    tail -20 "$log" | sed 's/^/  /'
+    return 1
+  fi
+  local rc=0
+  ASAN_OPTIONS="detect_leaks=1:abort_on_error=1" UBSAN_OPTIONS="print_stacktrace=1" \
+    ctest --test-dir "$asan_build_dir" >> "$log" 2>&1 || rc=1
+  ASAN_OPTIONS="detect_leaks=1:abort_on_error=1" UBSAN_OPTIONS="print_stacktrace=1" \
+    "$asan_build_dir/toy_quant" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata \
+    --fast-validation --no-output >> "$log" 2>&1 || rc=1
+  local finding
+  finding=$(grep -m3 -E 'ERROR: AddressSanitizer|runtime error:|LeakSanitizer' "$log")
+  if [ $rc -eq 0 ] && [ -z "$finding" ]; then
+    echo "tier3 OK"
+    return 0
+  fi
+  echo "tier3 MISMATCH"
+  [ -z "$finding" ] || echo "$finding" | sed 's/^/  /'
+  [ $rc -eq 0 ] || tail -5 "$log" | sed 's/^/  /'
+  return 1
+}
+
 case "${1:-fast}" in
   fast) ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; exit $rc ;;
   ref)  ensure_slices; full_hash > "$REF_HASH"; echo "reference stored: $(cat "$REF_HASH")" ;;
   full) ensure_slices; tier2 ;;
-  all)  ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; tier2 || rc=1; exit $rc ;;
-  *)    echo "usage: tools/verify_l2.sh fast|ref|full|all [binary]" >&2; exit 2 ;;
+  asan) ensure_slices; tier3 ;;
+  all)  ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; tier2 || rc=1; tier3 || rc=1; exit $rc ;;
+  *)    echo "usage: tools/verify_l2.sh fast|ref|full|asan|all [binary]" >&2; exit 2 ;;
 esac

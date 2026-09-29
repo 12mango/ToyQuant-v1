@@ -338,6 +338,13 @@ One script, four tiers, run on every change. `tools/verify_l2.sh all`:
 | 0 | 0.2 s | CTest: 15 unit-test binaries |
 | 1 | ~3 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, and the prose lints |
 | 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against a stored reference |
+| 3 | ~5 s | the same 15 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
+
+Tier 3 is the one standard C++ check this project did not run until now, and it is **checked to be live
+rather than assumed**: the sanitizer binary links `libasan` and `libubsan` and contains 34 `__asan`
+references, so `tier3 OK` means the probes were on. A clean run under a probe that never armed is worth
+nothing, which is the rule the rest of this document follows too. The first full sanitizer build takes about
+three minutes; the tier rebuilds incrementally, so accepting a change costs the few seconds in the table.
 
 ```bash
 # tools/verify_l2.sh — tiers 0 and 1
@@ -427,4 +434,4 @@ rows are in [Performance History](PERFORMANCE_HISTORY.md).
 | "How do you profile?" | An in-process stage profiler (`StageProfiler`, null-gated so it costs nothing when off) reports per-stage percentiles; changes are accepted on paired repeated runs with a t-statistic, never on a single reading. Absolute numbers do not travel between sessions here — one unchanged binary measured a stage at 581 ns and 834 ns twenty minutes apart — so only paired deltas are quoted as evidence. |
 | "Why C++, and why not Python?" | The workload is 1.5 GB of parsing plus a book update per batch, and the parts worth deciding are the container, the allocation behaviour and the memory access pattern. A profiler inside the process is also what made the 3-to-10x-wrong cost intuition visible. |
 | "What would you do differently?" | Build the gate before the features: it caught two undocumented flags, a paragraph describing a model set that had changed, and a failing test that shipped in a commit of mine. I would also start from the fee model and the queue model, because everything downstream is a measurement of those two. |
-| "What next?" | Parse the depth file in blocks — parsing is 61% of the event and the row loop has already paid nothing twice, so the only shape left is reordering the work. Then put a sanitizer build in the gate, which is the one standard C++ check this project does not run yet. |
+| "What next?" | The sanitizer build is done and lives in tier 3 of the gate: 15 test binaries and a 200k replay clean under ASan and UBSan with `-fno-sanitize-recover=all`, verified live by the linked runtimes. The experiment left is parsing the depth file in blocks, because parsing is 61% of the event and the row loop has already paid nothing twice, so the only shape left is reordering the work. |

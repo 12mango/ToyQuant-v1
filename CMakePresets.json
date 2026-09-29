@@ -39,6 +39,24 @@
       }
     },
     {
+      "name": "linux-asan",
+      "displayName": "Linux ASan + UBSan",
+      "description": "Debug build under AddressSanitizer and UndefinedBehaviorSanitizer, run by tier 3 of tools/verify_l2.sh.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
       "name": "macos-debug",
       "displayName": "macOS Debug",
       "description": "For remote macOS environments.",
@@ -129,6 +147,10 @@
     {
       "name": "linux-relwithdebinfo",
       "configurePreset": "linux-relwithdebinfo"
+    },
+    {
+      "name": "linux-asan",
+      "configurePreset": "linux-asan"
     }
   ],
   "testPresets": [
@@ -142,6 +164,13 @@
     {
       "name": "linux-relwithdebinfo",
       "configurePreset": "linux-relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-asan",
+      "configurePreset": "linux-asan",
       "output": {
         "outputOnFailure": true
       }

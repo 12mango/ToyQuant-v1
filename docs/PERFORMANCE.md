@@ -244,8 +244,10 @@ the checks are split by what they are for:
 
 | Tier | Command | Cost | Purpose |
 |---|---|---|---|
-| 1 | `bash tools/verify_l2.sh fast` | ~3 s | The unit tests, the L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
-| 2 | `bash tools/verify_l2.sh all` | ~20 s | adds the full-file stdout hash, before accepting |
+| 0 | `ctest --preset linux-debug` (inside `fast`) | ~0.2 s | The unit tests, because a red test must not be able to pass the gate |
+| 1 | `bash tools/verify_l2.sh fast` | ~3.6 s | The L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
+| 2 | `bash tools/verify_l2.sh all` | ~18 s | Adds the full-file stdout hash and the sanitizer build, before accepting |
+| 3 | `bash tools/verify_l2.sh asan` | ~5 s | The same tests and one short replay under AddressSanitizer and UndefinedBehaviorSanitizer |
 
 Tier 1 compares batch counts, order and fill counts, realised PnL and consumed queue position, which is
 what a reader or book change can actually break. Tier 2 is what makes a timing claim defensible,
