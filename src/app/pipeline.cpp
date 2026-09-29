@@ -62,6 +62,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
     engine_.set_report_callback(
         [this](const ExecutionReport& report)
         {
+            record_trace_report(report);
             if (report.owner == "MarketMaker") portfolio_.apply(report);
             if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
             {
@@ -184,6 +185,49 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
         });
 }
 
+void Pipeline::record_trace_sample(const char* event, uint64_t ts)
+{
+    if (trace_order_id_ == 0 || !trace_level_known_) return;
+    const uint64_t queue = engine_.queue_ahead_at(trace_symbol_, trace_side_, trace_price_);
+    if (queue == trace_last_queue_) return;
+    // A positive change means the queue shrank, which is the direction that leads to a fill.
+    trace_rows_.push_back(TraceRow{.ts = ts,
+                                   .event = event,
+                                   .side = trace_side_,
+                                   .price = trace_price_,
+                                   .change = static_cast<int64_t>(trace_last_queue_) -
+                                             static_cast<int64_t>(queue),
+                                   .queue_ahead = queue});
+    trace_last_queue_ = queue;
+}
+
+void Pipeline::record_trace_report(const ExecutionReport& report)
+{
+    if (trace_order_id_ == 0 || report.order_id != trace_order_id_) return;
+    const char* event = report.exec_type == ExecType::Trade       ? "fill"
+                        : report.exec_type == ExecType::Resting    ? "rest"
+                        : report.exec_type == ExecType::Cancelled  ? "cancel"
+                        : report.exec_type == ExecType::Filled     ? "fully_filled"
+                                                                   : "report";
+    const Side side = trace_level_known_
+                          ? trace_side_
+                          : (report.side == exchange::Side::Buy ? Side::Buy : Side::Sell);
+    // For a rest this reads the queue the engine just made the order join behind, which is the number the
+    // whole trace is about: a quote's fill depends on it, not only on its price.
+    const uint64_t queue =
+        trace_level_known_ ? engine_.queue_ahead_at(trace_symbol_, trace_side_, trace_price_) : 0;
+    const uint64_t trace_ts = current_ts_ != 0 ? current_ts_ : report.ts;
+    trace_rows_.push_back(TraceRow{.ts = trace_ts,
+                                   .event = event,
+                                   .side = side,
+                                   .price = report.price,
+                                   .change = static_cast<int64_t>(report.executed_quantity()),
+                                   .queue_ahead = queue});
+    trace_last_queue_ = queue;
+    if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        trace_level_known_ = false;
+}
+
 void Pipeline::process_event(const MarketEvent& event)
 {
     const auto exchange = std::visit([](const auto& value) { return value.exchange; }, event);
@@ -264,11 +308,13 @@ void Pipeline::process_event(const MarketEvent& event)
 
 void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top)
 {
+    current_ts_ = ts;
     submit_strategy_actions(symbol, ts, top);
 }
 
 void Pipeline::process_l2_market_view(const L2MarketView& view)
 {
+    current_ts_ = view.ts;
     if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
     {
         const BboQuote quote{.ts = view.ts,
@@ -335,12 +381,18 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
     profiler_begin(Stage::Strategy);
     submit_strategy_actions(view.symbol, view.ts, strategy_.on_l2_market_view(view));
     profiler_end(Stage::Strategy);
+
+    // Sampled last, so the row describes the queue the way this event left it: the engine has already
+    // applied whatever quantity changes the view implied.
+    record_trace_sample("view", view.ts);
 }
 
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 {
+    current_ts_ = trade.ts;
     strategy_.on_market_trade(trade);
     engine_.process_market_trade(trade);
+    record_trace_sample("trade", trade.ts);
 }
 
 RunSummary Pipeline::summary() const
@@ -370,7 +422,8 @@ RunSummary Pipeline::summary() const
             .working_orders = strategy_.working_order_count(),
             .portfolio = portfolio_.metrics(),
             .strategy = strategy_.metrics(),
-            .execution_quality = execution_quality_};
+            .execution_quality = execution_quality_,
+            .queue_trace = trace_rows_};
 }
 
 void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top)
@@ -443,6 +496,24 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         order_start_cycles_.insert_or_assign(order.order_id, quote_cycle_);
         order_audit_.insert_or_assign(order.order_id, OrderAudit{quote_cycle_, false});
         ++execution_quality_.audited_orders;
+        if (order.order_id == trace_order_id_)
+        {
+            // The level is learned here so that the reports the engine is about to emit for this order can
+            // already name the queue they are about. The submit row records the intent, with the queue the
+            // venue was displaying at that price before our order joined it; the rest row that follows
+            // records the queue the model actually made us join behind.
+            trace_symbol_ = order.symbol;
+            trace_side_ = order.side;
+            trace_price_ = order.price;
+            trace_level_known_ = true;
+            trace_last_queue_ = engine_.queue_ahead_at(trace_symbol_, trace_side_, trace_price_);
+            trace_rows_.push_back(TraceRow{.ts = ts,
+                                           .event = "submit",
+                                           .side = trace_side_,
+                                           .price = trace_price_,
+                                           .change = static_cast<int64_t>(order.quantity),
+                                           .queue_ahead = trace_last_queue_});
+        }
         engine_.send_order(exchange_order);
     }
 }

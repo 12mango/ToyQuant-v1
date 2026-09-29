@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "accounting/portfolio.h"
 #include "strategy/strategy.h"
@@ -50,6 +51,16 @@ struct ExecutionQualityMetrics
     uint64_t quote_behind_touch_orders{0};
 };
 
+struct TraceRow
+{
+    uint64_t ts{0};
+    std::string event;
+    Side side{Side::Unknown};
+    double price{0.0};
+    int64_t change{0};
+    uint64_t queue_ahead{0};
+};
+
 struct RunSummary
 {
     uint64_t submitted_orders{0};
@@ -79,6 +90,10 @@ struct RunSummary
     PortfolioMetrics portfolio;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
+    // One order's wait, when --trace-order names it: the queue it joined behind, every change in that
+    // queue, and the report that ended it. It is the only place in this project where a mechanism is
+    // shown as a sequence instead of as a total, which is what makes it the teaching artefact.
+    std::vector<TraceRow> queue_trace;
 
     std::string to_log_string() const
     {
@@ -142,6 +157,12 @@ struct RunSummary
                << " working_orders=" << working_orders << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string();
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
+        for (const auto& row : queue_trace)
+        {
+            stream << "\n[QUEUE_TRACE] ts=" << row.ts << " event=" << row.event
+                   << " side=" << (row.side == Side::Buy ? "buy" : "sell") << " price=" << row.price
+                   << " change=" << row.change << " queue_ahead=" << row.queue_ahead;
+        }
         return stream.str();
     }
 };

@@ -79,6 +79,69 @@ tools/compare_runs.sh "conservative" "l2_replay ... 1 conservative --fast-valida
 - **A simulation is not a measurement below its own noise.** Timing claims have the same rule, recorded
   in `docs/PERFORMANCE.md`.
 
+## 6. Seeing the queue instead of trusting the statistic
+
+Section 1 says a fill depends on the queue in front of a quote. That is easy to assert and hard to believe,
+because every fill rate the project prints is a total: 182 orders, 21 fills, 11.5%. `--trace-order=N`
+replaces the total with one order's sequence. Below is the complete trace of order 3 in the window the
+performance tables use, at the policy with the best measured capture, with the timestamps quoted as
+milliseconds after the order was sent and the columns the tool prints:
+
+```
+event   queue_ahead   change
+submit  0
+rest    7200                      <- the queue the order joined behind
+view    7199          1
+view    2135          5064        <- one cancellation ahead removed 70% of the queue
+view    2134          1
+view    2063          71
+view    1995          68
+view    1929          66
+view    1865          64
+view    1803          62
+view    1743          60
+view    1723          20
+view    1704          19
+view    588           1116        <- a second lump, the last big one
+view    569           19
+view    507           62
+view    391           116
+view    304           87
+view    236           68
+view    211           25
+view    189           22
+view    186           3
+view    169           17
+cancel  0                         <- pulled with 169 contracts still standing in front
+```
+
+Four things are in there that no total can show.
+
+**The order waited behind 7,200 contracts to trade one.** A new quote does not get to cut in: the model
+makes it join behind everything the venue was already displaying at that price, which for a Deribit perp
+level is thousands of contracts.
+
+**The queue does not erode, it collapses.** 86% of everything that left went in two events, 5,064 at the
+first view and 1,116 later on. The remaining twenty-one views moved it by tens. A model that spread the
+same total reduction evenly over the same events would reproduce the average and get the distribution
+wrong, and it is the distribution that decides who fills first.
+
+**The quote was pulled while 169 contracts still stood in front of it.** The strategy's own price rule
+moved and it cancelled, so the queue never reached zero and no fill was possible. That is the mechanical
+reading of the fill rate: 21 fills from 182 orders is less a statement about prices than about how long a
+queue takes to clear and how quickly the strategy changes its mind.
+
+**The first order of the run did not last a millisecond.** Order 1 joined behind 208,300 contracts and was
+cancelled in the same millisecond it was submitted, which is what quoting one tick wide at a touch one tick
+away looks like when the strategy re-quotes immediately.
+
+Two notes on building this, because both are the kind of thing that hides inside a plausible number. The
+first version printed the cancel at the timestamp the order had been submitted: an order's own reports
+carry the order's timestamp rather than the event's, so the sequence read backwards from its second row.
+The trace now times every row with the clock of the event being processed. And `--no-output` silences the
+summary, so the first traced run that used it printed nothing at all; the trace rides in the summary and is
+meant to be read with `grep QUEUE_TRACE`.
+
 ## Field reference
 
 The fields a reader needs, what they mean, and which line carries them. `[EXECUTION]` is authoritative

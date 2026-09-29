@@ -76,6 +76,17 @@ class IMatchingEngine
         (void)side;
         return 0;
     }
+
+    // The queue standing in front of a resting order at this price, which is the same number the engine
+    // matches against when a trade arrives. Exposed so the pipeline can show one order's wait rather than
+    // only its outcome: a trace is how a reader sees that a fill is decided by a queue and not by a price.
+    virtual uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const
+    {
+        (void)symbol;
+        (void)side;
+        (void)price;
+        return 0;
+    }
 };
 
 // The engine keys every per-symbol map by this id rather than by the symbol string. A run touches
@@ -138,6 +149,8 @@ class MatchingEngine : public IMatchingEngine
         return side == Side::Buy ? buy_queue_from_quantity_changes_
                                  : sell_queue_from_quantity_changes_;
     }
+
+    uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const override;
 
     void set_report_callback(ReportCallback cb) override
     {

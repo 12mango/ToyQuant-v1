@@ -67,6 +67,15 @@ class Pipeline
         profiler_ = profiler;
     }
 
+    // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a
+    // total into a sequence: the strategy's intent, the queue the order joined behind, every change in
+    // that queue, and the fill or the cancel that ended it. It is the only view this project offers of a
+    // mechanism rather than of its sum, and it is what makes the queue model legible instead of asserted.
+    void set_trace_order(uint64_t order_id)
+    {
+        trace_order_id_ = order_id;
+    }
+
    private:
     void profiler_begin(Stage stage)
     {
@@ -81,6 +90,11 @@ class Pipeline
     void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top);
     void submit_strategy_actions(const std::string& symbol, uint64_t ts,
                                  std::vector<StrategyOrder> orders);
+
+    // The queue the traced order is waiting behind, sampled after an event that could have changed it.
+    // Consecutive samples that do not move are dropped, so a row means the queue actually changed.
+    void record_trace_sample(const char* event, uint64_t ts);
+    void record_trace_report(const ExecutionReport& report);
 
     std::ofstream& orders_out_;
     std::ofstream& trades_out_;
@@ -133,5 +147,18 @@ class Pipeline
     };
     std::unordered_map<uint64_t, OrderAudit> order_audit_;
     std::unordered_set<uint64_t> pending_cancel_orders_;
+    // Trace state. The level stays unknown until the traced order has been submitted, because until then
+    // there is no price to look up and a trace that guessed one would be worse than no trace.
+    uint64_t trace_order_id_{0};
+    // The clock of the event being processed. An order's own reports carry the order's timestamp, so a
+    // trace that read report.ts would print a cancel at the moment the order was submitted and the
+    // sequence would read backwards. The row has to be timed by the event that caused it.
+    uint64_t current_ts_{0};
+    bool trace_level_known_{false};
+    std::string trace_symbol_;
+    Side trace_side_{Side::Unknown};
+    double trace_price_{0.0};
+    uint64_t trace_last_queue_{0};
+    std::vector<TraceRow> trace_rows_;
     StageProfiler* profiler_{nullptr};
 };

@@ -243,6 +243,18 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--queue-seed=N` | Makes a lumpy run reproducible | Fixed |
 | `--order-latency-us=N` | One-way latency between sending an order and the exchange having it | 0, a synchronous engine |
 | `--cancel-latency-us=N` | One-way latency between sending a cancel and the exchange applying it | 0, a synchronous engine |
+| `--trace-order=N` | Trace the queue in front of order N, reported as `[QUEUE_TRACE]` lines | 0, no trace |
+
+To read one order's life instead of the run's totals, name it and filter the summary for the trace block.
+Order ids are assigned in submission order and start at 1, so a small id is an early quote:
+
+```bash
+./build/toy_quant l2_replay data/trades.csv.gz data/depth.csv BTC-PERPETUAL 0 active_l2 1 prorata \
+  --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --trace-order=3 | grep QUEUE_TRACE
+```
+
+Each row is one event that changed the queue standing in front of that order, and the last row is the fill
+or the cancel that ended it. `docs/LEARNING.md` reads one of these traces line by line.
 
 Of these, the requote threshold moves the fill count the most of anything measured so far, and the
 arrival share the least; `docs/PERFORMANCE_HISTORY.md` records the measured ordering.

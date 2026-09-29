@@ -33,6 +33,23 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
                            .fee = unit_notional * real_quantity * rate});
 }
 
+uint64_t MatchingEngine::queue_ahead_at(const std::string& symbol, const Side side,
+                                        const double price) const
+{
+    const SymbolId id = find_symbol(symbol);
+    if (id == kUnknownSymbol) return 0;
+    const auto book_it = books_.find(id);
+    if (book_it == books_.end()) return 0;
+    const PriceTick tick = to_price_tick(price, tick_size_);
+    if (side == Side::Buy)
+    {
+        const auto level = book_it->second.bids.find(tick);
+        return level == book_it->second.bids.end() ? 0 : level->second.external_queue_ahead;
+    }
+    const auto level = book_it->second.asks.find(tick);
+    return level == book_it->second.asks.end() ? 0 : level->second.external_queue_ahead;
+}
+
 void MatchingEngine::send_order(const exchange::Order& order)
 {
     if (order_latency_us_ == 0)

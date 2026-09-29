@@ -125,6 +125,7 @@ void Application::run_legacy_csv_mode() const
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
     pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_trace_order(cfg_.trace_order);
     CsvFeed feed(
         csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick); }, cfg_.delay,
         &logger);
@@ -176,6 +177,7 @@ void Application::run_replay_mode() const
     // and edge figures are in dollars rather than in raw instrument units.
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale);
     pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_trace_order(cfg_.trace_order);
     // The replay can end holding a position, so the reported equity has to include its mark to
     // market. Every other mode already does this; the L1 replay used to leave equity and
     // unrealized PnL at zero no matter what the position was.
@@ -251,6 +253,7 @@ void Application::run_l2_replay_mode() const
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale);
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_profiler(profiler);
+    pipeline.set_trace_order(cfg_.trace_order);
     double final_mid = 0.0;
     MarketDataValidationConfig validation_config;
     validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
@@ -326,6 +329,7 @@ void Application::run_legacy_udp_mode() const
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
     pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_trace_order(cfg_.trace_order);
     UdpFeed feed(port);
     feed.start();
 
