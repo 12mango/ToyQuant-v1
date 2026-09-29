@@ -141,6 +141,40 @@ filled one of them. Those rows establish a direction, not a result. The project'
 the honest sentence is: at a width that can pay the fee, this window holds one observation, and the reason is
 structural rather than a matter of tuning.
 
+### The same sweep on ten times the window
+
+The 200,000-row window cannot settle the question, so the same sweep runs on the 2,000,000-row slice of the
+same file, which is the same data at ten times the length. At one tick it clears the thirty-fill floor:
+
+| `--base-spread-ticks` | fills | fill rate | captured ticks/contract | captured USD | fees USD | realized USD |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 267 | 12.6% | 0.088 | 0.0186 | 0.534 | -1.387 |
+| 3 | 91 | 2.9% | 0.181 | 0.0131 | 0.182 | -0.365 |
+| 5 | 3 | 0.08% | 1.67 | 0.00395 | 0.006 | -0.013 |
+| 8 | 1 | 0.03% | 6.5 | 0.00515 | 0.002 | -0.002 |
+| 12 | 1 | 0.03% | 10.5 | 0.00831 | 0.002 | -0.002 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+then: submitted_orders=2126 trade_reports=267 fill_rate=0.125588 captured_edge_per_unit_ticks=0.088015 captured_edge_usd=0.0186193 fees_paid=0.534 realized_pnl=-1.38723
+-->
+
+Two conclusions, and the second is the one a strategy review has to accept.
+
+1. **With enough fills the answer is unambiguous.** At one tick the policy pays 0.534 USD of fees and captures
+   0.0186 USD of edge, twenty-nine times less, for a realized loss of 1.387 USD on 1,000 of starting cash. That
+   is the fee structure, not a tuning problem: the same run's `queue_min_fraction_p50` is 0.965 and 275 of its
+   orders reached the front, so the strategy is quoting where the flow is and still cannot pay for the fills.
+2. **Widening the quote does not create value, it reduces participation.** The edge per contract rises by two
+   orders of magnitude, from 0.088 to 10.5 ticks, while the total captured value *falls* from 0.0186 to
+   0.0083 USD. The realized loss shrinks for the same reason, because within ten ticks the run produces one
+   fill instead of 267. A five-fold improvement in realized PnL that comes from not trading is not an
+   improvement, and it is the reason the wider rows above are reported with their fill counts beside them.
+
+The 2M table is covered by the second marked block, which adds 1.5 seconds to the fast gate: the slice is a
+`head -n` prefix of the tracked file, so the run is one command and no extra data, and the strongest strategy
+claim in the repository is worth checking on every change.
+
 ## L2 Mainline Workload
 
 To cover the current mainline, `active_l2` was replayed against a 15-minute incremental Deribit

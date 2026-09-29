@@ -7,7 +7,7 @@
 # pass before it is accepted:
 #
 #   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
-#   tier 1  (~1 s)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead
+#   tier 1  (~3 s, including a 2M-row replay behind one marked block)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #
 # Tier 1 catches essentially everything a reader or book change can get wrong, because it compares

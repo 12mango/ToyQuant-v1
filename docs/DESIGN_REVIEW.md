@@ -274,6 +274,14 @@ about 3.7% of the fee it pays, and the fee alone is more than five times the hal
 That is the honest headline of the demo: a queue-aware, fee-aware market maker at a one-tick spread on this
 feed is not close to profitable, and the simulator can say exactly by how much.
 
+The same question has a second answer once the window holds enough fills to support one: on the
+2,000,000-row slice the one-tick policy produces 267 fills, pays 0.534 USD of fees and captures 0.0186 USD
+of edge, twenty-nine times less. Widening the quote raises the captured edge per contract by two orders of
+magnitude and reduces participation to one or three fills, so the total captured value falls and the
+apparent improvement in PnL is the absence of trading rather than an edge. The sweep, the code that turns
+width into a price (`src/strategy/l2_market_maker.h:295`) and the fill counts beside every row are in
+[Performance History](PERFORMANCE_HISTORY.md).
+
 **4. The two latency legs point in opposite directions.** 20 ms of arrival latency cuts fills from 21 to 11
 and raises the captured edge to 4.09 ticks; 20 ms of cancel latency raises fills to 25 and turns the captured
 edge to -0.440 ticks. A single latency number would have reported a mild cost and hidden both effects.
