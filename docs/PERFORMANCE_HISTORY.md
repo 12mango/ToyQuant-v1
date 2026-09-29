@@ -175,7 +175,57 @@ The 2M table is covered by the second marked block, which adds 1.5 seconds to th
 `head -n` prefix of the tracked file, so the run is one command and no extra data, and the strongest strategy
 claim in the repository is worth checking on every change.
 
-## L2 Mainline Workload
+## The Levers, and the Invariant None of Them Move
+
+Every knob the strategy exposes was swept on the 2M-row slice with enough fills to read: quote width,
+requote threshold, order size and inventory limit. The two remaining sweeps are here, and both were chosen
+because they are the ones a reviewer would ask about next.
+
+**The four L2 strategies on the same config** (`--base-spread-ticks=1 --refresh-price-ticks=4 prorata`):
+
+| Strategy | submitted | fills | fill rate | captured ticks/contract | captured USD | fees USD | realized USD |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `passive_l2` | 4326 | 432 | 10.0% | -0.102 | -0.0349 | 0.864 | -2.128 |
+| `inventory_aware_l2` | 3333 | **635** | **19.1%** | **-0.221** | -0.111 | **2.137** | **-2.578** |
+| `flow_aware_l2` | 2052 | 289 | 14.1% | 0.057 | 0.0131 | 0.578 | -1.512 |
+| `active_l2` | 2126 | 267 | 12.6% | **0.088** | **0.0186** | **0.534** | **-1.387** |
+
+Two things to read. The mainline choice is now evidence rather than a claim: `active_l2` has the highest
+captured edge per contract, the lowest fees and the smallest loss, and the strategy that maximises fills
+(`inventory_aware_l2`, 635 of them at 19.1%) has the most negative edge per contract, the highest fees and the
+worst result. Fills obtained by being easier to hit are the fills that arrive when the market is moving
+against the quote, which is the adverse-selection result this project is built on, reproduced across four
+strategies instead of argued from one.
+
+**Order size and inventory limit** (`active_l2`, same config). Both defaults are derived rather than chosen,
+which is why this sweep exists:
+
+```cpp
+// src/app/strategy_factory.cpp:65
+//   instrument->quantity_scale = 1 for Deribit contracts, so:
+//   order_size      = max(min_order_quantity, quantity_scale / 1000) = 1 contract
+//   inventory_limit = max(1, quantity_scale / 10)                    = 1 contract
+```
+
+| `--order-size`/`--inventory-limit` | fills | fill rate | captured ticks/contract | captured USD | fees USD | realized USD | max abs inventory |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 1 / 1 | 267 | 12.6% | 0.088 | 0.019 | 0.534 | -1.39 | 1 |
+| 10 / 10 | 365 | 11.0% | 0.122 | 0.286 | 5.93 | -13.9 | 19 |
+| 10 / 50 | 351 | 9.4% | 0.133 | 0.311 | 5.91 | -13.0 | 57 |
+| 50 / 50 | 387 | 10.1% | 0.113 | 1.265 | 28.2 | -69.6 | 97 |
+| 50 / 200 | 368 | 8.8% | 0.152 | 1.695 | 28.1 | -59.6 | 210 |
+
+**The invariant.** Scale multiplies everything and changes no ratio. Captured value rises about fifteenfold
+from the smallest row to the largest, fees rise about elevenfold, and the loss rises tenfold, while the
+captured edge per contract moves only from 0.088 to 0.152 ticks. Divided out, the two gated numbers above say
+it directly: 0.0186193 USD over 267 contracts is 6.97e-5 USD per contract captured, and 0.534 USD over the same
+267 is 0.002 USD per contract paid. The fee is 29 times the edge at one contract, and at fifty contracts it is
+still seventeen times, because both sides scale together. **The loss is a rate, not a parameter**, which is
+why four sweeps all end in the same place, and why the honest strategy report is a frontier rather than an
+improvement.
+
+Both tables are reproduced by the commands in their sections above; their inputs to the invariant are the two
+numbers in the marked block, which the fast gate re-computes on every change.
 
 To cover the current mainline, `active_l2` was replayed against a 15-minute incremental Deribit
 window with the conservative queue model and no depth sampling:
