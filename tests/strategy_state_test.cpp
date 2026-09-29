@@ -179,11 +179,6 @@ int main()
         metrics_strategy.on_top_of_book("BTCUSDT", TopOfBook{99.8, 100, 99.9, 100});
     metrics_strategy.on_order_update(ExecutionReport{11, exchange::Side::Buy, ExecType::Cancelled,
                                                      "BTCUSDT", 100.0, 5, 1, "MarketMaker"});
-    assert(metrics_strategy.markout_count == 1);
-    assert(metrics_strategy.adverse_selection > 0.0);
-    assert(metrics_strategy.inventory_samples >= 6);
-    assert(metrics_strategy.max_abs_inventory >= 10);
-    assert(metrics_strategy.total_quote_lifetime == 5);
     // The strategy's own metrics no longer carry execution quality: the pipeline computes edge,
     // markout, quote lifetime and inventory once and prints them in [EXECUTION], so there is exactly
     // one copy of each of those numbers. Only the L1 maker's private counters are asserted above.

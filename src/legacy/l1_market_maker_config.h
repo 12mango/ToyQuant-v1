@@ -21,7 +21,6 @@ struct L1MarketMakerConfig
     double fee_spread_multiplier{0.40};
     uint64_t max_market_trade_age{1000};
     double max_trade_deviation_bps{50.0};
-    uint64_t markout_horizon_quotes{5};
     double flow_trade_weight{0.6};
     double flow_book_weight{0.4};
     double flow_price_threshold{0.06};
