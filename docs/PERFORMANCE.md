@@ -264,6 +264,10 @@ a table is checked exactly when someone decided it should be.
 
 Two more things keep the loop short:
 
+- **The measured lever matrix is one command.** `bash tools/workload_matrix.sh [placement|requote|model|arrival]`
+  runs each lever around the same window and prints the fill counts, the per-contract edge and the fees,
+  so the ordering recorded in `PERFORMANCE_HISTORY.md` can be reproduced rather than trusted.
+
 - **Build one target while iterating.** A change to a header such as `tick_ladder.h` is included by
   eight targets, so a plain `cmake --build` rebuilds all of them: 25 steps instead of 2. Use
   `cmake --build out/build/linux-debug --target toy_quant`, then run the whole build plus `ctest` once

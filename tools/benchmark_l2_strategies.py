@@ -4,6 +4,7 @@ import csv
 import gzip
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -15,6 +16,11 @@ PRIMARY_STRATEGIES = (
     "active_l2",
 )
 EXPERIMENTAL_STRATEGIES = ("l2_depth", "l2_micro", "l2_flow")
+# Below this many fills, no PnL or per-fill edge conclusion is supported. The fill-attribution work
+# reached this number the hard way: every recorded window fills fewer than thirty times, which is why
+# the project reports a range across models rather than a result. A comparison that ignores it is
+# reading noise, so the benchmark marks each row instead of leaving it to the reader.
+MINIMUM_FILLS = 30
 EXECUTION_RE = re.compile(
     r"submitted_orders=(?P<orders>\d+).*?submitted_quantity=(?P<submitted_qty>\d+)"
     r".*?cancel_requests=(?P<cancels>\d+)"
@@ -349,6 +355,25 @@ def summarize_fill_quality(trades_path, depth_path, orders_path=Path("data/runti
     return summary
 
 
+def parse_pairs(line):
+    """Every key=value on a summary line, typed by trying int before float.
+
+    The named regexes below have to be maintained in the order the summary prints its fields, so a
+    field added in the middle of a line silently stops the parse. This pass does not care about order
+    or about names, so new fields are available as soon as the run prints them.
+    """
+    values = {}
+    for key, value in re.findall(r"(\w+)=(\S+)", line):
+        try:
+            values[key] = int(value)
+        except ValueError:
+            try:
+                values[key] = float(value)
+            except ValueError:
+                continue
+    return values
+
+
 def parse_run_output(output):
     result = {}
     for line in output.splitlines():
@@ -361,15 +386,19 @@ def parse_run_output(output):
             if match:
                 for key, value in match.groupdict().items():
                     result[key] = float(value) if "rate" in key else int(value)
+            # Raw names as well, so the columns that exist only in the summary do not need a regex each.
+            result.update(parse_pairs(line))
         elif line.startswith("[PORTFOLIO]"):
             match = PORTFOLIO_RE.search(line)
             if match:
                 for key, value in match.groupdict().items():
                     result[key] = int(value) if key in {"maker", "taker"} else float(value)
+            result.update(parse_pairs(line))
         elif line.startswith("[STRATEGY_METRICS]"):
             match = STRATEGY_RE.search(line)
             if match:
                 result.update({key: int(value) for key, value in match.groupdict().items()})
+            result.update(parse_pairs(line))
     return result
 
 
@@ -430,7 +459,7 @@ def main():
     parser.add_argument("--max-depth", type=int, help="optional cap on sliced depth rows")
     parser.add_argument("--depth-every", type=int, default=1)
     parser.add_argument("--quantity-scale", type=int, default=1)
-    parser.add_argument("--queue-model", choices=("conservative", "prorata", "optimistic"),
+    parser.add_argument("--queue-model", choices=("conservative", "prorata", "lumpy", "optimistic"),
                         default="conservative")
     parser.add_argument("--include-experimental", action="store_true", help="also run internal L2 signal aliases")
     parser.add_argument("--csv", type=Path, help="optional output CSV path")
@@ -458,6 +487,15 @@ def main():
             row["input_trades"] = trade_stats["rows"]
             row["input_depth"] = depth_stats["rows"]
             row["overlap_trades"] = overlap_trades
+            row["fills_are_conclusive"] = int(
+                isinstance(row.get("fills"), (int, float)) and row["fills"] >= MINIMUM_FILLS
+            )
+            if not row["fills_are_conclusive"]:
+                print(
+                    f"warning: {strategy} produced {row.get('fills', 0)} fills; below "
+                    f"{MINIMUM_FILLS} no PnL or per-fill edge conclusion is supported",
+                    file=sys.stderr,
+                )
             row["depth_every"] = args.depth_every
             row["queue_model"] = args.queue_model
             rows.append(row)
@@ -465,6 +503,7 @@ def main():
     columns = [
         "strategy",
         "queue_model",
+        "fills_are_conclusive",
         "depth_every",
         "input_trades",
         "input_depth",
@@ -493,6 +532,18 @@ def main():
         "buy_queue_per_quote",
         "sell_queue_per_quote",
         "working_orders",
+        # Added with the fill-attribution and money fields. They are what a comparison across windows
+        # should be read on: fills without the per-contract edge say nothing about whether the fills
+        # were worth having.
+        "quote_at_touch_orders",
+        "quote_behind_touch_orders",
+        "captured_edge_per_unit_ticks",
+        "markout_per_unit_ticks",
+        "captured_edge_usd",
+        "markout_usd",
+        "fees_paid",
+        "max_abs_exposure_usd",
+        "strategy_position_mismatches",
         "fill_rate",
         "cancel_rate",
         "realized",

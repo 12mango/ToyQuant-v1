@@ -25,7 +25,7 @@ def main() -> None:
     parser.add_argument("--end-ts", type=int, required=True)
     parser.add_argument("--strategy", default="active_l2")
     parser.add_argument("--quantity-scale", type=int, default=1)
-    parser.add_argument("--queue-model", choices=("conservative", "prorata", "optimistic"),
+    parser.add_argument("--queue-model", choices=("conservative", "prorata", "lumpy", "optimistic"),
                         default="conservative")
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--depth-every", type=int, default=1)

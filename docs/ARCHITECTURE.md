@@ -849,21 +849,29 @@ from `InstrumentSpec`; the current Deribit BTC perpetual benchmark assumes maker
 `0.05%`. The L2 replay is therefore evaluated on net PnL, fees, maker/taker role, queue consumption,
 markout, inventory, and refresh-cause metrics together.
 
-The matching engine supports three queue interpretations. `Conservative` advances
-the local queue only when a public trade matches the price; an aggregated displayed-quantity
-reduction is treated as ambiguous and does not create a fill, which the measurement below shows is the
-wrong mechanism, so it is kept as the lower bound rather than as a neutral assumption. `ProRata`,
-the default, shrinks the queue ahead of a
-resting order by the same fraction that the level's displayed size fell, which is what a uniform
-distribution of cancellations across the queue gives. `tools/calibrate_queue_model.py` measures this
-feed to be consistent with that rule: over 200,000 incremental depth rows, 99.96% of the size removed
-from a level is cancel or amendment rather than trade, and the book churns about two thousand four
-hundred times the volume that actually trades. `Optimistic` advances the full reduction instead, and under both
-non-conservative models an order that arrives at a price where the queue ahead is unknown still
-starts behind the displayed size. The latter two remain models of information that aggregated L2 data
-does not carry, not claims about order-level truth. Run summaries report trade-driven queue
-consumption, quantity-change-driven consumption, and queue-clear counts separately so L2 results can
-be compared as a bounded execution range rather than as one unexplained fill rate.
+The matching engine supports four queue interpretations, and they are one family rather than four
+opinions. When a level's displayed size falls by `r` with no trade at that price, the only unknown is how
+much of that `r` was ahead of a resting order, and each model is a claim about that one random variable,
+`X(r)`, with `q` the share of the display that is ahead of the order:
+
+| model | `X(r)` | mean | variance |
+|---|---|---|---|
+| `Conservative` | `0` | `0` | `0` |
+| `ProRata` (default) | `r q` | `r q` | `0` |
+| `Lumpy` | `(r / k) Binomial(k, q)` | `r q` | `r^2 q (1 - q) / k` |
+| `Optimistic` | `r` | `r` | `0` |
+
+The first and last bracket the **mean**, and `k` moves only the **variance**, which is why `ProRata` is
+the neutral default rather than a compromise. `tools/calibrate_queue_model.py` measures this feed to put
+99.96% of a level's size decrease on cancel or amendment rather than trade, so a queue that only moves
+when a trade prints contradicts the mechanism; the cancellation sizes it measures, where a median
+decrease removes 74% of a median level and the removed fraction is flat across four orders of magnitude
+of level size, are what makes `k = 1` the lumpiest honest reading. The queue arithmetic tests in
+`tests/matching_engine_test.cpp` pin the consequences: at `q = 1` every model but the conservative one
+removes the whole decrease, and the lumpy mean matches pro-rata over 200 replications. The arrival rule
+is separate and is the share `alpha` in `Q0 = alpha D0`, one for a FIFO venue; it is a knob, but a
+second-order one, because `q` is a fixed point of the pro-rata dynamics and only trades, 0.04% of what
+moves a level, break it. `docs/PERFORMANCE_HISTORY.md` carries the derivations and the measurements.
 
 The C++ replay path supports both source types. The Python benchmark reconstructs a compact top-five
 timeline from grouped incremental updates so execution and markout fields use the same report shape

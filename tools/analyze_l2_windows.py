@@ -63,7 +63,7 @@ def main():
     parser.add_argument("--window-minutes", type=int,
                         help="window width in minutes; overrides --window-hours")
     parser.add_argument("--depth-every", type=int, default=20)
-    parser.add_argument("--queue-model", choices=("conservative", "prorata", "optimistic"),
+    parser.add_argument("--queue-model", choices=("conservative", "prorata", "lumpy", "optimistic"),
                         default="conservative")
     parser.add_argument("--csv", type=Path, required=True)
     args = parser.parse_args()

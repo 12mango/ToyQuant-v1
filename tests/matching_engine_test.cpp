@@ -272,6 +272,28 @@ int main()
     }
     assert(lumpy_removed_total > 200 * 20 && lumpy_removed_total < 200 * 30);
 
+    // The arrival share scales the queue a new quote starts behind: Q0 = alpha * D0. At 1.0 the engine
+    // keeps the FIFO rule untouched, which is what makes every recorded run reproducible.
+    MatchingEngine arrival_half(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 0.5);
+    arrival_half.process_l2_top({60, "ARRIVALHALF", 100.0, 50, 100.1, 40, 2, "test"});
+    arrival_half.send_order({93, "ARRIVALHALF", exchange::Side::Buy, exchange::OrderType::Limit, 100.0,
+                             10, 10, 61, "MarketMaker"});
+    arrival_half.process_l2_top({62, "ARRIVALHALF", 100.0, 10, 100.1, 40, 3, "test"});
+    // Half of the display is ahead of us, so a decrease of 40 removes 40 * (25 / 50) = 20 from it.
+    assert(arrival_half.queue_ahead_from_quantity_changes(Side::Buy) == 20);
+
+    MatchingEngine arrival_front(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 0.0);
+    std::vector<ExecutionReport> arrival_front_reports;
+    arrival_front.set_report_callback([&arrival_front_reports](const ExecutionReport& report)
+                                      { arrival_front_reports.push_back(report); });
+    arrival_front.process_l2_top({63, "ARRIVALFRONT", 100.0, 50, 100.1, 40, 2, "test"});
+    arrival_front.send_order({94, "ARRIVALFRONT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0,
+                              10, 10, 64, "MarketMaker"});
+    // Standing at the front of the queue means a print of our size fills us with nothing to wait for.
+    arrival_front_reports.clear();
+    arrival_front.process_market_trade({65, "ARRIVALFRONT", 100.0, 10, Side::Sell, 0, "test"});
+    assert(has_report(arrival_front_reports, 94, ExecType::Trade, 10));
+
     queued_reports.clear();
     queued_engine.cancel_order(52);
     queued_engine.send_order({53, "BTCUSDT", exchange::Side::Buy,

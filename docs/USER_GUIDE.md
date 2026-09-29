@@ -228,6 +228,23 @@ already resting on the side an order adds to, so two quotes that arrive in the s
 it. `strategy_position_mismatches` compares the strategy's own position against the pipeline's on every
 report, which is how a dropped callback would show up instead of as an unexplained PnL difference.
 
+The replay has policy levers and model levers, and every one of them is additive to the recorded
+defaults, so a run without them reproduces the recorded numbers byte for byte:
+
+| Flag | Effect | Default |
+|---|---|---|
+| `--order-size=N` | Contracts per quote | Derived from the instrument quantity scale |
+| `--inventory-limit=N` | Position at which the strategy stops adding | Derived from the instrument |
+| `--max-position=N` | Pre-trade gate the pipeline enforces | Off, reported only |
+| `--base-spread-ticks=N` | Quote placement; 1 puts the quote at the venue touch | 2 |
+| `--refresh-price-ticks=N` | How far the fair price must move before a requote | 2 for the flow strategies |
+| `--arrival-share=X` | Share of the displayed size a new quote starts behind | 1.0, which is FIFO |
+| `--queue-chunks=N` | Whole orders per level decrease, for `--queue-model=lumpy` | 1 |
+| `--queue-seed=N` | Makes a lumpy run reproducible | Fixed |
+
+Of these, the requote threshold moves the fill count the most of anything measured so far, and the
+arrival share the least; `docs/PERFORMANCE_HISTORY.md` records the measured ordering.
+
 ### Replay strategy choices
 
 The replay command continues to accept these frozen L1 strategy names for compatibility and
@@ -290,6 +307,11 @@ PnL, and fee ratio. It also records unified execution-quality diagnostics for ev
 captured edge, adverse selection, inventory, markouts, and quote lifetime. `net_pnl` is the primary
 result for cost-aware comparisons;
 `gross_pnl` and `fees` explain why it changed.
+
+Every row carries `fills_are_conclusive`: a strategy with fewer than `MINIMUM_FILLS` fills has too
+little data for a PnL or per-fill edge statement, and the benchmark prints that warning rather than
+leaving the reader to notice the count. On the recorded Deribit window no strategy clears it, which is
+the honest reason the project reports a range across queue models instead of one number.
 
 The replay strategies are intentionally different teaching baselines, not production algorithms.
 L1 implementations are frozen; `flow_aware_l1` is an experimental transition strategy
