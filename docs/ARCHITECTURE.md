@@ -676,6 +676,12 @@ so a change in those makers that moves the numbers is a change to a recorded res
 quality is not computed inside them; `ExecutionQualityMetrics` in the pipeline owns edge, markout,
 quote lifetime and inventory for every strategy, and prints them in `[EXECUTION]`.
 
+One difference matters when reading L1 results: **the L1 path models no queue in front of a quote.** Its book
+has no depth-derived levels, so a resting L1 order starts at the touch with nothing ahead of it and a print
+through its price fills it. The L2 path fills only after the queue ahead has been consumed. Fill counts on
+the two paths therefore answer different questions, and every queue-model result in
+`docs/PERFORMANCE_HISTORY.md` comes from the L2 path.
+
 `L1MarketMaker` is the replay-oriented single-level strategy. It consumes BBO updates for quoting
 and venue trades for order-flow information. Its behavior is intentionally layered so each risk
 control has a distinct purpose:
