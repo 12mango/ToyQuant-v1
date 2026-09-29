@@ -13,10 +13,10 @@
 namespace
 {
 L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
-                                        int64_t inventory_limit)
+                                        int64_t inventory_limit, double base_spread)
 {
     return L2MarketMakerConfig{.order_size = order_size,
-                               .base_spread = 2.0 * tick_size,
+                               .base_spread = base_spread,
                                .inventory_limit = inventory_limit,
                                .tick_size = tick_size,
                                .imbalance_shift = 2.0 * tick_size,
@@ -51,14 +51,18 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                         double l1_minimum_stress_quantity_ratio,
                                         double l1_fee_spread_multiplier,
                                         uint64_t order_size_override,
-                                        int64_t inventory_limit_override)
+                                        int64_t inventory_limit_override,
+                                        double base_spread_ticks_override)
 {
     const uint64_t derived_order_size =
         instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
                    : 100;
     const uint64_t order_size = order_size_override > 0 ? order_size_override : derived_order_size;
     const double tick_size = instrument ? instrument->tick_size : PRICE_TICK_SIZE;
-    const double spread = instrument ? 2.0 * instrument->tick_size : 0.000003;
+    const double default_spread = instrument ? 2.0 * instrument->tick_size : 0.000003;
+    const double spread = base_spread_ticks_override > 0.0
+                              ? base_spread_ticks_override * tick_size
+                              : default_spread;
 
     if (strategy_name == "naive")
         return std::make_unique<NaiveMarketMaker>(order_size, spread, tick_size);
@@ -82,7 +86,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                                      tick_size);
     if (strategy_name == "inventory_aware_l2")
     {
-        const auto base_config = make_flow_l2_config(order_size, tick_size, inventory_limit);
+        const auto base_config =
+            make_flow_l2_config(order_size, tick_size, inventory_limit, spread);
         return std::make_unique<InventoryAwareL2MarketMaker>(
             InventoryAwareL2MarketMakerConfig{.base = base_config,
                                                .inventory_limit = inventory_limit,
@@ -90,7 +95,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     }
     if (strategy_name == "active_l2" || strategy_name == "adaptive_l2")
     {
-        const auto base_config = make_flow_l2_config(order_size, tick_size, inventory_limit);
+        const auto base_config =
+            make_flow_l2_config(order_size, tick_size, inventory_limit, spread);
         return std::make_unique<ActiveL2MarketMaker>(make_active_l2_config(base_config));
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||
@@ -106,13 +112,13 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         const bool public_flow_strategy = strategy_name == "l2" || strategy_name == "flow_aware_l2";
         if (public_flow_strategy)
             return std::make_unique<L2MarketMaker>(
-                make_flow_l2_config(order_size, tick_size, inventory_limit));
+                make_flow_l2_config(order_size, tick_size, inventory_limit, spread));
         // The flow strategies returned above through make_flow_l2_config, so the ternaries that used to
         // sit on these values could never take their flow branch. They are spelled out now, which is
         // also what makes the difference between the two configurations readable.
         return std::make_unique<L2MarketMaker>(L2MarketMakerConfig{
             .order_size = order_size,
-            .base_spread = 2.0 * tick_size,
+            .base_spread = spread,
             .inventory_limit = inventory_limit,
             .tick_size = tick_size,
             .imbalance_shift = 2.0 * tick_size,

@@ -410,6 +410,14 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
                 std::max(0.0, distance) / std::max(tick_size_, PRICE_TICK_SIZE);
             if (distance <= 0.5 * std::max(tick_size_, PRICE_TICK_SIZE))
                 ++execution_quality_.bbo_quote_observations;
+            // At the touch means the quote joined the venue's own best price, where the displayed queue
+            // is deepest and the flow actually arrives; behind it means the spread protects the quote
+            // while the queue in front clears. The two accounts are what a fill-rate question needs:
+            // a low fill count means something different for each of them.
+            if (distance <= 0.0)
+                ++execution_quality_.quote_at_touch_orders;
+            else
+                ++execution_quality_.quote_behind_touch_orders;
         }
         write_order_csv_row(orders_out_, ts, order);
         strategy_.on_order_submitted(order);

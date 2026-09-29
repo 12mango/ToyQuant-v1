@@ -15,4 +15,5 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                         double l1_minimum_stress_quantity_ratio = 0.10,
                                         double l1_fee_spread_multiplier = 0.40,
                                         uint64_t order_size_override = 0,
-                                        int64_t inventory_limit_override = 0);
+                                        int64_t inventory_limit_override = 0,
+                                        double base_spread_ticks_override = 0.0);

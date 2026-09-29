@@ -19,6 +19,7 @@ constexpr std::string_view kProfileStagesPrefix = "--profile-stages=";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
+constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -72,7 +73,8 @@ void print_usage(const char* executable)
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
-                     "values derived from the instrument quantity scale\n";
+                     "values derived from the instrument quantity scale | --base-spread-ticks=N "
+                     "sets the quote half-spread, 1 being the venue touch\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
         std::cerr << "   queue_model: conservative (default) | prorata (calibrated) | optimistic\n";
 }
@@ -176,11 +178,22 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.position_limit = static_cast<int64_t>(limit);
             }
+            else if (flag.compare(0, kBaseSpreadPrefix.size(), kBaseSpreadPrefix) == 0)
+            {
+                double ticks = 0.0;
+                std::istringstream stream(flag.substr(kBaseSpreadPrefix.size()));
+                if (!(stream >> ticks) || !(ticks > 0.0))
+                {
+                    error = "--base-spread-ticks must be a positive number of ticks";
+                    return false;
+                }
+                cfg.base_spread_ticks = ticks;
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
-                        "--profile-stages[=interval], --order-size=N, --inventory-limit=N, or "
-                        "--max-position=N";
+                        "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
+                        "--max-position=N, or --base-spread-ticks=N";
                 return false;
             }
         }

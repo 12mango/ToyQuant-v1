@@ -34,6 +34,13 @@ struct ExecutionQualityMetrics
     uint64_t cancelled_after_fill_orders{0};
     uint64_t cancelled_before_fill_orders{0};
     uint64_t total_order_lifetime_cycles{0};
+    // Where each quote went relative to the venue touch. A quote at the touch joins whatever is
+    // displayed there; one behind it is protected by the spread and has to wait longer. On this feed
+    // the median displayed size is 20,150 contracts while only 7,180 contracts trade at a typical
+    // price in a whole 15-minute window, so which of the two a strategy does decides whether it can
+    // fill at all: at the touch it competes for the flow, behind it waits for the queue to clear.
+    uint64_t quote_at_touch_orders{0};
+    uint64_t quote_behind_touch_orders{0};
 };
 
 struct RunSummary
@@ -96,6 +103,8 @@ struct RunSummary
                << execution_quality.cancelled_before_fill_orders
                << " total_order_lifetime_cycles="
                << execution_quality.total_order_lifetime_cycles
+               << " quote_at_touch_orders=" << execution_quality.quote_at_touch_orders
+               << " quote_behind_touch_orders=" << execution_quality.quote_behind_touch_orders
                << " captured_edge=" << execution_quality.captured_edge
                << " captured_edge_per_unit_ticks="
                << (execution_quality.captured_edge_quantity > 0.0

@@ -661,6 +661,54 @@ instead of `406 / 1 / 55460 / -0.002`. Flipping it is four commands: the default
 two defaults in `MatchingEngine`, the pinned values in `tools/verify_l2.sh`, then
 `bash tools/verify_l2.sh ref`. It is recorded as a decision to take rather than taken halfway.
 
+### What the fill count is made of
+
+The default L2 run fills once in 200,000 rows. That number now has an explanation, and the explanation
+changes what the next step should be.
+
+First the arithmetic, over the same 898 seconds. The median size displayed at a level is 20,150
+contracts, while the median volume that actually trades at a price across that whole window is 7,180.
+An order joining the back of a median level therefore waits behind a queue 2.8 times larger than all
+the trade at that price, so under `conservative` a fill is not unlikely, it is out of reach. The
+strategy is not being punished by a harsh model; it is standing in a queue that never clears.
+
+That is why the quote's position relative to the touch decides the outcome, and the run now counts it:
+
+| field | 1 tick (at touch) | 2 ticks (default) | 4 ticks | 1 tick + `prorata` | 1 tick + `optimistic` |
+|---|---:|---:|---:|---:|---:|
+| submitted orders | 346 | 406 | 408 | 271 | 268 |
+| **fills** | **3** | 1 | 1 | **11** | **15** |
+| quotes at the touch | **234** (68%) | 209 (51%) | **59** (14%) | 194 (72%) | 192 (72%) |
+| captured ticks per contract | **0.67** | 2.50 | **4.50** | 0.41 | 0.40 |
+| markout ticks per contract | -0.25 | none resolved | none resolved | -0.15 | -0.18 |
+| realized PnL USD | -0.033 | -0.002 | -0.002 | -0.015 | **-0.088** |
+
+Reproduce with `--base-spread-ticks=N`, which is what the first three columns vary.
+
+Three things fall out of it.
+
+**Quoting at the touch is a real lever and a bad one.** One tick instead of two triples the fill count,
+1 to 3, because the share of quotes that join the touch rises from 51% to 68%. The captured edge falls
+from 2.50 ticks to 0.67 over the same move and the markout turns negative, so the extra fills are worth
+a quarter of the edge given up to get them.
+
+**The queue model is still the larger lever.** At the touch, `prorata` fills eleven times against three
+under `conservative`, and `optimistic` fifteen. Placement is worth 3x and the queue assumption 5x, and
+they compound: the best cell is 15 fills at a 5.6% rate, the worst is 1 at 0.25%.
+
+**More fills lose more money, and the fee is the reason.** Realized PnL falls as the fill count rises,
+and the markout bounds adverse selection at -0.25 ticks, so the loss is not selection. It is the fee
+against the unit. One BTC-PERPETUAL contract has a fixed 10 USD face value, so a half-USD tick move is
+worth `10 * 0.5 / 6421 = 0.0008` USD per contract, while the maker fee on that same contract is
+`10 * 0.0002 = 0.002` USD. Capturing four ticks pays it; capturing the 0.4 to 0.7 ticks a quote at the
+touch actually earns does not, by a factor of about six. The two-tick default sits almost exactly at
+break-even, which is why the recorded runs are flat rather than profitable.
+
+The next step is therefore not to buy more fills. It is a choice between raising the capture per fill
+and finding out whether the remaining fills are enough to measure, or changing the unit economics with
+a longer horizon, a different instrument, or a venue whose fee is small against its tick. Both are
+decisions about what the demo is for; neither is a code change, because the placement lever now exists.
+
 ## Interpretation and Next Step
 
 The wall-clock baselines include startup, parsing, simulation, and output I/O; they do not identify

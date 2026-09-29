@@ -42,6 +42,10 @@ struct AppConfig
     // Pre-trade position limit in quantity units for the pipeline gate. 0 leaves the gate off, which
     // is the historical behaviour; the run still reports the marked exposure against the collateral.
     int64_t position_limit = 0;
+    // Quote placement, as a half-spread in ticks: 1 puts the quote at the venue touch, 2 is the
+    // default the recorded runs use. 0 means "use the default". It exists because the fill count is
+    // dominated by where the quote sits, and that has to be measurable rather than argued about.
+    double base_spread_ticks = 0.0;
     // 0 disables per-stage profiling. Otherwise this is the sampling interval in events,
     // so 64 times the 64th event of every 64.
     uint64_t profile_sample_interval = 0;
