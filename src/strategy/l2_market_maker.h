@@ -27,6 +27,12 @@ struct L2MarketMakerConfig
     double imbalance_shift{1.0};
     double trade_imbalance_shift{1.0};
     L2SignalMode signal_mode{L2SignalMode::Depth};
+    // Turns on the two flow guards. It sits next to the mode because it belongs to the signal choice,
+    // and it used to be implied by `toxicity_flow_threshold <= 1.0`, a comparison that reads like
+    // configuration and is not: the guards were off for every mode whose threshold sits above one, and
+    // no setting of the config made that visible. The factory enables it for the flow strategies,
+    // which is exactly the set that had it, so behaviour is unchanged and the switch is now readable.
+    bool flow_guard{false};
     uint64_t trade_window{32};
     uint64_t refresh_price_ticks{1};
     uint64_t max_quote_age{20};
@@ -35,6 +41,10 @@ struct L2MarketMakerConfig
     double weak_flow_quote_scale{0.5};
     double weak_flow_spread_shift_ticks{1.0};
     bool quote_at_best_when_neutral{false};
+    // How many quote cycles a stale quote is held while its own queue is being consumed, and the
+    // inventory ratio the maker treats as neutral when quote_at_best_when_neutral is on.
+    uint64_t max_queue_hold_count{3};
+    double neutral_inventory_band{0.25};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -55,20 +65,7 @@ class L2MarketMaker : public Strategy
     {
         if (view.top.bid_price <= 0.0 || view.top.ask_price <= 0.0)
             return quote(view.symbol, view.top, 0.0);
-
-        const double mid = (view.top.bid_price + view.top.ask_price) / 2.0;
-        double fair_price = mid;
-        if (config_.signal_mode == L2SignalMode::Depth)
-            fair_price += view.depth_imbalance * config_.imbalance_shift;
-        else if (config_.signal_mode == L2SignalMode::Micro)
-            fair_price = view.micro_price > 0.0 ? view.micro_price : mid;
-        else if (config_.signal_mode == L2SignalMode::Flow)
-        {
-            const double micro_price = view.micro_price > 0.0 ? view.micro_price : mid;
-            fair_price = micro_price + view.depth_imbalance * config_.imbalance_shift +
-                         trade_imbalance() * config_.trade_imbalance_shift;
-        }
-        return quote(view.symbol, view.top, fair_price);
+        return quote(view.symbol, view.top, fair_price(view));
     }
 
     void on_market_trade(const MarketTrade& trade) override
@@ -186,6 +183,71 @@ class L2MarketMaker : public Strategy
         return static_cast<double>(buy_volume_) / static_cast<double>(total_volume) * 2.0 - 1.0;
     }
 
+    // The mid, displaced by whichever signal this configuration selected. Each signal is a small
+    // displacement of the same reference point, so the quoting logic below does not have to know
+    // which one is active, and adding one no longer means editing the double-quote path.
+    double fair_price(const L2MarketView& view) const
+    {
+        const double mid = (view.top.bid_price + view.top.ask_price) / 2.0;
+        const double micro_price = view.micro_price > 0.0 ? view.micro_price : mid;
+        switch (config_.signal_mode)
+        {
+            case L2SignalMode::Baseline:
+                break;
+            case L2SignalMode::Depth:
+                return mid + view.depth_imbalance * config_.imbalance_shift;
+            case L2SignalMode::Micro:
+                return micro_price;
+            case L2SignalMode::Flow:
+                return micro_price + view.depth_imbalance * config_.imbalance_shift +
+                       trade_imbalance() * config_.trade_imbalance_shift;
+        }
+        return mid;
+    }
+
+    // Position as a fraction of the inventory limit, clamped so a limit of zero cannot divide by it.
+    double position_ratio() const
+    {
+        if (config_.inventory_limit <= 0) return 0.0;
+        return std::clamp(static_cast<double>(position_) /
+                              static_cast<double>(config_.inventory_limit),
+                          -1.0, 1.0);
+    }
+
+    // Whether the resting quotes must be pulled before new ones go out, and which of the two reasons
+    // it was. This is the whole risk decision of the maker: a quote that is never refreshed is a free
+    // option, and one that is refreshed on every tick pays the queue again every tick.
+    bool needs_refresh(const TopOfBook& top, double fair_price)
+    {
+        const double market_mid = (top.bid_price + top.ask_price) / 2.0;
+        const bool market_moved = last_market_mid_ <= 0.0 ||
+                                  std::abs(market_mid - last_market_mid_) >= config_.tick_size;
+        if (market_moved) ++quote_age_;
+        const bool price_changed =
+            last_fair_price_ <= 0.0 ||
+            std::abs(fair_price - last_fair_price_) >=
+                static_cast<double>(config_.refresh_price_ticks) * config_.tick_size;
+        // Holding a stale quote while the queue in front of it is being consumed is deliberate: that
+        // consumption is the only mechanism that moves the order towards the front, so pulling the
+        // quote to chase the price throws away the position it was accumulated for.
+        if (quote_age_ >= config_.max_quote_age && queue_activity_ > 0 && !price_changed &&
+            queue_hold_count_ < config_.max_queue_hold_count)
+        {
+            ++queue_hold_count_;
+            quote_age_ = 0;
+            queue_activity_ = 0;
+            return false;
+        }
+        if (quote_age_ < config_.max_quote_age && !price_changed) return false;
+        if (price_changed)
+            ++metrics_.price_refresh_count;
+        else
+            ++metrics_.age_refresh_count;
+        cancel_pending_ = true;
+        last_market_mid_ = market_mid;
+        return true;
+    }
+
     std::vector<StrategyOrder> quote(const std::string& symbol, const TopOfBook& top,
                                      double fair_price)
     {
@@ -199,56 +261,28 @@ class L2MarketMaker : public Strategy
 
         if (!open_orders_.empty())
         {
-            const double market_mid = (top.bid_price + top.ask_price) / 2.0;
-            const bool market_moved = last_market_mid_ <= 0.0 ||
-                                      std::abs(market_mid - last_market_mid_) >=
-                                          config_.tick_size;
-            if (market_moved) ++quote_age_;
-            const bool price_changed = last_fair_price_ <= 0.0 ||
-                                       std::abs(fair_price - last_fair_price_) >=
-                                           static_cast<double>(config_.refresh_price_ticks) *
-                                               config_.tick_size;
-            if (quote_age_ >= config_.max_quote_age && queue_activity_ > 0 && !price_changed)
-            {
-                if (queue_hold_count_ < 3)
-                {
-                    ++queue_hold_count_;
-                    quote_age_ = 0;
-                    queue_activity_ = 0;
-                    return orders;
-                }
-            }
-            if (quote_age_ < config_.max_quote_age && !price_changed) return orders;
-            if (price_changed)
-                ++metrics_.price_refresh_count;
-            else
-                ++metrics_.age_refresh_count;
-            cancel_pending_ = true;
-            last_market_mid_ = market_mid;
+            // needs_refresh records the reason and arms the cancel; the new quotes go out on the next
+            // view, once the cancels have been acknowledged.
+            needs_refresh(top, fair_price);
             return orders;
         }
 
         if (fair_price <= 0.0) fair_price = (top.bid_price + top.ask_price) / 2.0;
 
-        int64_t working_position = position_;
-        const double inventory_ratio = config_.inventory_limit > 0
-                                           ? std::clamp(static_cast<double>(working_position) /
-                                                            static_cast<double>(config_.inventory_limit),
-                                                        -1.0, 1.0)
-                                           : 0.0;
+        const double inventory_ratio = position_ratio();
         const double inventory_shift = inventory_ratio * config_.base_spread;
         double weak_flow_spread_shift = 0.0;
         uint64_t buy_quantity = config_.order_size;
         uint64_t sell_quantity = config_.order_size;
-        if (working_position >= config_.inventory_limit) buy_quantity = 0;
-        if (working_position <= -config_.inventory_limit) sell_quantity = 0;
-        if (config_.signal_mode == L2SignalMode::Flow && config_.toxicity_flow_threshold <= 1.0)
+        if (position_ >= config_.inventory_limit) buy_quantity = 0;
+        if (position_ <= -config_.inventory_limit) sell_quantity = 0;
+        if (config_.flow_guard)
         {
             const double flow = trade_imbalance();
-            const double flow_abs = std::abs(flow);
             if (flow > config_.toxicity_flow_threshold) sell_quantity = 0;
             if (flow < -config_.toxicity_flow_threshold) buy_quantity = 0;
-            if (flow_abs > config_.weak_flow_threshold && std::abs(inventory_ratio) > 0.25)
+            if (std::abs(flow) > config_.weak_flow_threshold &&
+                std::abs(inventory_ratio) > config_.neutral_inventory_band)
             {
                 weak_flow_spread_shift = config_.weak_flow_spread_shift_ticks * config_.tick_size;
                 const double weak_scale = std::max(0.0, config_.weak_flow_quote_scale);

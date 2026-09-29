@@ -131,6 +131,7 @@ int main()
                                                         .inventory_limit = 100,
                                                         .tick_size = 0.5,
                                                         .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                                         .toxicity_flow_threshold = 0.5});
     guarded_buy_flow.on_market_trade(MarketTrade{99, view.symbol, 6421.5, 100, Side::Buy, 1,
                                                  "deribit"});
@@ -143,6 +144,7 @@ int main()
                                                          .inventory_limit = 100,
                                                          .tick_size = 0.5,
                                                          .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                                          .toxicity_flow_threshold = 0.5});
     guarded_sell_flow.on_market_trade(MarketTrade{99, view.symbol, 6421.0, 100, Side::Sell, 1,
                                                   "deribit"});
@@ -155,6 +157,7 @@ int main()
                                                   .inventory_limit = 100,
                                                   .tick_size = 0.5,
                                                   .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                                   .trade_window = 1,
                                                   .toxicity_flow_threshold = 0.5});
     short_flow.on_market_trade(MarketTrade{99, view.symbol, 6421.5, 100, Side::Buy, 1,
@@ -172,6 +175,7 @@ int main()
                                          .inventory_limit = 2,
                                          .tick_size = 0.5,
                                          .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                          .toxicity_flow_threshold = 0.65},
             .inventory_limit = 2,
             .max_inventory_shift_ticks = 2.0});
@@ -196,6 +200,7 @@ int main()
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
                                      .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 0.5,
         .pause_after_ticks_per_second = 8.0});
@@ -218,6 +223,7 @@ int main()
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
                                      .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                      .toxicity_flow_threshold = 0.65},
         .warmup_trades = 2,
         .warmup_views = 2});
@@ -232,6 +238,7 @@ int main()
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
                                      .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 0.5,
                         .pause_after_ticks_per_second = 8.0});
@@ -251,6 +258,7 @@ int main()
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
                                      .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 0.5,
                         .pause_after_ticks_per_second = 8.0});
@@ -270,6 +278,7 @@ int main()
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
                                      .signal_mode = L2SignalMode::Flow,
+                                                        .flow_guard = true,
                                      .toxicity_flow_threshold = 0.65},
         .volatility_alpha = 1.0,
                         .pause_after_ticks_per_second = 5.0});

@@ -22,6 +22,9 @@ L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
                                .imbalance_shift = 2.0 * tick_size,
                                .trade_imbalance_shift = tick_size,
                                .signal_mode = L2SignalMode::Flow,
+                               // These are the strategies that had the flow guards before the switch
+                               // was made explicit, so this sets exactly the old set.
+                               .flow_guard = true,
                                .trade_window = 16ULL,
                                .refresh_price_ticks = 2,
                                .max_quote_age = 50,
@@ -104,6 +107,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         if (public_flow_strategy)
             return std::make_unique<L2MarketMaker>(
                 make_flow_l2_config(order_size, tick_size, inventory_limit));
+        // The flow strategies returned above through make_flow_l2_config, so the ternaries that used to
+        // sit on these values could never take their flow branch. They are spelled out now, which is
+        // also what makes the difference between the two configurations readable.
         return std::make_unique<L2MarketMaker>(L2MarketMakerConfig{
             .order_size = order_size,
             .base_spread = 2.0 * tick_size,
@@ -112,10 +118,10 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
             .imbalance_shift = 2.0 * tick_size,
             .trade_imbalance_shift = tick_size,
             .signal_mode = signal_mode,
-            .trade_window = public_flow_strategy ? 16ULL : 32ULL,
-            .refresh_price_ticks = static_cast<uint64_t>(public_flow_strategy ? 2ULL : 1ULL),
-            .max_quote_age = static_cast<uint64_t>(public_flow_strategy ? 50ULL : 20ULL),
-            .toxicity_flow_threshold = public_flow_strategy ? 0.65 : 2.0,
+            .trade_window = 32,
+            .refresh_price_ticks = 1,
+            .max_quote_age = 20,
+            .toxicity_flow_threshold = 2.0,
             .weak_flow_threshold = 0.9,
             .weak_flow_quote_scale = 0.5,
             .weak_flow_spread_shift_ticks = 1.0});
