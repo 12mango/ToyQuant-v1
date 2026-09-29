@@ -76,7 +76,8 @@ void print_usage(const char* executable)
                      "values derived from the instrument quantity scale | --base-spread-ticks=N "
                      "sets the quote half-spread, 1 being the venue touch\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
-        std::cerr << "   queue_model: conservative (default) | prorata (calibrated) | optimistic\n";
+        std::cerr << "   queue_model: prorata (default, calibrated) | conservative (lower bound) | "
+                     "optimistic (upper bound)\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -125,12 +126,20 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             error = "quantity scale must be a positive integer";
             return false;
         }
-        if (argc >= 9 && !parse_queue_model(argv[8], cfg.queue_model))
+        // The queue model is optional, so an argument starting with -- is a flag rather than a model
+        // name. Without this, `... active_l2 1 --fast-validation` was read as the model being
+        // "--fast-validation" and failed, which made the optional positional impossible to omit.
+        int first_optional_flag = 8;
+        if (argc >= 9 && argv[8][0] != '-')
         {
-            error = "queue model must be conservative, prorata, or optimistic";
-            return false;
+            if (!parse_queue_model(argv[8], cfg.queue_model))
+            {
+                error = "queue model must be conservative, prorata, or optimistic";
+                return false;
+            }
+            first_optional_flag = 9;
         }
-        for (int argument = 9; argument < argc; ++argument)
+        for (int argument = first_optional_flag; argument < argc; ++argument)
         {
             const std::string flag = argv[argument];
             if (flag == "--no-output")

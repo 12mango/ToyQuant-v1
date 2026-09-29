@@ -22,13 +22,12 @@ struct AppConfig
     int delay = 0;
     std::string strategy_name = "optimized";
     uint64_t quantity_scale = 1000000;
-    // Kept at the skeptical model so that every recorded table, the verifier's pinned values and the
-    // full-file reference hash stay comparable. tools/calibrate_queue_model.py measures 99.96% of the
-    // size that leaves a book level as cancellation rather than trade, so `prorata` is the model the
-    // mechanism supports and is what the L2 mainline should quote under; flipping this default is a
-    // four-command job (this line, the engine's two defaults, the verifier's pinned values, then
-    // `tools/verify_l2.sh ref`) and is deliberately not done as a half change.
-    QueueModel queue_model = QueueModel::Conservative;
+    // The calibrated model, not the skeptical one. tools/calibrate_queue_model.py measures 99.96% of
+    // the size that leaves a book level as cancel or amendment rather than trade, so the only free
+    // parameter left is where in the queue those cancels sit, and pro-rata is the neutral assumption
+    // about that. `conservative` (nothing comes off the queue ahead) and `optimistic` (all of it does)
+    // bracket it and remain available as the sensitivity bounds they always were.
+    QueueModel queue_model = QueueModel::ProRata;
     bool discard_output = false;
     bool fast_validation = false;
     // 0 keeps the value derived from the instrument spec, which is what every earlier run used:

@@ -669,13 +669,15 @@ two defaults in `MatchingEngine`, the pinned values in `tools/verify_l2.sh`, the
 
 ### What the fill count is made of
 
-The default L2 run fills once in 200,000 rows. That number now has an explanation, and the explanation
-changes what the next step should be.
+The L2 mainline fills a handful of times in 200,000 rows: three under the calibrated default and one
+under the most skeptical bound. That number now has an explanation, and the explanation changes what
+the next step should be.
 
 First the arithmetic, over the same 898 seconds. The median size displayed at a level is 20,150
 contracts, while the median volume that actually trades at a price across that whole window is 7,180.
 An order joining the back of a median level therefore waits behind a queue 2.8 times larger than all
-the trade at that price, so under `conservative` a fill is not unlikely, it is out of reach. The
+the trade at that price, so under `conservative`, which moves the queue ahead only when a trade prints, a fill is not
+unlikely but out of reach. The
 strategy is not being punished by a harsh model; it is standing in a queue that never clears.
 
 That is why the quote's position relative to the touch decides the outcome, and the run now counts it:

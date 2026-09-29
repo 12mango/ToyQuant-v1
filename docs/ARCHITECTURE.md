@@ -849,9 +849,11 @@ from `InstrumentSpec`; the current Deribit BTC perpetual benchmark assumes maker
 `0.05%`. The L2 replay is therefore evaluated on net PnL, fees, maker/taker role, queue consumption,
 markout, inventory, and refresh-cause metrics together.
 
-The matching engine supports three queue interpretations. `Conservative` (the default) advances
+The matching engine supports three queue interpretations. `Conservative` advances
 the local queue only when a public trade matches the price; an aggregated displayed-quantity
-reduction is treated as ambiguous and does not create a fill. `ProRata` shrinks the queue ahead of a
+reduction is treated as ambiguous and does not create a fill, which the measurement below shows is the
+wrong mechanism, so it is kept as the lower bound rather than as a neutral assumption. `ProRata`,
+the default, shrinks the queue ahead of a
 resting order by the same fraction that the level's displayed size fell, which is what a uniform
 distribution of cancellations across the queue gives. `tools/calibrate_queue_model.py` measures this
 feed to be consistent with that rule: over 200,000 incremental depth rows, 99.96% of the size removed
@@ -872,10 +874,11 @@ The current active L2 implementation is intentionally a conservative research ma
 after fees. The strategy is structurally complete for this simulator, but those results do not
 establish live profitability.
 
-Every L2 replay records its queue model. `conservative` is the mainline result: only public
-trades advance the queue, so it is a lower bound that the measured cancel share says is harsher than
-the mechanism. `prorata` is the interpretation the feed supports and `optimistic` is the upper
-bound. Both are models for information lost by aggregated L2 data, not proof of live fill
+Every L2 replay records its queue model. `prorata` is the default and the mainline result: it is the
+neutral assumption about the one thing the data cannot show, which is where in a level's queue the
+cancellations sit. `conservative` (nothing comes off the queue ahead) and `optimistic` (all of it
+does) bracket it, and the measured cancel share says `conservative` reads as a floor that is harsher
+than the mechanism. Both are models for information lost by aggregated L2 data, not proof of live fill
 probability. A strategy comparison is useful only when its behavior remains reasonable across
 multiple windows, dates, and queue models.
 
