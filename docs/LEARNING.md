@@ -1,0 +1,109 @@
+# Learning Path
+
+This is a market-making simulator for learning, not a profitability claim. It exists to make four
+mechanisms visible and measurable, and this document walks them in the order they start to matter. Each
+section says what to run, which field answers it, and what the recorded numbers look like, so a reader
+can tell a correct result from a surprising one.
+
+Everything below uses the recorded Deribit window. Cut the slices first:
+
+```bash
+bash tools/verify_l2.sh fast        # also checks that the code still reproduces its recorded numbers
+```
+
+## 1. Fill probability is a queue, not a price
+
+An order fills when the trades at its price have consumed everything ahead of it. The strategy's own
+size is almost irrelevant: a ten-contract quote is 0.05% of the median level, so what decides a fill is
+where the queue went.
+
+```bash
+tools/workload_matrix.sh model       # fills under each queue model, same window
+tools/workload_matrix.sh placement   # fills as the quote moves from behind the touch onto it
+tools/workload_matrix.sh requote     # fills as the quote is held instead of re-joined
+tools/workload_matrix.sh arrival     # fills as the assumed arrival position changes
+```
+
+Read `trade_reports` (fills) and `quote_at_touch_orders`. The measured ordering of the levers, largest
+first: **requote threshold 7.7x, queue model 5x, quote placement 3x, arrival share under 2x**. That
+ordering is the single most useful thing on this page: a reader who wants more fills should change the
+requote policy, and a reader who wants a better model should look at whether cancellations help clear
+the queue, not at where the order arrived.
+
+The arithmetic is in `docs/PERFORMANCE_HISTORY.md`, under "The queue model, as arithmetic". The short
+version: a level decrease of `r` has one unknown, how much of it was ahead of us, and the models are
+claims about that number's mean, with `--queue-chunks` controlling its variance and `--arrival-share`
+its starting point.
+
+## 2. Adverse selection is what happens after the fill
+
+A maker earns the spread at the fill and gives some of it back when the market keeps moving.
+
+Read `captured_edge_per_unit_ticks` (what the fill was worth in ticks) against
+`markout_per_unit_ticks` (what it was worth five quote cycles later). On the recorded window the first
+is 0.4 to 2.5 ticks and the second is -0.5 for the fills that resolve, so a large part of the spread is
+given back. `markout_count` says how many fills were old enough to be resolved, which matters because a
+markout that never resolves is not evidence of anything.
+
+## 3. Fees decide whether the spread was worth earning
+
+One BTC-PERPETUAL contract has a fixed 10 USD face value at a price near 6,421, so a half-dollar tick
+is worth `10 * 0.5 / 6421 = 0.0008` USD, while a 0.02% maker fee on the same contract is `0.002` USD.
+Covering the fee takes about 2.5 ticks of capture per side; a quote at the touch earns 0.4 to 0.7.
+
+Read `captured_edge_usd` against `fees_paid` in the summary. More fills raise the fees and barely move
+the edge, so `realized_pnl` gets worse as the fill count rises. This is the honest result of the demo:
+on this instrument and this fee, a passive quote at the touch cannot pay for itself, and no queue model
+changes that.
+
+## 4. Inventory is the risk that survives all of the above
+
+Read `max_abs_inventory`, `inventory_sign_changes`, `avg_abs_inventory`, and in `[PORTFOLIO]`
+`unrealized_pnl`, which is the open position marked at the last market price. `max_abs_exposure_usd`
+against `starting_cash_usd` says whether the run ever held more than its collateral allowed, and
+`exposure_over_collateral_fills` counts how often a fill pushed it past. `--max-position=N` turns that
+observation into a pre-trade gate. `strategy_position_mismatches` compares the strategy's own position
+against the pipeline's, and a non-zero value there means a callback was dropped.
+
+## 5. Reading a comparison without fooling yourself
+
+```bash
+tools/compare_runs.sh "conservative" "l2_replay ... 1 conservative --fast-validation" \
+                      "prorata"      "l2_replay ... 1 prorata --fast-validation"
+```
+
+- **Fewer than 30 fills supports no conclusion** about PnL or per-fill edge. Every recorded window is
+  far below that, which is why this project reports a range across queue models instead of a number.
+  The benchmark marks each row with `fills_are_conclusive` and warns on stderr.
+- **Steps do not add.** Two changes that each give -6% are not a -12% change; interactions are real.
+- **A simulation is not a measurement below its own noise.** Timing claims have the same rule, recorded
+  in `docs/PERFORMANCE.md`.
+
+## Field reference
+
+The fields a reader needs, what they mean, and which line carries them. `[EXECUTION]` is authoritative
+for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
+
+| Field | Meaning |
+|---|---|
+| `submitted_orders`, `submitted_quantity` | Quotes sent to the engine, and their total size |
+| `cancel_requests` | Cancellations requested, one per resting order pulled |
+| `trade_reports`, `trade_report_quantity` | Fills, and the quantity filled |
+| `fill_rate`, `cancel_rate` | Filled quantity over submitted, and cancels over orders |
+| `queue_ahead_consumed` | Queue in front of us consumed by trades, measured exactly |
+| `buy/sell_queue_from_quantity_changes` | Queue in front of us removed by level-decrease inference |
+| `quote_at_touch_orders`, `quote_behind_touch_orders` | Where the quote sat relative to the venue touch |
+| `captured_edge`, `adverse_selection` | Raw sums of price differences; the tick and USD fields below are the readable form |
+| `captured_edge_per_unit_ticks`, `markout_per_unit_ticks` | Quantity-weighted averages in ticks, comparable with a half-spread |
+| `captured_edge_usd`, `markout_usd`, `fees_paid` | The same quantities in the unit fees are charged in |
+| `markout_count` | Fills old enough for the five-cycle markout to have resolved |
+| `avg_abs_inventory`, `max_abs_inventory`, `inventory_sign_changes` | Inventory path statistics, updated where the position changes |
+| `max_abs_exposure_usd`, `starting_cash_usd`, `exposure_over_collateral_fills` | Marked exposure against the collateral the run began with |
+| `position_limit`, `risk_rejected_orders` | The pre-trade gate, and how many orders it refused |
+| `strategy_net_position`, `strategy_position_mismatches` | The strategy's own position, and any divergence from the pipeline's |
+| `working_orders` | Orders still resting when the input ended |
+| `[PORTFOLIO]` `cash`, `realized_pnl`, `unrealized_pnl`, `equity`, `fees_paid` | The account, marked to market at the last price |
+
+Every field above is written somewhere under `src/`. `tools/check_written_fields.py` fails the build if
+one stops being written, because a field that is read but never written looks exactly like a field whose
+value is zero.

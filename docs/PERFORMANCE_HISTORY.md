@@ -258,7 +258,7 @@ For repeatable timing, use the repository runner instead of assembling shell loo
 
 The runner slices inputs into a temporary directory, defaults to `--no-output`, reports timing
 statistics, and verifies that all captured stdout/stderr hashes match. Pass `--fast-validation` to
-measure the validation-free comparison path, or `--with-output` only when output I/O is part of the
+measure the validation-free comparison path, or the default output path only when output I/O is part of the
 measurement.
 
 Append `--fast-validation` to skip duplicate per-update incremental field checks after the reader

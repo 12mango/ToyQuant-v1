@@ -27,6 +27,8 @@ cd "$(dirname "$0")/.." || exit 1
 
 BIN="${2:-out/build/linux-debug/toy_quant}"
 DOC_CHECK_LOG="$(mktemp)"
+FIELD_CHECK_LOG="$(mktemp)"
+PROSE_CHECK_LOG="$(mktemp)"
 TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 L1_TRADES=data/v2/test_aggTrades_5k.csv
 L1_BBO=data/v2/test_bookTicker_5k.csv
@@ -50,6 +52,17 @@ L1_WANT=$(printf '%s' "submitted_orders=13734 trade_reports=2277 fill_rate=0.175
 
 tier1() {
   local l2 l1 rc=0
+  # Every metric field a summary prints has to be written somewhere. A field that is read but never
+  # written looks exactly like a field whose value is zero, and this project shipped four of those in
+  # one line before. Source-level, so it costs nothing and runs on every edit.
+  local fields_check=0
+  python3 tools/check_written_fields.py > "$FIELD_CHECK_LOG" 2>&1 || fields_check=1
+  # Prose is not covered by check_docs.py, which only reads marked number blocks, and a paragraph that
+  # describes a stale model set is exactly what that leaves behind. This compares the claims against the
+  # source: flags, queue models and tool paths.
+  local prose_check=0
+  python3 tools/lint_prose.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
+      docs/PERFORMANCE.md docs/LEARNING.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   l2=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 conservative \
         --fast-validation 2>&1 | grep -oE 'incremental_batches=117288|submitted_orders=406|trade_reports=1|queue_ahead_consumed=55460|realized_pnl=-0.002|equity=1000' | tokens)
   l1=$("$BIN" replay "$L1_TRADES" "$L1_BBO" BTCUSDT 0 optimized 1000000 2>&1 |
@@ -62,11 +75,13 @@ tier1() {
   local doc_check=0
   python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
     > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
-  if [ $rc -eq 0 ] && [ $doc_check -eq 0 ]; then
+  if [ $rc -eq 0 ] && [ $doc_check -eq 0 ] && [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ]; then
     echo "tier1 OK"
     return 0
   fi
   echo "tier1 MISMATCH"
+  [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
+  [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ "$l2" = "$L2_WANT" ] || { echo "  L2 want: $L2_WANT"; echo "  L2 got : $l2"; }
   [ "$l1" = "$L1_WANT" ] || { echo "  L1 want: $L1_WANT"; echo "  L1 got : $l1"; }
   [ $doc_check -eq 0 ] || sed 's/^/  doc: /' "$DOC_CHECK_LOG"
