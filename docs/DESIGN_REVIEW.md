@@ -307,6 +307,12 @@ range over a fixed window, so it is not comparable across feed rates; it is left
 recorded with, because changing a risk control to make it comparable is a behaviour change that deserves its
 own measurement rather than a quiet edit.
 
+**The L1 path is a regression fixture, not a second model.** The Binance Trade+BBO replay and the legacy CSV
+and UDP inputs are kept so that earlier results stay reproducible and so that the pinned L1 invariants have
+something to check. None of them models a queue in front of a quote, so a fill there is a price event. Every
+number this document quotes comes from the L2 path, and an L1 fill count answers a different question rather
+than the same question twice.
+
 **Absolute timings do not travel between sessions.** The same unchanged binary measured one parser stage at
 581 ns in one session and 834 ns twenty minutes later. Only the paired deltas in the ledger are quoted as
 evidence, and every absolute number in the performance documents is labelled as one session's state.

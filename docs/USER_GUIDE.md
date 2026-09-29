@@ -26,13 +26,17 @@ The main programs are `out/build/linux-debug/toy_quant` for simulation/replay an
 ## Current Modes
 
 ```text
-csv    -> legacy Tick scenario
-udp    -> legacy Tick stream
-replay -> v2 Binance Trade+BBO MarketEvent replay
+csv         -> legacy Tick scenario
+udp         -> legacy Tick stream
+replay      -> v2 Binance Trade+BBO MarketEvent replay
+l2_replay   -> Deribit L2 trade + depth replay, the mainline path
 ```
 
-`replay` is the current primary path. CSV and UDP are intentionally retained as lightweight
-compatibility/demo inputs rather than separate v2 market-data models.
+`l2_replay` is the mainline path and the source of every number the documents quote: it is the only path that
+models the queue standing in front of a quote, and a fill depends on that queue rather than on the price
+alone. `replay` (Binance Trade+BBO) and the legacy CSV and UDP inputs are retained for compatibility and for
+the pinned regression invariants, and their fill counts answer a different question. The detail is in the L1
+note in `docs/ARCHITECTURE.md`.
 
 ## Run with Legacy CSV
 
