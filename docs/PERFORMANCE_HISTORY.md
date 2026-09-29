@@ -387,21 +387,44 @@ explain the counts, and both are model behaviour rather than defects:
   queue at the touch mostly drains by cancellation, so requiring the whole displayed size to trade
   at your exact price makes a fill close to impossible.
 
-The queue model is the lever, and the same window shows its spread:
+The queue model is the lever, and the same window shows its spread. This table is generated, not
+transcribed: the command below it runs every variant, prints the table, and wraps it in a block that
+`tools/check_docs.py` reads back, so these numbers fail a check when they stop being true.
 
-| Queue model | `passive_l2` orders / fills / net PnL | `active_l2` orders / fills / net PnL |
-|---|---:|---:|
-| `conservative` | 647 / 4 / -0.0205 | 406 / 1 / -0.0020 |
-| `prorata` | 652 / 4 / -0.0135 | 381 / 3 / -0.0068 |
-| `optimistic` | 652 / 4 / -0.0135 | 279 / 7 / +0.0189 |
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 conservative --fast-validation
+then: submitted_orders=647 trade_reports=4 fill_rate=0.00618238 queue_ahead_consumed=66230 captured_edge_per_unit_ticks=2.125 markout_per_unit_ticks=-1.25 markout_count=2 max_abs_inventory=1 realized_pnl=-0.0204946 equity=999.98 fees_paid=0.008
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 prorata --fast-validation
+then: submitted_orders=652 trade_reports=4 fill_rate=0.00613497 queue_ahead_consumed=50976 captured_edge_per_unit_ticks=1.375 markout_per_unit_ticks=-1 markout_count=3 max_abs_inventory=1 realized_pnl=-0.0134928 equity=999.987 fees_paid=0.008
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 optimistic --fast-validation
+then: submitted_orders=652 trade_reports=4 fill_rate=0.00613497 queue_ahead_consumed=50570 captured_edge_per_unit_ticks=1.375 markout_per_unit_ticks=-1 markout_count=3 max_abs_inventory=1 realized_pnl=-0.0134928 equity=999.987 fees_paid=0.008
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 conservative --fast-validation
+then: submitted_orders=406 trade_reports=1 fill_rate=0.00246305 queue_ahead_consumed=55460 captured_edge_per_unit_ticks=2.5 markout_per_unit_ticks=0 markout_count=0 max_abs_inventory=1 realized_pnl=-0.002 equity=1000 fees_paid=0.002
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
+then: submitted_orders=381 trade_reports=3 fill_rate=0.00787402 queue_ahead_consumed=56647 captured_edge_per_unit_ticks=1.16667 markout_per_unit_ticks=-0.5 markout_count=2 max_abs_inventory=1 realized_pnl=-0.00678302 equity=999.995 fees_paid=0.006
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 optimistic --fast-validation
+then: submitted_orders=279 trade_reports=7 fill_rate=0.0250896 queue_ahead_consumed=18020 captured_edge_per_unit_ticks=0.5 markout_per_unit_ticks=-0.5 markout_count=7 max_abs_inventory=1 realized_pnl=0.0189169 equity=999.988 fees_paid=0.014
+| field | passive_l2 conservative | passive_l2 prorata | passive_l2 optimistic | active_l2 conservative | active_l2 prorata | active_l2 optimistic |
+|---|---:|---:|---:|---:|---:|---:|
+| `submitted_orders` | 647 | 652 | 652 | 406 | 381 | 279 |
+| `trade_reports` | 4 | 4 | 4 | 1 | 3 | 7 |
+| `fill_rate` | 0.00618238 | 0.00613497 | 0.00613497 | 0.00246305 | 0.00787402 | 0.0250896 |
+| `queue_ahead_consumed` | 66230 | 50976 | 50570 | 55460 | 56647 | 18020 |
+| `captured_edge_per_unit_ticks` | 2.125 | 1.375 | 1.375 | 2.5 | 1.16667 | 0.5 |
+| `markout_per_unit_ticks` | -1.25 | -1 | -1 | 0 | -0.5 | -0.5 |
+| `markout_count` | 2 | 3 | 3 | 0 | 2 | 7 |
+| `max_abs_inventory` | 1 | 1 | 1 | 1 | 1 | 1 |
+| `realized_pnl` | -0.0204946 | -0.0134928 | -0.0134928 | -0.002 | -0.00678302 | 0.0189169 |
+| `equity` | 999.98 | 999.987 | 999.987 | 1000 | 999.995 | 999.988 |
+| `fees_paid` | 0.008 | 0.008 | 0.008 | 0.002 | 0.006 | 0.014 |
 
-These rows were re-measured when the ad-hoc `heuristic` model was replaced, on the same 200,000-row
-depth slice at default order sizing, because the earlier numbers belonged to a model that no longer
-exists. `prorata` shrinks the queue ahead of a resting order by the fraction the displayed size fell;
+`prorata` shrinks the queue ahead of a resting order by the fraction the displayed size fell;
 `optimistic` treats the whole decrease that way. For `passive_l2`, which always rests at the touch
-where the queue ahead starts equal to the displayed size, the two coincide. Neither row predicts live
-fills: they are the range that aggregated L2 data leaves open. The only profitable cell is
-`optimistic` on `active_l2`, which is a warning about the fill assumption rather than a result.
+where the queue ahead starts equal to the displayed size, the two coincide, which is why those two
+columns agree to the last digit. Neither column predicts live fills: they are the range that
+aggregated L2 data leaves open. The only profitable cell is `optimistic` on `active_l2`, which is a
+warning about the fill assumption rather than a result. The recorded values come from the 200,000-row
+slice at default order sizing, and the full command is inside the marker above.
 
 One scale note, corrected later. `L2MarketMakerConfig::order_size` was `1` and `inventory_limit` was
 `1`, because `strategy_factory.cpp` derives both from the instrument's `quantity_scale`:

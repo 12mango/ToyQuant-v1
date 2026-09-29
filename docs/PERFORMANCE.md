@@ -247,6 +247,21 @@ because byte-identical output over 11.4M batches rules out every explanation exc
 reference is kept as a hash, so tier 2 costs one 1.5 GB run instead of two, and `ref` re-records it
 when a change is accepted.
 
+### Checking the numbers in the documents
+
+A document that quotes replay output is a claim about the code, and this project's claims are its
+product. Hand-copied claims drift: one did, a "thirty times per fill" that a re-measurement turned
+into ten. Comparisons are therefore emitted by `tools/compare_runs.sh --markdown`, which prints the
+table and a `toyquant:check` block carrying the exact command and the values it produced.
+
+```
+python3 tools/check_docs.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md
+```
+
+That re-runs each recorded command and fails when a quoted number has moved. Only marked blocks are
+checked, so prose that records history under conditions which no longer exist is left as it was, and
+a table is checked exactly when someone decided it should be.
+
 Two more things keep the loop short:
 
 - **Build one target while iterating.** A change to a header such as `tick_ladder.h` is included by
