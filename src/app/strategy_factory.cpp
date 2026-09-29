@@ -1,6 +1,7 @@
 #include "strategy_factory.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include "common/types.h"
 #include "legacy/l1_market_maker.h"
@@ -133,5 +134,13 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         return std::make_unique<L1MarketMaker>(config);
     }
 
-    return std::make_unique<OptimizedMarketMaker>(order_size, spread, inventory_limit, tick_size);
+    if (strategy_name == "optimized")
+        return std::make_unique<OptimizedMarketMaker>(order_size, spread, inventory_limit,
+                                                      tick_size);
+
+    // No silent fallback. An unknown name used to land on the default maker, so a typo or a
+    // benchmark passing a name app_config does not know produced a run that looked successful while
+    // measuring a strategy nobody asked for. app_config validates the name before this point; this
+    // keeps every other caller honest too.
+    throw std::invalid_argument("unknown strategy name: " + strategy_name);
 }

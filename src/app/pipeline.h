@@ -115,6 +115,7 @@ class Pipeline
     {
         Side side;
         double price;
+        uint64_t quantity{0};
         uint64_t start_cycle;
     };
     std::deque<FillObservation> pending_markouts_;

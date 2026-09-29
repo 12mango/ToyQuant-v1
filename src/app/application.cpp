@@ -167,7 +167,7 @@ void Application::run_replay_mode() const
                           1, cfg_.queue_model);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      portfolio);
+                      portfolio, instrument.tick_size);
     // The replay can end holding a position, so the reported equity has to include its mark to
     // market. Every other mode already does this; the L1 replay used to leave equity and
     // unrealized PnL at zero no matter what the position was.

@@ -97,12 +97,21 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 max_abs_exposure_usd_ = std::max(max_abs_exposure_usd_, exposure);
                 if (starting_cash_usd_ > 0.0 && exposure > starting_cash_usd_)
                     ++exposure_over_collateral_fills_;
-                execution_quality_.captured_edge +=
-                    report.side == exchange::Side::Buy ? last_mid_ - report.price
-                                                       : report.price - last_mid_;
+                const double unit_edge = report.side == exchange::Side::Buy
+                                             ? last_mid_ - report.price
+                                             : report.price - last_mid_;
+                // The raw sum mixes prices and quantities, so it cannot be compared against the
+                // half-spread the quote sat at, nor across runs whose fills have different sizes.
+                // The weighted sums behind it produce a quantity-weighted average in ticks, which is
+                // the number a market maker would actually quote a spread against.
+                const auto executed = static_cast<double>(report.executed_quantity());
+                execution_quality_.captured_edge += unit_edge;
+                execution_quality_.captured_edge_quantity += executed;
+                execution_quality_.captured_edge_ticks_quantity +=
+                    unit_edge / std::max(tick_size_, PRICE_TICK_SIZE) * executed;
                 pending_markouts_.push_back(
                     {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
-                     quote_cycle_});
+                     report.executed_quantity(), quote_cycle_});
             }
             if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
             {
@@ -213,9 +222,15 @@ void Pipeline::process_event(const MarketEvent& event)
                 {
                     const auto observation = pending_markouts_.front();
                     pending_markouts_.pop_front();
-                    execution_quality_.adverse_selection +=
-                        observation.side == Side::Buy ? observation.price - last_mid_
-                                                      : last_mid_ - observation.price;
+                    const double markout = observation.side == Side::Buy
+                                               ? observation.price - last_mid_
+                                               : last_mid_ - observation.price;
+                    execution_quality_.adverse_selection += markout;
+                    execution_quality_.markout_quantity +=
+                        static_cast<double>(observation.quantity);
+                    execution_quality_.markout_ticks_quantity +=
+                        markout / std::max(tick_size_, PRICE_TICK_SIZE) *
+                        static_cast<double>(observation.quantity);
                     ++execution_quality_.markout_count;
                 }
                 const double abs_inventory = static_cast<double>(std::abs(position_));
@@ -271,9 +286,13 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
         {
             const auto observation = pending_markouts_.front();
             pending_markouts_.pop_front();
-            execution_quality_.adverse_selection +=
-                observation.side == Side::Buy ? observation.price - last_mid_
-                                              : last_mid_ - observation.price;
+            const double markout = observation.side == Side::Buy ? observation.price - last_mid_
+                                                                 : last_mid_ - observation.price;
+            execution_quality_.adverse_selection += markout;
+            execution_quality_.markout_quantity += static_cast<double>(observation.quantity);
+            execution_quality_.markout_ticks_quantity +=
+                markout / std::max(tick_size_, PRICE_TICK_SIZE) *
+                static_cast<double>(observation.quantity);
             ++execution_quality_.markout_count;
         }
         profiler_end(Stage::TopBookKeeping);

@@ -584,6 +584,60 @@ which is a behaviour change to a risk control, and it is recorded here as a know
 half-changed: the field is renamed to say it is a per-second rate, the finding is written next to it,
 and the 200,000-row invariants were re-verified unchanged after the rename.
 
+### Making the demo's numbers readable and behaving
+
+The principle for this pass was to stay close to the mechanism, keep the demo showing something, and
+leave the results unremarkable. Four changes, all measured on the 200,000-row slice.
+
+**Edge and markout are now per-contract and in ticks.** They were raw sums of price differences, so
+`captured_edge=1.25` could not be read against the half-spread the quote sat at, and two runs with
+different fill sizes were not comparable. The weighted sums behind them produce a quantity-weighted
+average per contract, and the same for the markout five cycles later:
+
+| Model | fills | captured ticks per contract | markout ticks per contract | kept |
+|---|---:|---:|---:|---:|
+| `conservative` | 1 | 2.50 | none resolved | — |
+| `prorata` | 3 | 1.17 | -0.50 | 0.67 |
+| `optimistic` | 7 | 0.79 | -0.50 | 0.29 |
+
+The captured edge falls as the fill count rises, which is the shape adverse selection should have, and
+the giveback is now a number rather than a shrug: 43% of what was captured under `prorata`, 63% under
+`optimistic`. That ratio is what an edge-leak investigation needs to move.
+
+**The `naive` baseline was not a strategy.** It submitted two orders on every update and cancelled
+none, so every quote rested until the market traded through it: 234,576 orders and a 52% fill rate on
+200,000 rows, with the position reaching -12,000 contracts and cash -120,940 USD. A quote that is never
+cancelled is a free option. It now refreshes on a mid move of one tick or a maximum quote age, the two
+triggers a real maker uses:
+
+| | before | after |
+|---|---:|---:|
+| submitted orders | 234,576 | 11,482 |
+| fills (rate) | 122,794 (52%) | 31 (0.27%) |
+| max marked exposure | 487,710 USD | 200 USD |
+| fills past the collateral | 122,493 | 0 |
+
+**An unknown strategy name fails instead of silently measuring the default.** The factory used to fall
+through to `OptimizedMarketMaker`, which is also how the `optimized` name itself was implemented, so a
+typo or a new caller produced a run that looked fine while measuring something nobody asked for.
+`optimized` now has an explicit branch and everything else throws.
+
+**A tick-size bug the new metric found.** `total_quote_distance_ticks` was `4.8891e+08` on the L1 path
+while `total_quote_distance` was `4889.1`, a ratio of exactly `1e5`: the replay path built its pipeline
+without the instrument's tick size, so every tick-denominated figure was computed against the default
+`1e-05` instead of `0.10`. Fixing that one argument moves `total_quote_distance_ticks` to `48,891`
+(3.6 ticks per quote, which is what the maker quotes) and the new per-unit figures from `-26654.6` and
+`51508.9` to `-2.67` and `5.15`. The pinned invariants did not move, because none of them is
+tick-denominated, and the full-file reference was re-recorded through `tools/verify_l2.sh ref`.
+
+**One change weighed and deliberately not made.** `conservative` is still the default queue model
+because every recorded table, the verifier's pinned values and the reference hash are stated under it.
+The measurement says `prorata` is the model the mechanism supports, and under it the default L2 run
+reports `submitted_orders=381 trade_reports=3 queue_ahead_consumed=56647 realized_pnl=-0.00678`
+instead of `406 / 1 / 55460 / -0.002`. Flipping it is four commands: the default in `AppConfig`, the
+two defaults in `MatchingEngine`, the pinned values in `tools/verify_l2.sh`, then
+`bash tools/verify_l2.sh ref`. It is recorded as a decision to take rather than taken halfway.
+
 ## Interpretation and Next Step
 
 The wall-clock baselines include startup, parsing, simulation, and output I/O; they do not identify

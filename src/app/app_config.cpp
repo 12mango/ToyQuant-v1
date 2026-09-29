@@ -74,7 +74,7 @@ void print_usage(const char* executable)
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
                      "values derived from the instrument quantity scale\n";
         std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
-        std::cerr << "   queue_model: conservative (default) | prorata | optimistic\n";
+        std::cerr << "   queue_model: conservative (default) | prorata (calibrated) | optimistic\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)

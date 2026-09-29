@@ -10,6 +10,14 @@ struct ExecutionQualityMetrics
 {
     double captured_edge{0.0};
     double adverse_selection{0.0};
+    // Quantity-weighted companions to the two sums above. The sums mix prices with quantities, so the
+    // per-unit figures below are the ones to read: captured_edge_ticks_quantity divided by
+    // captured_edge_quantity is the average edge per contract in ticks, which compares directly with
+    // the half-spread the quote was placed at, and the markout pair is the same for what came back.
+    double captured_edge_quantity{0.0};
+    double captured_edge_ticks_quantity{0.0};
+    double markout_quantity{0.0};
+    double markout_ticks_quantity{0.0};
     double average_abs_inventory{0.0};
     int64_t max_abs_inventory{0};
     uint64_t inventory_sign_changes{0};
@@ -89,7 +97,17 @@ struct RunSummary
                << " total_order_lifetime_cycles="
                << execution_quality.total_order_lifetime_cycles
                << " captured_edge=" << execution_quality.captured_edge
+               << " captured_edge_per_unit_ticks="
+               << (execution_quality.captured_edge_quantity > 0.0
+                       ? execution_quality.captured_edge_ticks_quantity /
+                             execution_quality.captured_edge_quantity
+                       : 0.0)
                << " adverse_selection=" << execution_quality.adverse_selection
+               << " markout_per_unit_ticks="
+               << (execution_quality.markout_quantity > 0.0
+                       ? execution_quality.markout_ticks_quantity /
+                             execution_quality.markout_quantity
+                       : 0.0)
                << " markout_count=" << execution_quality.markout_count
                << " avg_abs_inventory=" << execution_quality.average_abs_inventory
                << " max_abs_inventory=" << execution_quality.max_abs_inventory

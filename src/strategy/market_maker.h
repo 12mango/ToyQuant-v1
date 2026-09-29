@@ -16,11 +16,16 @@ class NaiveMarketMaker : public Strategy
     uint64_t base_order_size;
     double base_spread;
     double tick_size;
+    uint64_t max_quote_age;
     std::unordered_map<uint64_t, StrategyOrder> open_orders;
     int64_t position{0};
 
-    NaiveMarketMaker(uint64_t size = 50, double spd = 0.00003, double ts = 0.00001)
-        : base_order_size(size), base_spread(spd), tick_size(ts)
+    NaiveMarketMaker(uint64_t size = 50, double spd = 0.00003, double ts = 0.00001,
+                     uint64_t max_quote_age = 20)
+        : base_order_size(size),
+          base_spread(spd),
+          tick_size(ts),
+          max_quote_age(max_quote_age)
     {
     }
 
@@ -31,15 +36,28 @@ class NaiveMarketMaker : public Strategy
 
         if (tob.bid_price <= 0 || tob.ask_price <= 0) return orders;
 
-        double mid = (tob.bid_price + tob.ask_price) / 2.0;
-        double buy_price = std::round((mid - base_spread / 2.0) / tick_size) * tick_size;
-        double sell_price = std::round((mid + base_spread / 2.0) / tick_size) * tick_size;
+        const double mid = (tob.bid_price + tob.ask_price) / 2.0;
+        if (!open_orders.empty())
+        {
+            // A quote that is never cancelled is a free option, not a baseline: this class used to
+            // submit two orders on every update and cancel none, which put 234,576 orders and a 52%
+            // fill rate on a 200,000-row window and let the position reach -12,000 contracts. It
+            // refreshes on the two triggers a real maker uses, a mid move of a tick and a maximum
+            // age, so the simplest strategy stays simple without being able to run away.
+            ++quote_age_;
+            const bool mid_moved =
+                last_quote_mid_ > 0.0 && std::abs(mid - last_quote_mid_) >= tick_size;
+            if (mid_moved || quote_age_ >= max_quote_age) cancel_pending_ = true;
+            return orders;
+        }
 
-        StrategyOrder buy_order(Side::Buy, symbol, buy_price, base_order_size, 0);
-        StrategyOrder sell_order(Side::Sell, symbol, sell_price, base_order_size, 0);
+        const double buy_price = std::round((mid - base_spread / 2.0) / tick_size) * tick_size;
+        const double sell_price = std::round((mid + base_spread / 2.0) / tick_size) * tick_size;
 
-        orders.push_back(buy_order);
-        orders.push_back(sell_order);
+        orders.emplace_back(Side::Buy, symbol, buy_price, base_order_size, 0);
+        orders.emplace_back(Side::Sell, symbol, sell_price, base_order_size, 0);
+        last_quote_mid_ = mid;
+        quote_age_ = 0;
         return orders;
     }
 
@@ -50,8 +68,17 @@ class NaiveMarketMaker : public Strategy
 
     std::vector<uint64_t> cancel_requests() override
     {
-        return {};
+        if (!cancel_pending_) return {};
+        cancel_pending_ = false;
+        std::vector<uint64_t> order_ids;
+        order_ids.reserve(open_orders.size());
+        for (const auto& entry : open_orders) order_ids.push_back(entry.first);
+        return order_ids;
     }
+
+    double last_quote_mid_{0.0};
+    uint64_t quote_age_{0};
+    bool cancel_pending_{false};
 
     int64_t net_position() const override
     {
