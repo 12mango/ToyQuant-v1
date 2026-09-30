@@ -57,20 +57,19 @@ sources that would start a different project are not.
 
 ## Venues: what fits a personal user after the demo
 
-Judged as a personal trader rather than as a simulator: small capital, no colocation, one person, and a model
-that expresses a position as a price times a quantity or a fixed face value times a quantity, with limit orders
-only.
+Judged as a personal trader rather than as a simulator, and after the gate that comes before every other one: the
+venue has to be one you may legally use, and one you can open an account with, where you live. A venue that fails
+that gate can still be the best measurement input in the table, which is why access and fitness are separate
+columns of reasoning below rather than the same one.
 
 | Venue and instrument | Fit | Why |
 |---|---|---|
-| Crypto USDT perpetuals (OKX, Binance, Bybit) | **best** | small capital, twenty four hour operation, free daily data, published fee tiers, and a single leg limit order is all the model needs |
-| OKX specifically | **best of those** | free consecutive book history with discrete levels, so the multi-day test needs no purchase |
-| Binance specifically | good | the widest free daily set, trades and best bid and offer and funding and open interest, but no free book history |
-| Deribit perpetuals | good | the existing lineage, so no new code, but few symbols and a USD quoted contract |
-| Crypto spot, paired with a perpetual | good | a second leg for a carry position, and the model already handles a price based unit |
-| Venues that pay a maker rebate | possible | the same shape as a USDT perpetual, and a rebate changes the fee term that currently binds, which is worth measuring |
-| CME futures | later | margin, a trading calendar and roll dates, and paid data all rise at once |
-| Equities and ETFs | later | intraday rules, subscription market data, and restricted shorting |
+| Crypto USDT perpetuals (OKX, Binance, Bybit) | **best for measurement** | free consecutive book history with discrete levels, a published fee schedule, and one leg of limit orders is all the model needs, but access is restricted in some jurisdictions, so this is the test bench rather than the trading venue |
+| Locally licensed crypto spot venues | possible | legal and openable, but spot only for retail in some regimes, and a fee schedule an order of magnitude above the offshore perpetuals |
+| Micro futures on a major exchange | good | accessible through a local broker, a small contract size, and nearly round the clock operation; the fee is about a tick per side, which is the same conclusion the simulator reaches for a maker at one tick |
+| Equities and ETFs | good | the lowest measured fee of any venue here once the share commission is set against a notional, free history and a free paper account, and the natural home for a low frequency position rather than a quote |
+| Local index futures and cash equities | possible | accessible, but a transaction levy on both sides and paid depth make this the most expensive of the listed markets |
+| Derivative products of a licensed crypto venue | only for professional investors in some regimes | the rule is about the account category, not the venue, so it is worth checking before it is planned around |
 | Options anywhere | no | expiry, exercise, multiple legs and greeks are not in the model |
 | FX and contracts for difference | no | worse data and cost, and the broker is usually the counterparty |
 
