@@ -212,13 +212,21 @@ void Application::run_replay_mode() const
 
 void Application::run_l2_replay_mode() const
 {
-    if (cfg_.symbol != "BTC-PERPETUAL")
-        throw std::invalid_argument("no instrument specification for L2 replay symbol: " +
-                                    cfg_.symbol);
-
-    const InstrumentSpec instrument = deribit_btc_perpetual_spec();
     const std::string trades_file = to_abs_path(cfg_.path_or_port);
     const std::string depth_file = to_abs_path(cfg_.quotes_path);
+    // The depth file says which venue it came from, so the format is not a command line argument.
+    const std::string format = market_data_format_of(depth_file);
+    const bool okx = format == "okx";
+
+    InstrumentSpec instrument;
+    if (cfg_.symbol == "BTC-PERPETUAL")
+        instrument = deribit_btc_perpetual_spec();
+    else if (cfg_.symbol == "BTC-USDT-SWAP")
+        // The scale comes from the specification rather than the command line, because this feed counts
+        // contracts and only a scale of a hundred thousand or more holds one contract exactly.
+        instrument = okx_btc_swap_spec();
+    else
+        throw std::invalid_argument("no instrument specification for L2 replay symbol: " + cfg_.symbol);
     Logger logger(application_log_path(cfg_.discard_output));
     configure_logger(logger);
     logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
@@ -232,7 +240,7 @@ void Application::run_l2_replay_mode() const
                                      : StageProfiler::kDefaultSampleInterval);
     StageProfiler* const profiler = cfg_.profile_sample_interval > 0 ? &stage_profiler : nullptr;
 
-    const std::string source = "deribit;trades=" + trades_file + ";depth=" + depth_file +
+    const std::string source = format + ";trades=" + trades_file + ";depth=" + depth_file +
                                ";symbol=" + cfg_.symbol +
                                ";tick_size=" + std::to_string(instrument.tick_size);
     auto output_files = open_output_files(source, "source_l2_market_data");
@@ -269,9 +277,17 @@ void Application::run_l2_replay_mode() const
     double final_mid = 0.0;
     MarketDataValidationConfig validation_config;
     validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
+    // A venue brings either its own trade archive and a JSON Lines book, or the CSV pair this repository
+    // started with, so the two readers are chosen together from the format the depth file reported.
+    auto trades_reader = okx ? make_okx_trade_reader(trades_file, instrument.symbol, instrument.contract_size,
+                                                     instrument.quantity_scale)
+                             : make_deribit_trade_reader(trades_file);
+    auto depth_reader = okx ? make_okx_book_reader(depth_file, instrument.symbol, instrument.contract_size,
+                                                   instrument.quantity_scale)
+                            : make_deribit_depth_reader(depth_file);
     L2ReplayFeed feed(
-        make_deribit_trade_reader(trades_file),
-        make_deribit_depth_reader(depth_file),
+        std::move(trades_reader),
+        std::move(depth_reader),
         [&](const MarketEvent& event)
         {
             std::visit(

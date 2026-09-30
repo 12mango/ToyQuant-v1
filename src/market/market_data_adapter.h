@@ -42,3 +42,7 @@ std::unique_ptr<IMarketEventReader> make_okx_book_reader(const std::string& path
 
 std::unique_ptr<IMarketEventReader> make_okx_trade_reader(const std::string& path, const std::string& symbol,
                                                           double contract_size, uint64_t quantity_scale);
+
+// Which reader a depth file needs, decided from the file itself: an OKX archive opens with a JSON object per
+// line, and the Deribit depth files are CSV with a header.
+std::string market_data_format_of(const std::string& quotes_path);

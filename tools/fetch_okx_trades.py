@@ -73,7 +73,12 @@ def find_url(symbol, start_ms, end_ms):
             groups = detail.get("groupDetails", [])
             if not groups:
                 raise RuntimeError("the archive lists that day but returned no file for it")
-            return groups[0]["url"], groups[0].get("filename", "")
+            # The groups come back newest first, so the day is found by its stamp rather than by position.
+            for group in groups:
+                if int(group.get("dateTs", 0)) == start_ms:
+                    return group["url"], group.get("filename", "")
+            raise RuntimeError(
+                f"the archive lists {len(groups)} file(s) for that range but none starts at the requested day")
     raise RuntimeError("no daily file for that date; the archive starts in September 2021 for trades")
 
 

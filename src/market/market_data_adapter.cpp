@@ -788,9 +788,12 @@ class OkxBookJsonReader final : public IMarketEventReader
 
     MarketEvent make_snapshot()
     {
+        // The book carries a counter it increments per batch, and this feed has no sequence numbers at all, so
+        // the snapshot's ordering token is its timestamp: that is always larger than the counter and it moves
+        // forward across the archive's periodic re-snapshots, which is exactly what the book checks.
         MarketDepthSnapshot snapshot{.ts = current_.ts,
                                      .symbol = std::string(current_.instrument),
-                                     .sequence = ++sequence_,
+                                     .sequence = current_.ts,
                                      .bids = {},
                                      .asks = {},
                                      .exchange = "okx"};
@@ -977,6 +980,17 @@ std::unique_ptr<IMarketEventReader> make_deribit_depth_reader(const std::string&
 std::unique_ptr<IMarketEventReader> make_deribit_trade_reader(const std::string& path)
 {
     return std::make_unique<DeribitTradeReader>(path);
+}
+
+std::string market_data_format_of(const std::string& quotes_path)
+{
+    LineReader probe(quotes_path);
+    std::string_view first;
+    if (!probe.next_line(first))
+        throw std::invalid_argument("market data file is empty: " + quotes_path);
+    if (!first.empty() && first.front() == '{' && first.find("\"instId\"") != std::string_view::npos)
+        return "okx";
+    return "binance";
 }
 
 std::unique_ptr<IMarketEventReader> make_okx_book_reader(const std::string& path, const std::string& symbol,
