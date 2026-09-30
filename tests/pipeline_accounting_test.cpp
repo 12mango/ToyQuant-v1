@@ -207,4 +207,42 @@ int main()
         assert(std::abs(funding_pipeline.summary().funding.sum_rate - 0.5001) < 1e-15);
         assert(!fee_pipeline.summary().funding_requested);
     }
+
+    // The adverse-selection measurement: the pipeline resolves what a passive fill at each distance from the
+    // midpoint would have been worth, from the venue's own prints, and pushes it to the strategy. The strategy
+    // cannot measure it, because it never sees the midpoint after a fill, and the [GATE] line is printed only
+    // when a run asks for it.
+    {
+        std::ofstream print_orders("/tmp/pipeline_print_orders.csv");
+        std::ofstream print_trades("/tmp/pipeline_print_trades.csv");
+        L2MarketMaker print_strategy(L2MarketMakerConfig{.order_size = 1,
+                                                         .base_spread = 1.0,
+                                                         .inventory_limit = 10,
+                                                         .tick_size = 1.0});
+        OrderBook print_book(1.0);
+        MatchingEngine print_engine(1.0);
+        Portfolio print_portfolio;
+        Pipeline print_pipeline(print_orders, print_trades, print_book, print_strategy, print_engine,
+                                print_portfolio);
+        print_pipeline.set_markout_cover(true);
+        print_pipeline.set_gate_diagnostics(true);
+
+        const auto view_at = [](uint64_t ts, double mid) {
+            return L2MarketView{.symbol = "L2",
+                                .ts = ts,
+                                .top = TopOfBook{mid - 0.5, 10, mid + 0.5, 10},
+                                .micro_price = mid};
+        };
+        print_pipeline.process_l2_market_view(view_at(10, 100.0));
+        assert(print_pipeline.summary().gate.market_samples == 0);
+        // A passive buy at the midpoint, then five cycles with the midpoint a tick higher: the print was worth a
+        // tick to whoever was resting there, which is the sign the estimate is built from.
+        print_pipeline.process_l2_market_trade(
+            MarketTrade{11, "L2", 100.0, 10, Side::Sell, 1, "deribit"});
+        for (uint64_t ts = 12; ts <= 17; ++ts) print_pipeline.process_l2_market_view(view_at(ts, 101.0));
+        const auto printed = print_pipeline.summary();
+        assert(printed.gate_diagnostics_requested);
+        assert(printed.gate.market_samples == 1);
+        assert(printed.gate.market_buy_near_ticks > 0.0);
+    }
 }

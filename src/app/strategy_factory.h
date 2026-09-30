@@ -29,6 +29,12 @@ struct StrategyFactoryConfig
     // The decision layer's expected-value gate: extra ticks a quote has to cover on top of the maker fee.
     // 0 leaves the gate off, which is what every run recorded in the documents asks for.
     double edge_cover_ticks_override = 0.0;
+    // The adverse-selection gate: the cover a quote needs includes what passive fills at its distance have
+    // actually cost in this window, as measured from the venue's own prints. Off by default.
+    bool markout_cover = false;
+    // Inventory discipline: above this many quantity units the L2 decision layer reduces the position with a
+    // taker order at the touch instead of carrying it. 0 leaves every position held to the end.
+    int64_t flatten_band_units = 0;
     // The conditional rule: quote only when the top of book is at least this many ticks wide. 0 leaves it off.
     double min_spread_ticks_override = 0.0;
 };

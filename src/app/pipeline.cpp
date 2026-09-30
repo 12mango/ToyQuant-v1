@@ -495,6 +495,28 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
                 static_cast<double>(observation.quantity);
             ++execution_quality_.markout_count_by_bucket[bucket];
         }
+        // The market's own prints, resolved by the same five cycle horizon. A print at or through a price is
+        // what a resting quote there would have traded with, so its markout is the adverse selection a quote at
+        // that distance would have suffered, and unlike our own fills it exists from the first event rather than
+        // from the first one we win.
+        if (measure_market_markouts_)
+        {
+            while (!pending_prints_.empty() && quote_cycle_ >= pending_prints_.front().start_cycle + 5)
+            {
+                const PassivePrint print = pending_prints_.front();
+                pending_prints_.pop_front();
+                const double print_markout =
+                    print.side == Side::Buy ? last_mid_ - print.price : print.price - last_mid_;
+                const std::size_t print_bucket =
+                    print.bucket < 0 ? 0 : static_cast<std::size_t>(print.bucket);
+                print_markout_ticks_quantity_[print_bucket] +=
+                    print_markout / std::max(tick_size_, PRICE_TICK_SIZE) *
+                    static_cast<double>(print.quantity);
+                print_markout_quantity_[print_bucket] += static_cast<double>(print.quantity);
+                ++print_samples_;
+            }
+            publish_markout_estimate();
+        }
         profiler_end(Stage::TopBookKeeping);
     }
 
@@ -527,10 +549,45 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 {
     apply_due_funding(trade.ts);
     current_ts_ = trade.ts;
+    if (measure_market_markouts_ && trade.aggressor_side != Side::Unknown && last_mid_ > 0.0)
+    {
+        // The passive side of an aggressive sell is a resting bid, and a quote of ours there is exactly what the
+        // print would have traded with. The distance is measured the way the fill buckets measure it, so the two
+        // can be read against each other.
+        const bool at_least_a_tick_away =
+            std::abs(trade.price - last_mid_) >= std::max(tick_size_, PRICE_TICK_SIZE);
+        const Side passive_side = trade.aggressor_side == Side::Sell ? Side::Buy : Side::Sell;
+        pending_prints_.push_back(
+            PassivePrint{.side = passive_side,
+                         .price = trade.price,
+                         .quantity = trade.quantity,
+                         .start_cycle = quote_cycle_,
+                         .bucket = (passive_side == Side::Buy ? 0 : 2) +
+                                   (at_least_a_tick_away ? 0 : 1)});
+    }
     strategy_.on_market_trade(trade);
     engine_.process_market_trade(trade);
     record_trace_sample("trade", trade.ts);
     sample_resting_queues();
+}
+
+void Pipeline::publish_markout_estimate()
+{
+    // Our own fills are what the gate has to be built on. The venue's prints were tried first as a proxy, and
+    // on the mainline window the two disagree in sign in the far bucket, which is recorded in
+    // docs/PERFORMANCE_HISTORY.md: a print at a distance is not the same event as a quote at that distance being
+    // hit, so the measured cost of the second has to come from the second.
+    markout_estimate_.buy_far_ticks = markout_bucket_ticks(execution_quality_, 0);
+    markout_estimate_.buy_near_ticks = markout_bucket_ticks(execution_quality_, 1);
+    markout_estimate_.sell_far_ticks = markout_bucket_ticks(execution_quality_, 2);
+    markout_estimate_.sell_near_ticks = markout_bucket_ticks(execution_quality_, 3);
+    markout_estimate_.samples = execution_quality_.markout_count;
+    for (std::size_t bucket = 0; bucket < print_markout_average_ticks_.size(); ++bucket)
+        print_markout_average_ticks_[bucket] = print_markout_quantity_[bucket] > 0.0
+                                                   ? print_markout_ticks_quantity_[bucket] /
+                                                         print_markout_quantity_[bucket]
+                                                   : 0.0;
+    strategy_.on_markout_estimate(markout_estimate_);
 }
 
 void Pipeline::apply_due_funding(uint64_t ts)
@@ -632,6 +689,20 @@ RunSummary Pipeline::summary() const
                             funding_rates_ != nullptr ? funding_rates_->annualized_rate() : 0.0,
                         .settlements = funding_settlements_,
                         .flow_usd = funding_flow_usd_},
+            .gate_diagnostics_requested = gate_diagnostics_,
+            .gate = {.fill_buy_near_ticks = markout_estimate_.buy_near_ticks,
+                     .fill_buy_far_ticks = markout_estimate_.buy_far_ticks,
+                     .fill_sell_near_ticks = markout_estimate_.sell_near_ticks,
+                     .fill_sell_far_ticks = markout_estimate_.sell_far_ticks,
+                     .fill_samples = markout_estimate_.samples,
+                     .market_buy_near_ticks = print_markout_average_ticks_[1],
+                     .market_buy_far_ticks = print_markout_average_ticks_[0],
+                     .market_sell_near_ticks = print_markout_average_ticks_[3],
+                     .market_sell_far_ticks = print_markout_average_ticks_[2],
+                     .market_samples = print_samples_,
+                     .markout_gate_skips = strategy_.markout_gate_skips(),
+                     .flatten_orders = strategy_.flatten_orders(),
+                     .flatten_quantity = strategy_.flatten_quantity()},
             .trace_requested = trace_order_id_ != 0,
             .first_fill_order_id = first_fill_order_id_,
             .longest_wait_filled_order_id = longest_wait_filled_order_id_,

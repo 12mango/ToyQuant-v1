@@ -296,4 +296,102 @@ int main()
     shock_view.top.ask_price += 5.0;
     assert(pausing.on_l2_market_view(shock_view).empty());
     assert(pausing.cancel_requests().size() == 2);
+
+    // The adverse-selection gate: a side is quoted only when the edge that fill would capture covers the maker
+    // fee plus what passive fills at that distance have actually cost. The estimate arrives from the pipeline,
+    // which is the only component that sees the midpoint after a fill, and the gate waits for samples before it
+    // tightens, because a gate that tightened from its first decision would refuse everything and never learn.
+    {
+        L2MarketMaker gated(L2MarketMakerConfig{.order_size = 1,
+                                                .base_spread = 1.0,
+                                                .inventory_limit = 100,
+                                                .tick_size = 0.5,
+                                                .markout_cover = true,
+                                                .markout_cover_min_samples = 2});
+        // No samples: the gate covers the fee only, which is zero here, so both sides quote and nothing is
+        // attributed to the measured cost.
+        assert(gated.on_l2_market_view(view).size() == 2);
+        assert(gated.markout_gate_skips() == 0);
+
+        // One sample is not enough, so the same view still quotes.
+        gated.on_markout_estimate(MarkoutEstimate{.buy_near_ticks = -100.0,
+                                                  .buy_far_ticks = -100.0,
+                                                  .sell_near_ticks = -100.0,
+                                                  .sell_far_ticks = -100.0,
+                                                  .samples = 1});
+        assert(gated.on_l2_market_view(view).size() == 2);
+
+        // Two resolved fills that cost a hundred ticks each: no quote in this book can cover that, so both sides
+        // are refused and the refusal is attributed to the measured cost rather than to the fee.
+        gated.on_markout_estimate(MarkoutEstimate{.buy_near_ticks = -100.0,
+                                                  .buy_far_ticks = -100.0,
+                                                  .sell_near_ticks = -100.0,
+                                                  .sell_far_ticks = -100.0,
+                                                  .samples = 2});
+        assert(gated.on_l2_market_view(view).empty());
+        assert(gated.markout_gate_skips() == 2);
+
+        // A distance whose fills have been profitable needs no cover beyond the fee, which is the asymmetry the
+        // gate is built on: it refuses a cost, it does not demand a premium.
+        L2MarketMaker profitable(L2MarketMakerConfig{.order_size = 1,
+                                                     .base_spread = 1.0,
+                                                     .inventory_limit = 100,
+                                                     .tick_size = 0.5,
+                                                     .markout_cover = true,
+                                                     .markout_cover_min_samples = 2});
+        profitable.on_markout_estimate(MarkoutEstimate{.buy_near_ticks = 5.0,
+                                                       .buy_far_ticks = 5.0,
+                                                       .sell_near_ticks = 5.0,
+                                                       .sell_far_ticks = 5.0,
+                                                       .samples = 2});
+        assert(profitable.on_l2_market_view(view).size() == 2);
+        assert(profitable.markout_gate_skips() == 0);
+    }
+
+    // Inventory discipline: above the band the position is reduced instead of carried, by one order priced at
+    // the touch on the reducing side, which the engine fills as a taker at that price.
+    {
+        L2MarketMaker flattening(L2MarketMakerConfig{.order_size = 5,
+                                                     .base_spread = 1.0,
+                                                     .inventory_limit = 100,
+                                                     .tick_size = 0.5,
+                                                     .flatten_band_units = 4});
+        const auto resting = flattening.on_l2_market_view(view);
+        assert(resting.size() == 2);
+        flattening.on_order_submitted(
+            StrategyOrder{Side::Buy, view.symbol, resting[0].price, 5, 31});
+        flattening.on_order_update(ExecutionReport{.order_id = 31,
+                                                   .side = exchange::Side::Buy,
+                                                   .exec_type = ExecType::Trade,
+                                                   .symbol = view.symbol,
+                                                   .price = resting[0].price,
+                                                   .quantity = 5,
+                                                   .owner = "MarketMaker"});
+        // Five units against a band of four: one unit goes out at the touch, so it crosses instead of waiting.
+        const auto flatten_order = flattening.on_l2_market_view(view);
+        assert(flatten_order.size() == 1);
+        assert(flatten_order[0].side == Side::Sell);
+        assert(flatten_order[0].quantity == 1);
+        assert(flatten_order[0].price <= view.top.bid_price);
+        assert(flattening.flatten_orders() == 1);
+        assert(flattening.flatten_quantity() == 1);
+
+        // With the band off the same position is quoted around instead, which is what every run before the band
+        // did, and nothing is attributed to flattening.
+        L2MarketMaker carried(L2MarketMakerConfig{.order_size = 5,
+                                                  .base_spread = 1.0,
+                                                  .inventory_limit = 100,
+                                                  .tick_size = 0.5});
+        const auto carried_open = carried.on_l2_market_view(view);
+        carried.on_order_submitted(StrategyOrder{Side::Buy, view.symbol, carried_open[0].price, 5, 41});
+        carried.on_order_update(ExecutionReport{.order_id = 41,
+                                                .side = exchange::Side::Buy,
+                                                .exec_type = ExecType::Trade,
+                                                .symbol = view.symbol,
+                                                .price = carried_open[0].price,
+                                                .quantity = 5,
+                                                .owner = "MarketMaker"});
+        assert(carried.on_l2_market_view(view).size() == 2);
+        assert(carried.flatten_orders() == 0);
+    }
 }

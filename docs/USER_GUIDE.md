@@ -265,6 +265,8 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--trace-order=N` | Trace the queue in front of order N, reported as `[QUEUE_TRACE]` lines | 0, no trace |
 | `--funding-rates=FILE` | Apply an instrument's funding history as the replay passes each settlement | Off, and the summary then has no `[FUNDING]` line |
 | `--maker-fee-rate=R` | Replace the venue's maker rate, for the fee question; the run echoes it in its `[Mode]` line and may be negative for a rebate | Off, the venue's own rate |
+| `--markout-cover` | Quote only where the capture also covers what passive fills at that distance have cost, measured from our own resolved fills | Off |
+| `--flatten-band=N` | Reduce a position above N units with a taker order at the touch instead of carrying it | Off |
 
 ### Funding as an input
 

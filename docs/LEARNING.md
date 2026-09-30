@@ -232,6 +232,9 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `[PNL]` `gross_pnl_usd`, `gross_closed_pnl_usd` | The two above with the fees added back: a negative gross PnL is a loss before the venue charged anything, which no fee tier can fix |
 | `[PNL]` `maker_notional_usd`, `breakeven_maker_rate` | The notional the maker fees were charged on, and the maker rate that would have made this run flat. A negative rate is the fee question's real answer: zero fees would still lose, and that rebate would be needed instead |
 | `[PNL]` `net_per_fill_usd`, `gross_closed_per_fill_usd` | The same two quantities per trade report, which is the number a quote decision can be judged by rather than a total |
+| `[GATE]` `fill_markout_buy_near_ticks`, `fill_markout_buy_far_ticks`, `fill_markout_sell_near_ticks`, `fill_markout_sell_far_ticks`, `fill_markout_samples` | What our own resolved fills at each distance from the midpoint were worth, quantity weighted, in ticks: the number the adverse-selection gate requires a quote to cover |
+| `[GATE]` `market_markout_buy_near_ticks`, `market_markout_buy_far_ticks`, `market_markout_sell_near_ticks`, `market_markout_sell_far_ticks`, `market_markout_samples` | The same measurement taken from the venue's own prints, as if we had been the passive side. The first version of the gate used these, and they can disagree with our fills in sign, which is why the record keeps both |
+| `[GATE]` `markout_gate_skips`, `flatten_orders`, `flatten_quantity` | Sides refused because the measured cost could not be covered, and the orders sent to reduce a position past the flatten band. Printed only when `--markout-cover` or `--flatten-band` asked for them |
 
 Every field above is written somewhere under `src/`. `tools/check_written_fields.py` fails the build if
 one stops being written, because a field that is read but never written looks exactly like a field whose

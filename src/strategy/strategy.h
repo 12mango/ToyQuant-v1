@@ -25,6 +25,21 @@ struct StrategyOrder
     }
 };
 
+// What a passive fill at a given distance from the midpoint has actually cost, in ticks per unit, measured
+// from our own resolved fills. It is the second term a quote has to cover — a fee is a schedule, but whether
+// being passive at three ticks from the mid loses money is a fact about this window — and it can only come
+// from the pipeline, because a strategy never sees the midpoint after a fill. Negative means the fills at that
+// distance have lost money. `samples` is how many fills have resolved, which is what lets the gate wait until
+// it knows something before it tightens.
+struct MarkoutEstimate
+{
+    double buy_near_ticks{0.0};   // a passive buy within one tick of the midpoint
+    double buy_far_ticks{0.0};    // a passive buy at least a tick away
+    double sell_near_ticks{0.0};
+    double sell_far_ticks{0.0};
+    uint64_t samples{0};
+};
+
 // What a strategy knows about its own order flow. Execution quality is deliberately not here: the
 // pipeline sees every report and every event, so it computes edge, markout, quote lifetime and
 // inventory once, in ExecutionQualityMetrics, and prints them in [EXECUTION]. A second copy owned by
@@ -128,4 +143,32 @@ class Strategy
 
     // Called for trade, cancellation, resting, and fill reports.
     virtual void on_order_update(const ExecutionReport& rpt) = 0;
+
+    // The running adverse-selection estimate, pushed by the pipeline as prints resolve. A strategy cannot
+    // measure this itself: it never sees the midpoint after a fill, which is exactly what the number is. The
+    // default returns nothing, so a strategy that does not ask for it pays nothing.
+    virtual void on_markout_estimate(const MarkoutEstimate& estimate)
+    {
+        (void)estimate;
+    }
+
+    // Sides refused because the adverse-selection gate could not be covered, for a run that asked for it.
+    // Reported by the pipeline in its [GATE] line rather than in StrategyMetrics, because a run that does
+    // not ask for the gate must produce exactly the output it produced before the gate existed.
+    virtual uint64_t markout_gate_skips() const
+    {
+        return 0;
+    }
+
+    // Orders sent to reduce a position that had grown past the band the run configured, and the quantity they
+    // carried. Also reported in the [GATE] line, for the same reason.
+    virtual uint64_t flatten_orders() const
+    {
+        return 0;
+    }
+
+    virtual uint64_t flatten_quantity() const
+    {
+        return 0;
+    }
 };

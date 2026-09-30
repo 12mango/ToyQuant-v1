@@ -1838,3 +1838,91 @@ justified by proving the change is exactly those two additions: stripping the `[
 `maker_fee_rate=` token from the new output reproduces the previous reference `f95d1c98` byte for byte over the
 1.5 GB stream. The new reference is `cfabcd88`, and a reader holding a cached one should run
 `tools/verify_l2.sh ref` once.
+
+## The Decision Layer Refuses, and the Position Is Not the Profit
+
+F1 measured that at a tight quote the fee is not what loses the money: the gross PnL is already negative, so the
+fills themselves are the cost. Two changes follow from that, and both came out differently from what they were
+built for, which is why both are recorded.
+
+### The adverse-selection gate
+
+`--markout-cover` (l2_replay, active_l2) makes the decision layer require a quote to cover the maker fee **and**
+what passive fills at that quote's distance from the midpoint have actually cost. The first version measured that
+cost from the venue's own prints — every trade, resolved five cycles later, as if we had been resting on the
+passive side — and the record is why the decision now uses our own fills instead. Both rows come from the same
+run, whose `[GATE]` line reports them side by side:
+
+| what is measured | buy near | buy far | sell near | sell far | samples |
+|---|---:|---:|---:|---:|---:|
+| the venue's prints, as if we had been passive | 0.0539353 | 1.05413 | 0.0305481 | -0.189796 | 12683 |
+| our own fills | 0.333333 | -0.7 | 0.285714 | -0.75 | 17 |
+
+A print at a distance and a quote at that distance being hit are not the same event, and on this window they
+disagree in sign in the far bucket: the prints say being passive there earned a tick, our fills say it cost
+seven tenths of one. **A measurement of the market is not a measurement of us**, which is why the gate is built
+on our own fills, and why it waits for twenty of them before tightening at all — a gate that tightened from its
+first decision would refuse everything and never learn anything.
+
+With the gate on, on the two million record window and at the venue's own maker fee:
+
+| quote width | fills | net USD | gross USD | breakeven rate | refusals |
+|---:|---:|---:|---:|---:|---:|
+| 1 tick | 21 | -0.0920398 | -0.0500398 | -0.000238285 | 9709 |
+| 2 ticks | 17 | -0.302228 | -0.268228 | -0.00157781 | 0 |
+| 4 ticks | 7 | **+0.0963399** | **+0.11034** | **+0.00157628** | 0 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --markout-cover
+then: trade_reports=21 net_pnl_usd=-0.0920398 gross_pnl_usd=-0.0500398 breakeven_maker_rate=-0.000238285 markout_gate_skips=9709
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --markout-cover
+then: trade_reports=17 net_pnl_usd=-0.302228 gross_pnl_usd=-0.268228 breakeven_maker_rate=-0.00157781 fill_markout_buy_far_ticks=-0.7 fill_markout_sell_far_ticks=-0.75 fill_markout_samples=17 market_markout_buy_far_ticks=1.05413 market_markout_samples=12683
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=4 --refresh-price-ticks=4 --markout-cover
+then: trade_reports=7 net_pnl_usd=0.0963399 gross_pnl_usd=0.11034 breakeven_maker_rate=0.00157628 markout_gate_skips=0
+-->
+
+The ungated rows of the same window are in the F1 block above: 267 fills at one tick with a gross of -0.859172,
+207 at two with -0.480513 and 15 at four with -0.0452864. Read together, the gate does two things and they are
+worth separating:
+
+- **Refusing the quotes that cannot pay is most of the improvement.** At one tick the fill count falls from 267 to
+  21 and the gross loss from 0.859 to 0.050 USD, a seventeen-fold reduction in what that population loses, and the
+  four-tick row turns positive with a breakeven rate eight times the venue's own fee.
+- **The measured part is a refinement this sample cannot evaluate.** The gate's own success starves its estimator:
+  the more it refuses, the fewer fills resolve, and seven to twenty-one fills is below the twenty the gate waits
+  for. What is established here is the mechanism and its direction, not a number of its own.
+
+### The flatten band
+
+`--flatten-band=N` prices an order at the touch on the reducing side as soon as the position passes N units, so the
+engine fills it as a taker instead of the position being carried into the final mark. On the two hundred thousand
+record window, ten contracts a quote and a limit of forty:
+
+| band | fills | max abs inventory | flatten orders | flatten quantity | taker fees | gross USD | net USD |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| off | 11 | 21 | 0 | 0 | 0 | **+0.315192** | **+0.107192** |
+| 10 | 21 | 20 | 3 | 21 | 0.105 | -0.619526 | -1.08253 |
+| 5 | 25 | 15 | 6 | 46 | 0.23 | -0.378591 | -0.986591 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40
+then: trade_reports=11 max_abs_inventory=21 taker_fees=0 gross_pnl_usd=0.315192 net_pnl_usd=0.107192
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40 --flatten-band=10
+then: trade_reports=21 max_abs_inventory=20 flatten_orders=3 flatten_quantity=21 taker_fees=0.105 gross_pnl_usd=-0.619526 net_pnl_usd=-1.08253
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40 --flatten-band=5
+then: trade_reports=25 max_abs_inventory=15 flatten_orders=6 flatten_quantity=46 taker_fees=0.23 gross_pnl_usd=-0.378591 net_pnl_usd=-0.986591
+-->
+
+The band does what it says — the peak position falls from 21 units to 15 as the band tightens — and it costs more
+than it saves: 0.105 to 0.23 USD of taker fees plus the spread on every flattening order. And the one positive row
+is the row that carried its position: 210 USD of exposure into a favourable final mark is where its +0.107 came
+from, and removing the position removes the profit. **The position paid, not the quoting.** That is the same
+statement the closed-versus-total split makes from the other side, and it is why the flatten band stays off by
+default.
+
+### What this leaves
+
+Both mechanisms work, and neither makes the quoting profitable on this instrument: at every width where fills
+happen at all, the capture does not cover the fee plus what the fills cost. That is the argument for the last step
+rather than another attempt at this one — a market whose spread is wide relative to its fee, where this same
+decision layer has something to capture in the first place.

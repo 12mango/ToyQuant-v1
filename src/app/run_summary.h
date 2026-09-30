@@ -117,6 +117,32 @@ struct PnlSummary
     double breakeven_maker_rate{0.0};
 };
 
+// What the decision layer measured and refused, for a run that asked for the adverse-selection gate or the
+// flatten band. Printed only then, because a run that does not ask must produce exactly the output it produced
+// before either existed.
+struct GateSummary
+{
+    // Our own fills, quantity weighted, which is what the gate uses: a positive number means a passive fill at
+    // that distance was worth money after the print.
+    double fill_buy_near_ticks{0.0};
+    double fill_buy_far_ticks{0.0};
+    double fill_sell_near_ticks{0.0};
+    double fill_sell_far_ticks{0.0};
+    uint64_t fill_samples{0};
+    // The venue's own prints, measured as if we had been the passive side. The first version of the gate used
+    // these as a prior, and the record shows why it does not: the two disagree in sign on the mainline window.
+    double market_buy_near_ticks{0.0};
+    double market_buy_far_ticks{0.0};
+    double market_sell_near_ticks{0.0};
+    double market_sell_far_ticks{0.0};
+    uint64_t market_samples{0};
+    // Sides the gate refused because the measured adverse selection was more than the quote could cover.
+    uint64_t markout_gate_skips{0};
+    // Orders sent to reduce a position that had grown past the flatten band, and the quantity they carried.
+    uint64_t flatten_orders{0};
+    uint64_t flatten_quantity{0};
+};
+
 struct RunSummary
 {
     uint64_t submitted_orders{0};
@@ -153,6 +179,10 @@ struct RunSummary
     // input would change the output of every recorded run and say nothing.
     bool funding_requested{false};
     FundingSummary funding;
+    // Printed only when the decision layer's diagnostics were asked for (--markout-cover or --flatten-band):
+    // the estimate they carry is a property of the window and the gate is what makes it a decision input.
+    bool gate_diagnostics_requested{false};
+    GateSummary gate;
     // Which orders are worth tracing, so a reader does not have to guess an id. Printed only when a
     // trace was asked for: a hint about tracing inside a run that traces nothing is noise, and it would
     // also change the output of every ordinary run.
@@ -267,6 +297,20 @@ struct RunSummary
                    << " funding_annualized_rate=" << funding.annualized_rate
                    << " funding_settlements=" << funding.settlements
                    << " funding_flow_usd=" << funding.flow_usd;
+        if (gate_diagnostics_requested)
+            stream << "\n[GATE] fill_markout_buy_near_ticks=" << gate.fill_buy_near_ticks
+                   << " fill_markout_buy_far_ticks=" << gate.fill_buy_far_ticks
+                   << " fill_markout_sell_near_ticks=" << gate.fill_sell_near_ticks
+                   << " fill_markout_sell_far_ticks=" << gate.fill_sell_far_ticks
+                   << " fill_markout_samples=" << gate.fill_samples
+                   << " market_markout_buy_near_ticks=" << gate.market_buy_near_ticks
+                   << " market_markout_buy_far_ticks=" << gate.market_buy_far_ticks
+                   << " market_markout_sell_near_ticks=" << gate.market_sell_near_ticks
+                   << " market_markout_sell_far_ticks=" << gate.market_sell_far_ticks
+                   << " market_markout_samples=" << gate.market_samples
+                   << " markout_gate_skips=" << gate.markout_gate_skips
+                   << " flatten_orders=" << gate.flatten_orders
+                   << " flatten_quantity=" << gate.flatten_quantity;
         if (trace_requested)
         {
             stream << "\n[TRACE_HINTS] first_fill_order_id=" << first_fill_order_id

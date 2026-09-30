@@ -93,10 +93,11 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                                      tick_size);
     if (strategy_name == "inventory_aware_l2")
     {
-        const auto base_config =
+        auto base_config =
             make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
                                 refresh_price_ticks_override > 0 ? refresh_price_ticks_override
                                                                 : 2);
+        base_config.flatten_band_units = config.flatten_band_units;
         return std::make_unique<InventoryAwareL2MarketMaker>(
             InventoryAwareL2MarketMakerConfig{.base = base_config,
                                                .inventory_limit = inventory_limit,
@@ -113,6 +114,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.maker_fee_rate = instrument ? instrument->maker_fee_rate : 0.0;
         base_config.edge_cover_ticks = config.edge_cover_ticks_override;
         base_config.min_spread_ticks = config.min_spread_ticks_override;
+        base_config.markout_cover = config.markout_cover;
+        base_config.flatten_band_units = config.flatten_band_units;
         return std::make_unique<ActiveL2MarketMaker>(make_active_l2_config(base_config));
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||
@@ -149,7 +152,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
             .toxicity_flow_threshold = 2.0,
             .weak_flow_threshold = 0.9,
             .weak_flow_quote_scale = 0.5,
-            .weak_flow_spread_shift_ticks = 1.0});
+            .weak_flow_spread_shift_ticks = 1.0,
+            .flatten_band_units = config.flatten_band_units});
     }
     if (strategy_name == "l1")
     {

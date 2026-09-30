@@ -84,6 +84,22 @@ class Pipeline
         funding_rates_ = series;
     }
 
+    // Turn on the measurement the adverse-selection gate needs: what the market's own prints were worth to a
+    // passive fill at each distance from the midpoint. Off by default, because it is a per-trade cost and a run
+    // that does not ask for the gate must behave and print exactly as it did before.
+    void set_markout_cover(bool enabled)
+    {
+        measure_market_markouts_ = enabled;
+    }
+
+    // Print the [GATE] line: the measured markouts and the counters the decision layer keeps about what it
+    // refused and what it flattened. Set by a caller that asked for either gate, so a run that asks for neither
+    // produces exactly the output it produced before either existed.
+    void set_gate_diagnostics(bool enabled)
+    {
+        gate_diagnostics_ = enabled;
+    }
+
     // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a
     // total into a sequence: the strategy's intent, the queue the order joined behind, every change in
     // that queue, and the fill or the cancel that ended it. It is the only view this project offers of a
@@ -152,6 +168,33 @@ class Pipeline
     // fee rate that would have made it zero, which is the question a market-making run has to answer and
     // which cannot be answered from the fee itself once a fee of zero is one of the cases.
     double maker_notional_usd_{0.0};
+
+    // The market's own prints, measured as if we had been the passive side. A maker cannot measure its own
+    // adverse selection before it has fills of its own, and by then the decision that mattered is taken, so the
+    // estimate comes from the prints: for every venue trade, a passive fill at that price on the opposite side
+    // is resolved after the same five cycles the fill markouts use. Only when a run asks for the gate.
+    struct PassivePrint
+    {
+        Side side{Side::Unknown};
+        double price{0.0};
+        uint64_t quantity{0};
+        uint64_t start_cycle{0};
+        int bucket{-1};
+    };
+    std::deque<PassivePrint> pending_prints_;
+    std::array<double, ExecutionQualityMetrics::kMarkoutBucketCount> print_markout_ticks_quantity_{};
+    std::array<double, ExecutionQualityMetrics::kMarkoutBucketCount> print_markout_quantity_{};
+    // Quantity-weighted averages of the arrays above, recomputed when the estimate is published so the summary
+    // can report them without dividing by hand.
+    std::array<double, ExecutionQualityMetrics::kMarkoutBucketCount> print_markout_average_ticks_{};
+    uint64_t print_samples_{0};
+    MarkoutEstimate markout_estimate_{};
+    bool measure_market_markouts_{false};
+    bool gate_diagnostics_{false};
+
+    // Recomputes the four quantity-weighted averages and hands them to the strategy, which is the only way the
+    // decision can know what being passive at a distance has actually cost in this window.
+    void publish_markout_estimate();
     struct FillObservation
     {
         Side side;

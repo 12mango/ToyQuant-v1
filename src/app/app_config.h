@@ -69,6 +69,14 @@ struct AppConfig
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.
     bool has_maker_fee_rate = false;
     double maker_fee_rate = 0.0;
+    // The adverse-selection gate: quote only where the capture also covers what passive fills at that distance
+    // have actually cost, measured from the market's own prints. It exists on the L2 decision layer that carries
+    // the expected-value gate, so it is refused for the other strategies rather than silently ignored.
+    bool markout_cover = false;
+    // Inventory discipline: above this many quantity units the L2 decision layer reduces the position with a
+    // taker order at the touch instead of carrying it. 0, the default, leaves the position carried into the
+    // final mark, which is what every run before this flag did.
+    int64_t flatten_band = 0;
     // A funding rate history for the replayed instrument, empty for no funding. The replay applies one
     // settlement each time the event clock passes one, reported as a [FUNDING] line that appears only when
     // this is set, so a run without it reproduces the recorded output byte for byte.

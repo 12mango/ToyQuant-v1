@@ -53,6 +53,25 @@ struct L2MarketMakerConfig
     // run that does not ask for the gate keeps its numbers.
     double maker_fee_rate{0.0};
     double edge_cover_ticks{0.0};
+    // The adverse-selection gate: a side is quoted only when the edge that fill would capture also covers what
+    // passive fills at that distance from the midpoint have actually cost in this window, as the pipeline
+    // measures it from the market's own prints. It is the second term of the inequality a maker lives by —
+    // capture >= fee + adverse selection — and unlike the fee it cannot be read off a schedule, so it arrives
+    // as an estimate and it is the reason this gate exists rather than a wider `edge_cover_ticks` setting.
+    // False leaves it off, and a run that does not ask must behave exactly as it did before the gate existed.
+    bool markout_cover{false};
+    // Fills of our own that have to resolve before the measured cover is used. Below it the gate covers the fee
+    // only, which is what lets it learn: a gate that tightened from the first decision, on no evidence, would
+    // refuse everything and never measure anything.
+    uint64_t markout_cover_min_samples{20};
+    // Sides refused by the adverse-selection gate, which is the attribution of the same decision.
+    uint64_t markout_gate_skips{0};
+    // Inventory discipline: above this many units the position is reduced instead of carried, by an order priced
+    // at the touch on the reducing side, which the engine fills as a taker. Zero, the default, leaves it off, so
+    // every run that does not ask keeps the position it used to carry into the final mark.
+    int64_t flatten_band_units{0};
+    uint64_t flatten_orders{0};
+    uint64_t flatten_quantity{0};
     // A condition rather than a quote parameter: quote only when the top of book is at least this many ticks
     // wide. The bucketed markout is why. When the spread is one tick, the best a quote can be is the touch,
     // which sits half a tick from the midpoint, and those are the fills that resolve negative, so the rule
@@ -162,6 +181,14 @@ class L2MarketMaker : public Strategy
         auto result = metrics_;
         result.available = true;
         return result;
+    }
+
+    // The pipeline resolves what the market's own prints were worth to a passive fill and pushes the running
+    // estimate here. Storing it is all this does: the decision reads it when it prices a quote, which is the
+    // moment the distance from the midpoint is known.
+    void on_markout_estimate(const MarkoutEstimate& estimate) override
+    {
+        markout_estimate_ = estimate;
     }
 
     void on_order_update(const ExecutionReport& report) override
@@ -275,6 +302,27 @@ class L2MarketMaker : public Strategy
             return orders;
         }
 
+        // Inventory discipline, before anything else: a position above the band is reduced rather than carried.
+        // The order is priced at the touch on the reducing side, which the engine fills as a taker at that price,
+        // so the run pays the spread and the taker fee for the risk it is removing instead of keeping both. It is
+        // sent even while quotes rest, because the position it is fixing is the one that already exists.
+        if (config_.flatten_band_units > 0 && std::abs(position_) > config_.flatten_band_units)
+        {
+            const int64_t excess = std::abs(position_) - config_.flatten_band_units;
+            const bool buy_to_reduce = position_ < 0;
+            orders.emplace_back(buy_to_reduce ? Side::Buy : Side::Sell, symbol,
+                                buy_to_reduce ? top.ask_price : top.bid_price,
+                                static_cast<uint64_t>(excess), 0);
+            ++config_.flatten_orders;
+            config_.flatten_quantity += static_cast<uint64_t>(excess);
+            last_fair_price_ = (top.bid_price + top.ask_price) / 2.0;
+            last_market_mid_ = last_fair_price_;
+            quote_age_ = 0;
+            queue_activity_ = 0;
+            queue_hold_count_ = 0;
+            return orders;
+        }
+
         if (!open_orders_.empty())
         {
             // needs_refresh records the reason and arms the cancel; the new quotes go out on the next
@@ -282,7 +330,6 @@ class L2MarketMaker : public Strategy
             needs_refresh(top, fair_price);
             return orders;
         }
-
         if (fair_price <= 0.0) fair_price = (top.bid_price + top.ask_price) / 2.0;
 
         const double inventory_ratio = position_ratio();
@@ -345,24 +392,50 @@ class L2MarketMaker : public Strategy
         }
 
         // The expected-value gate, applied per side. The edge a fill would capture is the distance from the
-        // reference price, and the cost it has to cover is the maker fee expressed in ticks at that price.
+        // reference price, and the cost it has to cover is the maker fee expressed in ticks at that price,
+        // plus, when the run asked for it, what passive fills at that distance have actually cost.
         const double reference_price = 0.5 * (top.bid_price + top.ask_price);
         const double fee_ticks = reference_price > 0.0 && config_.tick_size > 0.0
                                      ? config_.maker_fee_rate * reference_price / config_.tick_size
                                      : 0.0;
-        const double required_edge_ticks = fee_ticks + config_.edge_cover_ticks;
-        // A zero extra-tick setting leaves the gate off, which is what every recorded run asks for, so the
-        // documented numbers do not move. A positive setting requires the quote to cover the fee plus it.
-        if (config_.edge_cover_ticks > 0.0)
+        // A measured markout is a signed number, and the gate only cares about the cost: a distance whose
+        // passive fills have been profitable so far needs no cover beyond the fee, and one whose fills have
+        // lost money needs the loss covered. The bucket is the same one the execution quality line reports, so
+        // the two numbers can be read against each other.
+        const auto adverse_ticks_at = [&](double distance_ticks, bool buy) {
+            const bool far = distance_ticks >= 1.0;
+            const double measured = buy ? (far ? markout_estimate_.buy_far_ticks
+                                               : markout_estimate_.buy_near_ticks)
+                                        : (far ? markout_estimate_.sell_far_ticks
+                                               : markout_estimate_.sell_near_ticks);
+            return std::max(0.0, -measured);
+        };
+        const double buy_adverse_ticks =
+            config_.markout_cover && markout_estimate_.samples >= config_.markout_cover_min_samples
+                ? adverse_ticks_at((reference_price - bid_price) / config_.tick_size, true)
+                : 0.0;
+        const double sell_adverse_ticks =
+            config_.markout_cover && markout_estimate_.samples >= config_.markout_cover_min_samples
+                ? adverse_ticks_at((ask_price - reference_price) / config_.tick_size, false)
+                : 0.0;
+        const double required_buy_edge_ticks =
+            fee_ticks + config_.edge_cover_ticks + buy_adverse_ticks;
+        const double required_sell_edge_ticks =
+            fee_ticks + config_.edge_cover_ticks + sell_adverse_ticks;
+        // Either setting turns the gate on; both at zero leave it off, which is what every recorded run asks
+        // for, so the documented numbers do not move.
+        if (config_.edge_cover_ticks > 0.0 || config_.markout_cover)
         {
-            if ((reference_price - bid_price) / config_.tick_size < required_edge_ticks)
+            if ((reference_price - bid_price) / config_.tick_size < required_buy_edge_ticks)
             {
                 if (buy_quantity > 0) ++config_.edge_gate_skips;
+                if (buy_quantity > 0 && buy_adverse_ticks > 0.0) ++config_.markout_gate_skips;
                 buy_quantity = 0;
             }
-            if ((ask_price - reference_price) / config_.tick_size < required_edge_ticks)
+            if ((ask_price - reference_price) / config_.tick_size < required_sell_edge_ticks)
             {
                 if (sell_quantity > 0) ++config_.edge_gate_skips;
+                if (sell_quantity > 0 && sell_adverse_ticks > 0.0) ++config_.markout_gate_skips;
                 sell_quantity = 0;
             }
         }
@@ -399,10 +472,14 @@ class L2MarketMaker : public Strategy
     uint64_t queue_activity_{0};
     uint64_t queue_hold_count_{0};
     StrategyMetrics metrics_;
+    MarkoutEstimate markout_estimate_;
 
    public:
     // How often the decision layer refused to quote, so a run can report what it declined to do rather than only
     // what it did. Exposed through accessors because the counters themselves live in the configuration.
     [[nodiscard]] uint64_t edge_gate_skips() const { return config_.edge_gate_skips; }
     [[nodiscard]] uint64_t min_spread_skips() const { return config_.min_spread_skips; }
+    [[nodiscard]] uint64_t markout_gate_skips() const override { return config_.markout_gate_skips; }
+    [[nodiscard]] uint64_t flatten_orders() const override { return config_.flatten_orders; }
+    [[nodiscard]] uint64_t flatten_quantity() const override { return config_.flatten_quantity; }
 };

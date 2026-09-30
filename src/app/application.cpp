@@ -313,6 +313,8 @@ void Application::run_l2_replay_mode() const
                                       .refresh_price_ticks_override =
                                           cfg_.refresh_price_ticks_override,
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
+                                      .markout_cover = cfg_.markout_cover,
+                                      .flatten_band_units = cfg_.flatten_band,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks});
     MatchingEngine engine(instrument.tick_size,
                           FeeSchedule{.maker_rate = instrument.maker_fee_rate,
@@ -334,6 +336,12 @@ void Application::run_l2_replay_mode() const
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_profiler(profiler);
     pipeline.set_trace_order(cfg_.trace_order);
+    // The adverse-selection gate needs the pipeline to measure what the venue's own prints were worth to a
+    // passive fill, and it is the only way the strategy can know it: it never sees the midpoint after a fill.
+    pipeline.set_markout_cover(cfg_.markout_cover);
+    // The [GATE] line is printed when the run asked for either decision-layer diagnostic, so a run that asks
+    // for neither keeps the summary it had.
+    pipeline.set_gate_diagnostics(cfg_.markout_cover || cfg_.flatten_band > 0);
     // The funding history of the instrument being replayed, applied as the event clock passes each
     // settlement. Optional, and owned here because the pipeline only borrows it.
     FundingRateSeries funding_series;

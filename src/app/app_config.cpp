@@ -35,6 +35,8 @@ constexpr std::string_view kSymbolBPrefix = "--symbol-b=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
+constexpr std::string_view kMarkoutCoverFlag = "--markout-cover";
+constexpr std::string_view kFlattenBandPrefix = "--flatten-band=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -103,6 +105,11 @@ void print_usage(const char* executable)
                      "replay passes each settlement, reported as a [FUNDING] line\n";
         std::cerr << "   fees: --maker-fee-rate=R replaces the venue's maker rate for a sensitivity "
                      "measurement, and the run reports it in the [Mode] line\n";
+        std::cerr << "   gate: --markout-cover (l2_replay, active_l2) quotes only where the capture also "
+                     "covers what passive fills at that distance have cost, measured from the venue's "
+                     "prints, and reports [GATE]\n";
+        std::cerr << "   band: --flatten-band=N (l2_replay) reduces a position above N units with a taker "
+                     "order at the touch instead of carrying it into the final mark\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -174,6 +181,18 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             const std::string flag = argv[argument];
             if (flag == "--no-output")
                 cfg.discard_output = true;
+            else if (flag == kMarkoutCoverFlag)
+                cfg.markout_cover = true;
+            else if (flag.compare(0, kFlattenBandPrefix.size(), kFlattenBandPrefix) == 0)
+            {
+                uint64_t band = 0;
+                if (!parse_unsigned(flag.substr(kFlattenBandPrefix.size()), band) || band == 0)
+                {
+                    error = "--flatten-band must be a positive integer";
+                    return false;
+                }
+                cfg.flatten_band = static_cast<int64_t>(band);
+            }
             else if (flag == "--fast-validation")
                 cfg.fast_validation = true;
             else if (flag == "--profile-stages")
@@ -339,8 +358,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
-                        "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, or "
-                        "--maker-fee-rate=R";
+                        "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
+                        "--markout-cover, or --flatten-band=N";
                 return false;
             }
         }
@@ -352,6 +371,23 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (cfg.profile_sample_interval > 0 && cfg.mode != AppMode::L2Replay)
         {
             error = "--profile-stages is only supported by l2_replay";
+            return false;
+        }
+        if (cfg.markout_cover && cfg.mode != AppMode::L2Replay)
+        {
+            error = "--markout-cover is only supported by l2_replay";
+            return false;
+        }
+        if (cfg.flatten_band > 0 && cfg.mode != AppMode::L2Replay)
+        {
+            error = "--flatten-band is only supported by l2_replay, whose decision layer carries the band";
+            return false;
+        }
+        if (cfg.markout_cover && cfg.strategy_name != "active_l2" &&
+            cfg.strategy_name != "adaptive_l2")
+        {
+            error = "--markout-cover needs a strategy whose decision layer carries the gate: active_l2 or "
+                    "its adaptive_l2 alias";
             return false;
         }
     }
