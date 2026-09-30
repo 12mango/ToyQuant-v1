@@ -676,6 +676,31 @@ so a change in those makers that moves the numbers is a change to a recorded res
 quality is not computed inside them; `ExecutionQualityMetrics` in the pipeline owns edge, markout,
 quote lifetime and inventory for every strategy, and prints them in `[EXECUTION]`.
 
+#### The two gates
+
+Two different things are called a gate in this project, and they fail in opposite directions. The first refuses a
+change that would move a recorded number; the second refuses a quote that cannot pay for itself.
+
+The verification gate is `tools/verify_l2.sh`, and it has four tiers because the checks cost different amounts and
+catch different mistakes. Tier zero runs the unit tests, because a failing test once shipped in a commit that the
+older gate could not see. Tier one replays a two hundred thousand record slice and compares the event counts,
+orders, fills, realized PnL and consumed queue position against the values the documents quote, re-derives every
+`toyquant:check` block, and lints the prose for a flag the code accepts that no document mentions. Tier two replays
+1.5 GB and compares the hash of the whole output, which is what makes a claim about timing defensible. Tier three
+builds with the address and undefined behaviour sanitizers and runs the tests and a slice through them, because a
+leak in the block reader or an out-of-range slot in the ladder is invisible in a normal build. A tier that skips
+says so on its own line, because a hidden skip and a pass are indistinguishable in a log.
+
+The decision gate lives in the strategy and exists because the fee is larger than the edge at the touch. It has two
+knobs and both are off at zero, which is what keeps every recorded run reproducible. `--edge-cover-ticks` requires
+the edge a fill would capture, measured from the reference price in ticks, to cover the maker fee plus the ticks it
+names, where the fee in ticks is `rate * price / tick_size`: 2.55 ticks on the Deribit contract at 2020 prices and
+about 186 on the OKX contract at 2026 prices, which is the ratio that stops the policy being tuned into profit.
+`--min-spread-ticks` refuses the situation rather than the price: when the top of book is narrower than it asks for,
+nothing is placed at all, because a one tick book leaves the touch half a tick from the midpoint and those are the
+fills the bucketed markout shows resolving at or below zero. Both refusals are counted, so a run can report how
+often the decision layer declined to act and not only what it did.
+
 One difference matters when reading L1 results: **the L1 path models no queue in front of a quote.** Its book
 has no depth-derived levels, so a resting L1 order starts at the touch with nothing ahead of it and a print
 through its price fills it. The L2 path fills only after the queue ahead has been consumed. Fill counts on
