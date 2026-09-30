@@ -271,6 +271,47 @@ What survives is the reason for doing it.
    fills lose 0.287 USD against 26 fills losing 0.063 USD. That is the same scale-invariance the order-size sweep
    found, reproduced on days the parameters were not chosen on.
 
+### The Fair Comparison, and the Second Venue
+
+Widening a quote and refusing a narrow book both cut the fills, so comparing them head to head means comparing them
+at the same participation. On 2020-04-01, with the same slice and the same policy except for the mechanism:
+
+| condition | submitted | fills | fees USD | realized USD | USD per fill |
+|---|---:|---:|---:|---:|---:|
+| no condition | 1146 | 146 | 0.292 | -0.757 | -0.00519 |
+| refuse a book narrower than two ticks | 737 | 35 | 0.070 | -0.097 | -0.00276 |
+| refuse narrow, plus fee cover | 372 | 12 | 0.024 | +0.00085 | +0.00007 |
+| quote five ticks out | 1789 | 6 | 0.012 | +0.00160 | +0.00027 |
+| quote eight ticks out | 1800 | 2 | 0.004 | **+0.00955** | +0.00478 |
+| quote twelve ticks out | 1800 | 2 | 0.004 | **+0.01593** | +0.00797 |
+
+At matched participation, quoting further out is better per fill than refusing narrow books, which corrects the
+earlier claim that widening only reduces participation. Both routes still end in a handful of fills, and the
+positive totals rest on two to six fills each, so neither is an edge: the honest reading is that the loss disappears
+by not trading rather than by trading well.
+
+The second venue is the same conclusion at a different fee scale. The OKX archive is usable from the portal rather
+than the API, so these rows are measured from a prepared slice and are not held by the gate:
+
+| run | records | snapshots | orders | fills | fees USD | captured USD | realized USD |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2026-01-07, one hour | 300k | 5 | 2085 | 1323 | 167.7 | 1.18 | -189.9 |
+| 2026-01-07, full day | 6.33M | 96 | 37593 | 25534 | 3149.0 | 15.26 | -4674.4 |
+| 2026-01-11, one hour | 300k | 6 | 321 | 135 | 28.4 | 0.11 | -30.5 |
+
+The fee to captured ratio is 142x on one hour, 206x on the full day and 262x on the second day. It is larger here
+than on Deribit because the tick is 0.1 on a price near 93000, which puts the fee at about 186 ticks against 2.55 on
+the Deribit contract, which is the same mechanism at two scales rather than a second phenomenon.
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
+then: submitted_orders=737 trade_reports=35 fees_paid=0.07 realized_pnl=-0.0967336
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=8 --refresh-price-ticks=4
+then: submitted_orders=1800 trade_reports=2 fees_paid=0.004 realized_pnl=0.00954906
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=12 --refresh-price-ticks=4
+then: submitted_orders=1800 trade_reports=2 fees_paid=0.004 realized_pnl=0.0159314
+-->
+
 ### Out of Sample: the One Surviving Corner Does Not Travel
 
 The sweep left one corner positive, so it was taken out of the five days it was selected on. On the same instrument
