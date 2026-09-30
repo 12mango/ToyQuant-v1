@@ -271,6 +271,27 @@ What survives is the reason for doing it.
    fills lose 0.287 USD against 26 fills losing 0.063 USD. That is the same scale-invariance the order-size sweep
    found, reproduced on days the parameters were not chosen on.
 
+### Out of Sample: the One Surviving Corner Does Not Travel
+
+The sweep left one corner positive, so it was taken out of the five days it was selected on. On the same instrument
+it holds: the same day's other window, two million records instead of two hundred thousand, returns +0.073 USD on 19
+fills. On the second venue it does not trade at all, because the gate asks a quote to cover the fee and OKX's tick is
+0.1 on a price near 93000, so the fee is about 186 ticks and no reachable quote covers it, which is why the run
+submits nothing.
+
+| run | orders | fills | fee USD | PnL USD |
+|---|---:|---:|---:|---:|
+| five Deribit days, snapshots, 200k | 372 / 62 / 56 / 23 / 37 | 12 / 2 / 0 / 2 / 1 | 0.034 | **+0.033** |
+| 2020-04-01, the other window, 2M | 502 | 19 | 0.038 | **+0.073** |
+| OKX 2026-01-07, one hour | 0 | 0 | 0 | 0 |
+| OKX 2026-01-11, one hour | 0 | 0 | 0 | 0 |
+
+That is the answer to the question the sweep raised. The corner is not a strategy, it is the fee floor written as a
+policy: where the fee is a couple of ticks it becomes "quote rarely and well", and where the fee is two orders of
+magnitude larger it becomes "never quote", which is the same conclusion the fee model, the coverage sweep, the
+conditional rule and the bucketed markout reached separately. One hundred and fifty settings were searched to find
+it, which is also why a positive total from ten or twenty fills cannot be read as an edge.
+
 ### The Mechanism Space, Swept to Its Edge
 
 Every lever that decides when and where to quote, crossed with the others, on all five days: a base spread of 1, 2,
