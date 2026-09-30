@@ -43,12 +43,14 @@ csv         -> legacy Tick scenario
 udp         -> legacy Tick stream
 replay      -> v2 Binance Trade+BBO MarketEvent replay
 l2_replay   -> Deribit L2 trade + depth replay, the mainline path
+carry       -> two leg carry measured over two funding histories
 ```
 
-`l2_replay` is the mainline path and the source of every number the documents quote: it is the only path that
-models the queue standing in front of a quote, and a fill depends on that queue rather than on the price
+`l2_replay` is the mainline path and the source of every market-making number the documents quote: it is the only
+path that models the queue standing in front of a quote, and a fill depends on that queue rather than on the price
 alone. `replay` (Binance Trade+BBO) and the legacy CSV and UDP inputs are retained for compatibility and for
-the pinned regression invariants, and their fill counts answer a different question. The detail is in the L1
+the pinned regression invariants, and their fill counts answer a different question. `carry` measures the funding
+line instead and is described at the end of this guide. The detail is in the L1
 note in `docs/ARCHITECTURE.md`.
 
 ## Run with Legacy CSV
@@ -402,6 +404,52 @@ whose useful bounded behavior has partly been incorporated into `l1`. `active_l1
 experiment that produces more observable activity and inventory rotation while accepting more
 adverse-selection risk. After a fill it rebuilds quotes around the new inventory on the next BBO
 cycle, making the inventory-reversion behavior visible in the benchmark diagnostics.
+
+## Carry: Two Legs Over Two Funding Histories
+
+A carry is a position and its hedge, so it needs two instruments and it does not need a book: what it earns is
+funding and what it pays is a round trip of fees. The mode states the position and measures both:
+
+```bash
+./out/build/linux-debug/toy_quant carry \
+  data/v2/BTCUSDT-fundingRate-2024-03.csv \
+  data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv \
+  --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000
+```
+
+| Flag | Effect | Default |
+|---|---|---|
+| `--symbol-a=SYM`, `--symbol-b=SYM` | Which instrument each leg holds; the venue's fee schedule is looked up by symbol | Required |
+| `--notional-usd=N` | USD held on each leg, so the position is a hedge of 2N gross and zero net | 10000 |
+| `--long=a`/`--long=b` | Which leg is bought; the other is sold | `a` |
+
+The window is whatever the two histories cover together, the position is opened at its first settlement and
+closed at its last, and each settlement inside the window is charged to its own leg at its own mark. The
+position is stated rather than chosen: `--long` fixes the side before the run looks at the data, so the number
+is a measurement and not a fitted result. Entry and exit are taker fills at the venues' published rates, which
+is the expensive assumption; a maker entry would halve the fee and is not assumed.
+
+The report is one line:
+
+```text
+[CARRY] carry_leg_a=BTCUSDT carry_leg_b=BTC-USDT-SWAP carry_notional_usd=10000
+        carry_gross_notional_usd=20000 carry_net_notional_usd=0 carry_window_hours=728
+        carry_settlements=182 carry_leg_a_funding_usd=-304.656 carry_leg_b_funding_usd=322.241
+        carry_funding_usd=17.5849 carry_fees_usd=18 carry_net_usd=-0.415093
+        carry_annualized_carry_usd=211.599 carry_annualized_return=0.0211599
+        carry_to_fees=11.7555 carry_breakeven_hours=745.184
+```
+
+`carry_gross_notional_usd` and `carry_net_notional_usd` are the two ways to read the same book and only the
+second is the account's exposure: both legs carry a notional, and their sum is what the position is worth to
+someone who reads one leg as the position. The per-leg funding shows what flows and what is left after the
+hedge takes its side back: 304.66 USD paid on one venue and 322.24 received on the other leave 17.58 USD, which
+is the carry. `carry_net_usd` is that minus the fees, `carry_annualized_carry_usd` is the carry as a yearly
+rate, and `carry_to_fees` divides it by the fees: the acceptance number. `carry_breakeven_hours` is the same
+comparison in the form a decision needs, because the fees are paid once and the carry accrues every interval —
+here the position must be held 745 hours to pay for its fees and it was held for 728, which is why the net is
+just below zero. The run is recorded with its numbers in
+[Performance History](PERFORMANCE_HISTORY.md#the-acceptance-number).
 
 ## Scenarios
 

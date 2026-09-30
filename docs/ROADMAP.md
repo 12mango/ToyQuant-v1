@@ -104,10 +104,24 @@ cannot represent any of it. Adding it is the next capability, and it is delibera
   jitter, so its interval is eight hours to within a second rather than exactly.
 * **Then two legs**, because a carry position is a position and its hedge, and the ledger has to hold both without
   letting one leg's exposure be read as the account's.
+  **Done:** the `carry` mode holds a stated USD notional on each of two instruments and reports them separately
+  and together, because a hedged book holds two notionals and is exposed to none of them. `carry_gross_notional_usd`
+  and `carry_net_notional_usd` are both printed so neither can be mistaken for the position, each leg's funding is
+  charged at that leg's own mark, and the fills are priced through the same `fee_on_fill` the matching engine uses,
+  so a leg booked outside a book cannot cost something else. `carry_breakeven_hours` is the same comparison in the
+  form a decision needs, because a fee is paid once while a carry accrues every interval.
 
 The acceptance criterion is one number a reader can check: **annualized carry against every fee the position pays**,
-on real data, per venue. If that number is not larger than one, the line has no more to say than the market-making
-line did, and it will be recorded that way.
+on real data, per venue. **Recorded:** Binance BTCUSDT against OKX BTC-USDT-SWAP in March 2024, 10,000 USD a leg,
+728 hours: 304.66 USD of funding paid on one venue and 322.24 received on the other leave 17.58 USD of carry
+against 18.00 USD of taker fees, so the annualized ratio is 11.76 while the month itself ends 0.42 USD down, and
+the position needed 745 hours to pay for itself rather than the 728 it ran. Held the other way round the same
+position loses 35.58 USD with a negative ratio. The criterion's answer is therefore that the line has a number
+where the market-making line had none — and that a criterion expressed as an annualized ratio against a one-off
+fee can read as a winner on a position that did not quite pay for itself. The two runs and every field of them are
+recorded in [Performance History](PERFORMANCE_HISTORY.md#the-acceptance-number) with the command that re-derives
+them, and the two funding files are fetched with one command each, named in
+[the data index](https://github.com/12mango/ToyQuant-v1/blob/main/data/README.md).
 
 ## Deliberately not planned
 

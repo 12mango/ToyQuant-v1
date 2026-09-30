@@ -1701,3 +1701,43 @@ The reader costs nothing measurable: it reads 93 rows once, and the ten minute s
 same 0.2 s as the five minute fixture. Both runs leave every recorded number in this document untouched, because
 the funding path is entered only through `--funding-rates` and a run without it prints exactly what it printed
 before.
+
+## The Acceptance Number
+
+The carry line's criterion, in its own words: **annualized carry against every fee the position pays**, on real
+data. Two instruments of the same asset on two venues, one long and one short, held over the span their funding
+histories share, and opened and closed at the venues' published taker rates. Binance BTCUSDT and OKX
+BTC-USDT-SWAP in March 2024, 10,000 USD a leg:
+
+<!-- toyquant:check
+run: carry data/v2/BTCUSDT-fundingRate-2024-03.csv data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000
+then: carry_gross_notional_usd=20000 carry_net_notional_usd=0 carry_window_hours=728 carry_settlements=182 carry_leg_a_funding_usd=-304.656 carry_leg_b_funding_usd=322.241 carry_funding_usd=17.5849 carry_fees_usd=18 carry_net_usd=-0.415093 carry_annualized_carry_usd=211.599 carry_annualized_return=0.0211599 carry_to_fees=11.7555 carry_breakeven_hours=745.184
+run: carry data/v2/BTCUSDT-fundingRate-2024-03.csv data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000 --long=b
+then: carry_leg_a_funding_usd=304.656 carry_leg_b_funding_usd=-322.241 carry_funding_usd=-17.5849 carry_net_usd=-35.5849 carry_annualized_carry_usd=-211.599 carry_to_fees=-11.7555 carry_breakeven_hours=0
+-->
+
+What it says, and it is not one thing:
+
+- **The carry is the difference between the two venues, and it is small against what flows.** 304.66 USD was paid
+  on Binance and 322.24 received on OKX, so the hedge cancels 94.5% of the funding it takes on and leaves 17.58
+  USD of actual carry on 10,000 USD a leg. Either of the gross figures is what a report that showed one leg's
+  funding would invite a reader to quote, and neither of them is the carry.
+- **The ratio is above one and the month still lost 0.415 USD.** The annualized carry is 211.60 USD against 18.00
+  USD of fees, a ratio of 11.76; but the fees are paid once while the carry accrued over 728 hours, which is 17
+  hours short of the 745 the position needed to pay for them. Both numbers are in the line because they answer
+  different questions, and a reader who takes the ratio alone reports a winner that the same line's net calls a
+  loser by 0.42 USD.
+- **The direction is the whole result.** Held the other way round, the identical position pays 17.58 USD of
+  funding instead of earning it and loses 35.58 USD against the same 18.00 USD of fees, with a negative ratio and
+  no breakeven at all. The two legs are one position and which side of it is long is a decision; the venues'
+  funding difference is the only margin, and it is 2.1% annualized rather than the 37% a single venue's funding
+  suggests.
+- **The fee binds here too, but not the way it bound the market-making line.** There, a fee was 2.57 ticks
+  against 0.088 captured and no lever moved the ratio. Here the fee is 0.18% of the notional and the carry is a
+  rate against it, so the holding period, a maker entry instead of a taker one, or a wider difference between the
+  venues each change the answer: this position needs 31.0 days to pay for itself and was held for 30.3. A margin
+  of half a day is the honest reading of a criterion that asks whether this line has more to say than the last
+  one, and the answer is that it has a number where the other line had none, and that the number is thin.
+
+The second run's fields are the first run's with the sign flipped. `data/README.md` records where the two funding
+files come from, one command each, and both blocks are re-derived by `tools/check_docs.py` on every gate run.

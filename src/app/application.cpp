@@ -8,6 +8,7 @@
 #include <string>
 #include <type_traits>
 
+#include "accounting/carry_ledger.h"
 #include "accounting/portfolio.h"
 #include "app/pipeline.h"
 #include "app/strategy_factory.h"
@@ -104,8 +105,44 @@ int Application::run() const
         case AppMode::L2Replay:
             run_l2_replay_mode();
             return 0;
+        case AppMode::Carry:
+            run_carry_mode();
+            return 0;
     }
     return 1;
+}
+
+void Application::run_carry_mode() const
+{
+    // The venue's fee schedule comes from the instrument specification, looked up by symbol, so a carry
+    // cannot be priced with a rate the command line invented.
+    InstrumentSpec venue_a;
+    InstrumentSpec venue_b;
+    if (!instrument_spec_of(cfg_.symbol, venue_a))
+        throw std::invalid_argument("no instrument specification for carry symbol: " + cfg_.symbol);
+    if (!instrument_spec_of(cfg_.symbol_b, venue_b))
+        throw std::invalid_argument("no instrument specification for carry symbol: " + cfg_.symbol_b);
+
+    Logger logger(application_log_path(cfg_.discard_output));
+    configure_logger(logger);
+    logger.log("[Mode: Carry] leg_a=", cfg_.symbol, " ", to_abs_path(cfg_.path_or_port),
+               " leg_b=", cfg_.symbol_b, " ", to_abs_path(cfg_.funding_b_path),
+               " notional_usd=", cfg_.carry_notional_usd,
+               " long=", cfg_.carry_leg_a_long ? "a" : "b");
+
+    CarryConfig config;
+    config.leg_a = CarryLeg{
+        .instrument = venue_a,
+        .rates = read_funding_rate_series(to_abs_path(cfg_.path_or_port), cfg_.symbol),
+        .long_side = cfg_.carry_leg_a_long};
+    config.leg_b = CarryLeg{
+        .instrument = venue_b,
+        .rates = read_funding_rate_series(to_abs_path(cfg_.funding_b_path), cfg_.symbol_b),
+        .long_side = !cfg_.carry_leg_a_long};
+    config.notional_usd = cfg_.carry_notional_usd;
+    // No orders and no trades file: the position is stated rather than matched against a book, and the
+    // report is the whole output.
+    logger.log(run_carry(std::move(config)).to_log_string());
 }
 
 void Application::run_legacy_csv_mode() const

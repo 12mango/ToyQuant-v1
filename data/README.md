@@ -194,12 +194,17 @@ either free source and writes it here:
 
 ```bash
 python3 tools/fetch_funding_rates.py --source okx --date 2026-01-07 --symbol BTC-USDT-SWAP
+python3 tools/fetch_funding_rates.py --source okx --from 2024-03-01 --to 2024-03-31 --symbol BTC-USDT-SWAP
 python3 tools/fetch_funding_rates.py --source binance --month 2024-03 --symbol BTCUSDT
 ```
 
 That produces `data/v2/okx_funding_2026-01-07_BTC-USDT-SWAP.csv` (3 settlements,
-`instrument_name,funding_rate,funding_time`) and `data/v2/BTCUSDT-fundingRate-2024-03.csv` (93 settlements,
-`calc_time,funding_interval_hours,last_funding_rate`). Five properties decide how a series joins a replay:
+`instrument_name,funding_rate,funding_time`), `data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv`
+(93 settlements, one file day cut and concatenated per day of the range) and
+`data/v2/BTCUSDT-fundingRate-2024-03.csv` (93 settlements, `calc_time,funding_interval_hours,last_funding_rate`).
+The March 2024 pair is what the acceptance number is measured on, because a carry needs two histories that cover
+the same window and Binance publishes monthly while OKX publishes daily. Six properties decide how a series joins
+a run:
 
 - **The OKX day is cut on midnight UTC+8**, like its trade archive, so the file named `2026-01-07` holds the
   settlements at `2026-01-06 16:00`, `2026-01-07 00:00` and `08:00` UTC, while the book archive for the same
@@ -207,7 +212,8 @@ That produces `data/v2/okx_funding_2026-01-07_BTC-USDT-SWAP.csv` (3 settlements,
   the book archive and at the file boundary of the funding archive, and the script prints the offset on every
   run rather than leaving it in a comment.
 - **The OKX file carries the whole venue.** It is one CSV for every swap OKX lists, so the reader slices the
-  requested instrument out of it and a symbol the file does not mention yields an empty series.
+  requested instrument out of it and a symbol the file does not mention yields an empty series. Consecutive file
+  days tile exactly for one instrument, which is what lets a range be concatenated into a single series.
 - **Binance publishes funding rates monthly, not daily.** `fundingRate/` has no daily folder, unlike
   `premiumIndexKlines`, which is a different series (the premium index, not the rate). One archive is one
   symbol-month.

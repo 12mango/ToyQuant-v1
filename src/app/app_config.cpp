@@ -30,6 +30,10 @@ constexpr std::string_view kOrderLatencyPrefix = "--order-latency-us=";
 constexpr std::string_view kCancelLatencyPrefix = "--cancel-latency-us=";
 constexpr std::string_view kTraceOrderPrefix = "--trace-order=";
 constexpr std::string_view kFundingRatesPrefix = "--funding-rates=";
+constexpr std::string_view kSymbolAPrefix = "--symbol-a=";
+constexpr std::string_view kSymbolBPrefix = "--symbol-b=";
+constexpr std::string_view kNotionalPrefix = "--notional-usd=";
+constexpr std::string_view kLongPrefix = "--long=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -81,6 +85,9 @@ void print_usage(const char* executable)
                       << " l2_replay <trades_csv[.gz]> <depth_or_incremental_csv> <symbol> "
                          "[ms_delay] [strategy] [quantity_scale] [queue_model] [--no-output] "
                          "[--fast-validation] [--profile-stages[=interval]]\n";
+        std::cerr << "   or: " << executable
+                      << " carry <leg_a_funding_csv> <leg_b_funding_csv> --symbol-a=SYM --symbol-b=SYM "
+                         "[--notional-usd=N] [--long=b]\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -108,9 +115,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         cfg.mode = AppMode::Replay;
     else if (mode == "l2_replay")
         cfg.mode = AppMode::L2Replay;
+    else if (mode == "carry")
+        cfg.mode = AppMode::Carry;
     else
     {
-        error = "mode must be 'csv', 'udp', 'replay', or 'l2_replay'";
+        error = "mode must be 'csv', 'udp', 'replay', 'l2_replay', or 'carry'";
         return false;
     }
 
@@ -331,6 +340,75 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             error = "--profile-stages is only supported by l2_replay";
             return false;
         }
+    }
+    else if (cfg.mode == AppMode::Carry)
+    {
+        // Two funding histories and the position they are measured with. There is no book file and no
+        // strategy, so every other input is a flag and this branch owns all of them.
+        if (argc < 4)
+        {
+            error = "carry requires two funding rate files";
+            return false;
+        }
+        cfg.path_or_port = argv[2];
+        cfg.funding_b_path = argv[3];
+        for (int argument = 4; argument < argc; ++argument)
+        {
+            const std::string flag = argv[argument];
+            if (flag.compare(0, kSymbolAPrefix.size(), kSymbolAPrefix) == 0)
+                cfg.symbol = flag.substr(kSymbolAPrefix.size());
+            else if (flag.compare(0, kSymbolBPrefix.size(), kSymbolBPrefix) == 0)
+                cfg.symbol_b = flag.substr(kSymbolBPrefix.size());
+            else if (flag.compare(0, kNotionalPrefix.size(), kNotionalPrefix) == 0)
+            {
+                std::istringstream stream(flag.substr(kNotionalPrefix.size()));
+                if (!(stream >> cfg.carry_notional_usd) || !(cfg.carry_notional_usd > 0.0))
+                {
+                    error = "--notional-usd must be a positive number";
+                    return false;
+                }
+            }
+            else if (flag.compare(0, kLongPrefix.size(), kLongPrefix) == 0)
+            {
+                const std::string leg = flag.substr(kLongPrefix.size());
+                if (leg == "a")
+                    cfg.carry_leg_a_long = true;
+                else if (leg == "b")
+                    cfg.carry_leg_a_long = false;
+                else
+                {
+                    error = "--long must be a or b";
+                    return false;
+                }
+            }
+            else
+            {
+                error = "carry flags must be --symbol-a=SYM, --symbol-b=SYM, --notional-usd=N, or "
+                        "--long=a|b";
+                return false;
+            }
+        }
+        if (cfg.symbol.empty() || cfg.symbol_b.empty())
+        {
+            error = "carry needs --symbol-a and --symbol-b, because the venue's fee schedule is looked up "
+                    "by symbol and not passed on the command line";
+            return false;
+        }
+        if (cfg.symbol == cfg.symbol_b)
+        {
+            error = "carry needs two different symbols: the same one on both legs would net into a single "
+                    "position rather than a hedge";
+            return false;
+        }
+        for (const std::string& path : {cfg.path_or_port, cfg.funding_b_path})
+        {
+            if (!std::filesystem::is_regular_file(to_abs_path(path)))
+            {
+                error = "carry funding file does not exist: " + to_abs_path(path);
+                return false;
+            }
+        }
+        return true;
     }
     else if (argc > 5 || (cfg.mode == AppMode::LegacyUdp && argc > 4))
     {

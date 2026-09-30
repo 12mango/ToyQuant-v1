@@ -14,14 +14,11 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
 {
     const double rate = liquidity_role == LiquidityRole::Maker ? fee_schedule_.maker_rate
                                                                : fee_schedule_.taker_rate;
-    const double real_quantity =
-        static_cast<double>(quantity) /
-        static_cast<double>(std::max<uint64_t>(1, fee_schedule_.quantity_scale));
     // Fees are charged on the USD value of the filled quantity. For a spot style instrument that
     // value is price * quantity. For a contract with a fixed USD face value it is the face value
     // times the number of contracts, so a Deribit perp contract pays a fee on 10 USD rather than
-    // on the BTC price.
-    const double unit_notional = unit_notional_at(fee_schedule_.unit_notional_usd, price);
+    // on the BTC price. fee_on_fill is the one place that says so, because this engine is not the
+    // only caller that has to book a fill and charge for it.
     report(ExecutionReport{.order_id = order.id,
                            .side = order.side,
                            .exec_type = ExecType::Trade,
@@ -31,7 +28,8 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
                            .ts = ts,
                            .owner = order.owner,
                            .liquidity_role = liquidity_role,
-                           .fee = unit_notional * real_quantity * rate});
+                           .fee = fee_on_fill(rate, fee_schedule_.unit_notional_usd, price, quantity,
+                                              fee_schedule_.quantity_scale)});
 }
 
 uint64_t MatchingEngine::queue_ahead_at(const std::string& symbol, const Side side,

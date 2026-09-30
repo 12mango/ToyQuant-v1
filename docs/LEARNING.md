@@ -224,6 +224,10 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `[PORTFOLIO]` `cash`, `realized_pnl`, `unrealized_pnl`, `equity`, `fees_paid` | The account, marked to market at the last price |
 | `[FUNDING]` `funding_points`, `funding_span_hours`, `funding_sum_rate`, `funding_annualized_rate` | The rate series the run was given: how many settlements it holds, over what span, and what a long holding one unit of notional paid over it and over a year |
 | `[FUNDING]` `funding_settlements`, `funding_flow_usd` | What the window did with it: settlements the event clock passed, and the USD they credited to cash. A settlement reached before the account holds a position is counted and moves nothing, so the two disagree by design. Printed only when `--funding-rates` supplied a series |
+| `[CARRY]` `carry_gross_notional_usd`, `carry_net_notional_usd` | The two legs and their difference: a hedge holds both notionals and is exposed to neither, so only the second is the account's own risk and only the first is what a reader would call the size |
+| `[CARRY]` `carry_leg_a_funding_usd`, `carry_leg_b_funding_usd`, `carry_funding_usd` | What each leg's funding paid or received and what is left after the hedge takes its side back, which is the carry |
+| `[CARRY]` `carry_fees_usd`, `carry_net_usd` | The round trip at the venues' taker rates, and the carry minus it |
+| `[CARRY]` `carry_annualized_carry_usd`, `carry_annualized_return`, `carry_to_fees`, `carry_breakeven_hours` | The carry as a yearly rate, as a fraction of one leg's notional, against the fees it paid, and the holding period that comparison implies |
 
 Every field above is written somewhere under `src/`. `tools/check_written_fields.py` fails the build if
 one stops being written, because a field that is read but never written looks exactly like a field whose

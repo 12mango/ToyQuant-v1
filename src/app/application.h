@@ -26,6 +26,7 @@ class Application
     void run_legacy_csv_mode() const;
     void run_replay_mode() const;
     void run_l2_replay_mode() const;
+    void run_carry_mode() const;
     void run_legacy_udp_mode() const;
 
     AppConfig cfg_;

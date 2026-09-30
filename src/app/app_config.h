@@ -10,7 +10,10 @@ enum class AppMode
     LegacyCsv,
     LegacyUdp,
     Replay,
-    L2Replay
+    L2Replay,
+    // A two leg carry measured over two funding histories rather than replayed against a book: the
+    // position is stated, and what is measured is what holding it pays and costs.
+    Carry
 };
 
 struct AppConfig
@@ -65,6 +68,16 @@ struct AppConfig
     // settlement each time the event clock passes one, reported as a [FUNDING] line that appears only when
     // this is set, so a run without it reproduces the recorded output byte for byte.
     std::string funding_rates_path;
+    // The carry mode's second leg and its two symbols. `path_or_port` holds the first leg's funding file
+    // there, because the first path of any mode is the one the positional arguments start with.
+    std::string funding_b_path;
+    std::string symbol_b;
+    // USD held on each carry leg: one leg long and one short, so the account's own exposure is the
+    // difference between them and this is the size of each.
+    double carry_notional_usd = 10000.0;
+    // Which leg is the long one. The mode holds the position the command states rather than choosing a side
+    // from the data it is about to measure, so this is an input and not a decision.
+    bool carry_leg_a_long = true;
     // How far the fair price has to move before a resting quote is pulled and replaced, in ticks.
     // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
     // that is replaced on every twitch never holds a queue position long enough to reach the front.

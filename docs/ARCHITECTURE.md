@@ -1118,3 +1118,21 @@ the output it produced before this input existed. A settlement reached before th
 position is counted and moves nothing: the line therefore reports two different things, and a window
 that begins after a settlement is the case where they disagree.
 
+The two legs are then the carry mode itself, `src/accounting/carry_ledger.*`. A leg is a stated USD
+notional rather than a contract count, so one quantity unit is one dollar: the venue's taker rate
+applies to the number the command states, the funding accrues on the same number, and neither needs a
+price feed. What that leaves out is stated rather than hidden — a fixed-contract position's notional
+drifts with the mark, which is a second-order term in carry against fees, and the mode does not model
+it. Both legs are opened and closed as taker fills at the published rates through the same
+`fee_on_fill` the matching engine charges with, so a fill booked outside a book cannot be priced
+differently from one booked inside it.
+
+Two numbers describe the resulting book and they are not interchangeable. `carry_gross_notional_usd`
+is both legs and `carry_net_notional_usd` is their difference, which is the account's own exposure: a
+hedged carry holds two notional and is exposed to none of it, and a report offering only one of the two
+would make the position look either twice its size or half its return. The acceptance number is the
+annualized carry divided by the fees the position paid, which is the form the roadmap states, printed
+next to `carry_breakeven_hours`, which is the same comparison in the form a decision needs: a fee is
+paid once while a carry accrues every interval, so the two only meet through a holding period, and a
+ratio above one can coexist with a window in which the position did not quite pay for itself.
+

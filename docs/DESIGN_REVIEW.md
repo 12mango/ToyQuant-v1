@@ -11,7 +11,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 66 files, ~11k lines: `app` 2674, `market` 2471, `legacy` 1432, `exchange` 1085, `strategy` 1080, `orderbook` 645, `backtest` 467, `utils` 396, `accounting` 318, `common` 169 |
+| **Size** | 68 files, ~11k lines: `app` 2803, `market` 2471, `legacy` 1432, `exchange` 1083, `strategy` 1080, `orderbook` 645, `backtest` 467, `utils` 396, `accounting` 557, `common` 205 |
 | **Tests** | 15 CTest binaries, one per module, run by tier 0 of the gate |
 | **Tools** | 24 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, two lints |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |

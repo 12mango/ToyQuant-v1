@@ -47,6 +47,19 @@ inline double position_value(double unit_notional_usd, double quantity, double e
     return unit_notional_at(unit_notional_usd, entry_price) * quantity * (price / entry_price);
 }
 
+// USD fee a venue charges for filling `quantity` units at `price` when its rate is `rate`: the USD value
+// of the fill times the rate. Shared by the matching engine and by a caller that books a fill outside a
+// book, so the two cannot disagree about what a fill costs, exactly as unit_notional_at is shared by the
+// fee model and the portfolio.
+inline double fee_on_fill(double rate, double unit_notional_usd, double price, uint64_t quantity,
+                          uint64_t quantity_scale)
+{
+    const double units = quantity_scale > 0
+                             ? static_cast<double>(quantity) / static_cast<double>(quantity_scale)
+                             : static_cast<double>(quantity);
+    return unit_notional_at(unit_notional_usd, price) * units * rate;
+}
+
 inline InstrumentSpec btc_usdt_spec(uint64_t quantity_scale = 1000000)
 {
     return InstrumentSpec{.exchange = "binance",
@@ -89,4 +102,27 @@ inline InstrumentSpec okx_btc_swap_spec(uint64_t quantity_scale = 1000000)
                           .contract_size = 0.01,
                           .maker_fee_rate = 0.0002,
                           .taker_fee_rate = 0.0005};
+}
+
+// The specification this repository carries for a symbol, looked up by the name the feeds, the instruments
+// and the funding files all use. False means nothing is registered for it, and a caller says what it was
+// looking for rather than getting a default that would price the wrong instrument.
+inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
+{
+    if (symbol == "BTCUSDT")
+    {
+        out = btc_usdt_spec();
+        return true;
+    }
+    if (symbol == "BTC-PERPETUAL")
+    {
+        out = deribit_btc_perpetual_spec();
+        return true;
+    }
+    if (symbol == "BTC-USDT-SWAP")
+    {
+        out = okx_btc_swap_spec();
+        return true;
+    }
+    return false;
 }
