@@ -45,6 +45,16 @@ struct L2MarketMakerConfig
     // inventory ratio the maker treats as neutral when quote_at_best_when_neutral is on.
     uint64_t max_queue_hold_count{3};
     double neutral_inventory_band{0.25};
+    // The expected-value gate of the decision layer. A side is quoted only when the edge that fill would
+    // capture, measured from the reference price in ticks, covers the maker fee plus this many extra ticks.
+    // The fee in ticks is rate * price / tick_size, which is the same arithmetic the book's measurements
+    // report: on the Deribit contract at 2020 prices that is 2.55 ticks, and it is the reason a quote at the
+    // touch cannot pay for itself. A zero rate or zero extra ticks leaves the gate off, so every documented
+    // run that does not ask for the gate keeps its numbers.
+    double maker_fee_rate{0.0};
+    double edge_cover_ticks{0.0};
+    // Decision attribution: sides not quoted because the gate refused them.
+    uint64_t edge_gate_skips{0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -316,6 +326,29 @@ class L2MarketMaker : public Strategy
         }
         if (!std::isfinite(bid_price) || !std::isfinite(ask_price) || bid_price >= ask_price)
             return orders;
+
+        // The expected-value gate, applied per side. The edge a fill would capture is the distance from the
+        // reference price, and the cost it has to cover is the maker fee expressed in ticks at that price.
+        const double reference_price = 0.5 * (top.bid_price + top.ask_price);
+        const double fee_ticks = reference_price > 0.0 && config_.tick_size > 0.0
+                                     ? config_.maker_fee_rate * reference_price / config_.tick_size
+                                     : 0.0;
+        const double required_edge_ticks = fee_ticks + config_.edge_cover_ticks;
+        // A zero extra-tick setting leaves the gate off, which is what every recorded run asks for, so the
+        // documented numbers do not move. A positive setting requires the quote to cover the fee plus it.
+        if (config_.edge_cover_ticks > 0.0)
+        {
+            if ((reference_price - bid_price) / config_.tick_size < required_edge_ticks)
+            {
+                if (buy_quantity > 0) ++config_.edge_gate_skips;
+                buy_quantity = 0;
+            }
+            if ((ask_price - reference_price) / config_.tick_size < required_edge_ticks)
+            {
+                if (sell_quantity > 0) ++config_.edge_gate_skips;
+                sell_quantity = 0;
+            }
+        }
 
         if (buy_quantity > 0) orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
         if (sell_quantity > 0) orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);

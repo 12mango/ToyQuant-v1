@@ -65,6 +65,9 @@ struct AppConfig
     // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
     // that is replaced on every twitch never holds a queue position long enough to reach the front.
     uint64_t refresh_price_ticks_override = 0;
+    // The decision layer's expected-value gate: a quote must cover the maker fee plus this many extra
+    // ticks, and 0 leaves the gate off, which is what every run recorded in the documents asks for.
+    double edge_cover_ticks = 0.0;
     // 0 disables per-stage profiling. Otherwise this is the sampling interval in events,
     // so 64 times the 64th event of every 64.
     uint64_t profile_sample_interval = 0;

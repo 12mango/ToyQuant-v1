@@ -26,6 +26,9 @@ struct StrategyFactoryConfig
     int64_t inventory_limit_override = 0;
     double base_spread_ticks_override = 0.0;
     uint64_t refresh_price_ticks_override = 0;
+    // The decision layer's expected-value gate: extra ticks a quote has to cover on top of the maker fee.
+    // 0 leaves the gate off, which is what every run recorded in the documents asks for.
+    double edge_cover_ticks_override = 0.0;
 };
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,

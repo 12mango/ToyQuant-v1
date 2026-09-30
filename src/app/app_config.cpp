@@ -21,6 +21,7 @@ constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
+constexpr std::string_view kEdgeCoverPrefix = "--edge-cover-ticks=";
 constexpr std::string_view kQueueChunksPrefix = "--queue-chunks=";
 constexpr std::string_view kQueueSeedPrefix = "--queue-seed=";
 constexpr std::string_view kArrivalSharePrefix = "--arrival-share=";
@@ -220,6 +221,17 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.refresh_price_ticks_override = ticks;
+            }
+            else if (flag.compare(0, kEdgeCoverPrefix.size(), kEdgeCoverPrefix) == 0)
+            {
+                double ticks = 0.0;
+                std::istringstream stream(flag.substr(kEdgeCoverPrefix.size()));
+                if (!(stream >> ticks) || ticks < 0.0)
+                {
+                    error = "--edge-cover-ticks must not be negative";
+                    return false;
+                }
+                cfg.edge_cover_ticks = ticks;
             }
             else if (flag.compare(0, kQueueChunksPrefix.size(), kQueueChunksPrefix) == 0)
             {
