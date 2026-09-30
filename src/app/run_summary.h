@@ -9,10 +9,11 @@
 
 struct ExecutionQualityMetrics
 {
-    // Markout split by the condition captured at the fill: the side crossed with whether the fill added to
-    // the position (0 buy adding, 1 buy reducing, 2 sell adding, 3 sell reducing). A market maker's fills are
-    // not one population, and this is the cheapest way to find out whether the adverse ones are separable
-    // before a decision rule tries to depend on it.
+    // Markout split by the condition captured at the fill: the side crossed with whether the fill price was at
+    // least a tick away from the midpoint then (0 buy far, 1 buy near, 2 sell far, 3 sell near). A market
+    // maker's fills are not one population, and the first condition tried for the second dimension, whether the
+    // fill added to the position, came back constant under this sizing, which is why the buckets are named for
+    // distance rather than for the order flow.
     static constexpr std::size_t kMarkoutBucketCount = 4;
     std::array<double, kMarkoutBucketCount> markout_ticks_quantity_by_bucket{};
     std::array<double, kMarkoutBucketCount> markout_quantity_by_bucket{};
@@ -182,14 +183,14 @@ struct RunSummary
                        : 0.0)
                << " markout_usd=" << execution_quality.markout_usd
                << " markout_count=" << execution_quality.markout_count
-               << " markout_buy_add_ticks=" << markout_bucket_ticks(execution_quality, 0)
-               << " markout_buy_add_count=" << execution_quality.markout_count_by_bucket[0]
-               << " markout_buy_reduce_ticks=" << markout_bucket_ticks(execution_quality, 1)
-               << " markout_buy_reduce_count=" << execution_quality.markout_count_by_bucket[1]
-               << " markout_sell_add_ticks=" << markout_bucket_ticks(execution_quality, 2)
-               << " markout_sell_add_count=" << execution_quality.markout_count_by_bucket[2]
-               << " markout_sell_reduce_ticks=" << markout_bucket_ticks(execution_quality, 3)
-               << " markout_sell_reduce_count=" << execution_quality.markout_count_by_bucket[3]
+               << " markout_buy_far_ticks=" << markout_bucket_ticks(execution_quality, 0)
+               << " markout_buy_far_count=" << execution_quality.markout_count_by_bucket[0]
+               << " markout_buy_near_ticks=" << markout_bucket_ticks(execution_quality, 1)
+               << " markout_buy_near_count=" << execution_quality.markout_count_by_bucket[1]
+               << " markout_sell_far_ticks=" << markout_bucket_ticks(execution_quality, 2)
+               << " markout_sell_far_count=" << execution_quality.markout_count_by_bucket[2]
+               << " markout_sell_near_ticks=" << markout_bucket_ticks(execution_quality, 3)
+               << " markout_sell_near_count=" << execution_quality.markout_count_by_bucket[3]
                << " avg_abs_inventory=" << execution_quality.average_abs_inventory
                << " max_abs_inventory=" << execution_quality.max_abs_inventory
                << " inventory_sign_changes=" << execution_quality.inventory_sign_changes
