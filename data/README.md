@@ -154,6 +154,33 @@ the file named `2023-03-01` begins at `2023-02-28 16:00` UTC, and `size` is in c
 contract value is `0.01` needs that multiplication before the amount is a base amount. The script prints both
 rather than leaving them in a comment, because both shift a day or a size by a constant without failing.
 
+The order book archive is a different shape from the trade archive, and the readers reflect that. The portal hands
+it over as a `.data` member inside a `tar.gz`, and every line is a JSON object:
+
+```text
+{"instId":"BTC-USDT-SWAP","action":"snapshot","ts":"1767744000007","asks":[["93713","248.89","26"],...],"bids":[...]}
+{"instId":"BTC-USDT-SWAP","action":"update","ts":"1767744000017","asks":[["93739.1","0.01","1"]],"bids":[...]}
+```
+
+* The first line is a full depth snapshot and the rest are updates carrying only the levels that changed, where a
+  size of zero removes a level, which is the amount the book removes on.
+* The day is cut on midnight **UTC**, unlike the trade archive's UTC+8, so pairing the two needs both files.
+* There is no sequence number and no local receive timestamp anywhere in the file. A gap therefore cannot be
+  detected from the file itself, and a batch is stamped with the exchange timestamp in both stamp fields.
+* A long file re-sends a full snapshot periodically — five of them in the first three hundred thousand records —
+  so the snapshot's ordering token is its timestamp, which is the only monotone key the archive carries.
+* `size` is in contracts and the price is quoted with a quote character around it, so the reader removes the quote
+  and multiplies by the contract value before the quantity reaches the engine.
+
+```bash
+tar -xzOf data/v2/BTC-USDT-SWAP-L2orderbook-400lv-2026-01-07.tar.gz | head -n 300000 > /tmp/okx_l2_300k.jsonl
+./out/build/linux-debug/toy_quant l2_replay <okx trades csv> /tmp/okx_l2_300k.jsonl BTC-USDT-SWAP 0 \
+  active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --order-size=100000
+```
+
+The venue is taken from the depth file rather than from the command line, so the same command runs either the OKX
+archive or the Deribit files this repository holds.
+
 ## Runtime Output
 
 The application writes strategy orders and trades to:
