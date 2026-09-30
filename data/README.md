@@ -119,6 +119,23 @@ It cuts the same 200,000-row slice per day, refuses a file that is not a complet
 prefix of it, and warns when a day yields fewer rows than the others, because a short slice would otherwise look
 like a quiet day rather than a short download.
 
+## Inspecting a New Source
+
+A new source is a set of assumptions, and the wrong ones are quiet: microseconds read as milliseconds, a price
+that is still a string, or an incremental file taken for a snapshot. `tools/inspect_source.py` prints what a file
+actually contains before any reader exists for it — delimiter, header, column count, inferred types and ranges,
+which integer columns are timestamps and in what unit, whether they move forward, and the top of book implied by a
+JSON level column:
+
+```bash
+python3 tools/inspect_source.py data/v2/bitmex_trades_2020-06-01_XBTUSD.csv.gz
+```
+
+The column summary is the anatomy half of accepting a source, and the implied top of book is the book half, which
+is what a reader's output gets compared against. It reads the first rows by default, so it is safe on a
+multi-gigabyte file, and it reads the gzip stream once to say whether a download is complete rather than
+interpreting a partial file as a short day.
+
 ## Runtime Output
 
 The application writes strategy orders and trades to:
