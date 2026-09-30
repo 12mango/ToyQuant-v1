@@ -67,9 +67,13 @@ def find_url(symbol, start_ms, end_ms):
         raise RuntimeError(f"the history endpoint said {payload.get('code')} {payload.get('msg')!r}")
     for entry in payload.get("data", []):
         for detail in entry.get("details", []):
-            for group in detail.get("groupDetails", []):
-                if int(group.get("dateRangeStart", 0)) == start_ms:
-                    return group["url"], group.get("filename", "")
+            # The range starts live on the detail, while each file inside it is named by dateTs.
+            if int(detail.get("dateRangeStart", 0)) != start_ms:
+                continue
+            groups = detail.get("groupDetails", [])
+            if not groups:
+                raise RuntimeError("the archive lists that day but returned no file for it")
+            return groups[0]["url"], groups[0].get("filename", "")
     raise RuntimeError("no daily file for that date; the archive starts in September 2021 for trades")
 
 

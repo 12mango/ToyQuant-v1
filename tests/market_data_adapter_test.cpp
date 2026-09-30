@@ -224,4 +224,91 @@ int main()
     assert(routed_reader->next(routed_event));
     assert(std::holds_alternative<IncrementalBookBatch>(routed_event));
     std::filesystem::remove(incremental_path);
+
+    // An OKX order book file is JSON Lines: one snapshot line carrying the whole book, then update lines that
+    // carry only the levels that changed. Sizes are contract counts, so an amount is the size times the
+    // contract value, and a size of zero is how this feed removes a level.
+    {
+        const auto okx_book = std::filesystem::temp_directory_path() / "okx_book_test.jsonl";
+        {
+            std::ofstream file(okx_book);
+            file << R"({"instId":"BTC-USDT-SWAP","action":"snapshot","ts":"1767744000007",)"
+                 << R"("asks":[["93713","248.89","26"],["93713.1","3.88","5"]],)"
+                 << R"("bids":[["93712.9","10","1"],["93712.8","0.5","1"]]})" << '\n';
+            file << R"({"instId":"BTC-USDT-SWAP","action":"update","ts":"1767744000017",)"
+                 << R"("asks":[["93739.1","0.01","1"]],"bids":[]})" << '\n';
+            file << R"({"instId":"BTC-USDT-SWAP","action":"update","ts":"1767744000017",)"
+                 << R"("asks":[],"bids":[["93750.6","0","0"]]})" << '\n';
+            file << R"({"instId":"BTC-USDT-SWAP","action":"update","ts":"1767744000027",)"
+                 << R"("asks":[],"bids":[["93708.2","11.9","2"]]})" << '\n';
+        }
+        auto reader = make_okx_book_reader(okx_book.string(), "BTC-USDT-SWAP", 0.01, 1000000);
+        MarketEvent event;
+        assert(reader->next(event));
+        const auto& snapshot = std::get<MarketDepthSnapshot>(event);
+        assert(snapshot.symbol == "BTC-USDT-SWAP");
+        assert(snapshot.exchange == "okx");
+        assert(snapshot.ts == 1767744000007ULL);
+        assert(snapshot.bids.size() == 2);
+        assert(snapshot.asks.size() == 2);
+        assert(snapshot.asks[0].price == 93713.0);
+        // 248.89 contracts of 0.01 BTC is 2.4889 BTC, and the engine counts a millionth of a BTC as one unit.
+        assert(snapshot.asks[0].quantity == 2488900);
+        assert(snapshot.bids[0].quantity == 100000);
+
+        // Two lines share a timestamp, so they form one batch, and a zero size arrives as a zero amount.
+        assert(reader->next(event));
+        const auto& first = std::get<IncrementalBookBatch>(event);
+        assert(first.exchange == "okx");
+        assert(first.ts == 1767744000017ULL);
+        assert(first.exchange_ts == first.ts);
+        assert(first.local_ts == first.ts);
+        assert(!first.has_snapshot());
+        assert(first.updates.size() == 2);
+        assert(first.updates[0].side == Side::Sell);
+        assert(first.updates[0].price == 93739.1);
+        assert(first.updates[0].amount == 100);
+        assert(first.updates[1].side == Side::Buy);
+        assert(first.updates[1].price == 93750.6);
+        assert(first.updates[1].amount == 0);
+
+        assert(reader->next(event));
+        const auto& second = std::get<IncrementalBookBatch>(event);
+        assert(second.ts == 1767744000027ULL);
+        assert(second.updates.size() == 1);
+        assert(second.updates[0].amount == 119000);
+        assert(!reader->next(event));
+        std::filesystem::remove(okx_book);
+    }
+
+    // The trade reader applies the same contract conversion, and the side in the file is the aggressor's.
+    {
+        const auto okx_trades = std::filesystem::temp_directory_path() / "okx_trades_test.csv";
+        {
+            std::ofstream file(okx_trades);
+            file << "instrument_name,trade_id,side,price,size,created_time\n";
+            file << "BTC-USDT-SWAP,490859504,buy,23517.1,7.0,1677600000026\n";
+            file << "ETH-USDT-SWAP,1,sell,1.0,1.0,1677600000026\n";
+            file << "BTC-USDT-SWAP,490859505,sell,23517.2,2.5,1677600000100\n";
+        }
+        auto reader = make_okx_trade_reader(okx_trades.string(), "BTC-USDT-SWAP", 0.01, 1000000);
+        MarketEvent event;
+        assert(reader->next(event));
+        const auto& trade = std::get<MarketTrade>(event);
+        assert(trade.symbol == "BTC-USDT-SWAP");
+        assert(trade.exchange == "okx");
+        assert(trade.sequence == 490859504);
+        assert(trade.price == 23517.1);
+        // Seven contracts of 0.01 BTC is 0.07 BTC, and the other instrument in the file is skipped.
+        assert(trade.quantity == 70000);
+        assert(trade.aggressor_side == Side::Buy);
+        assert(reader->next(event));
+        const auto& later = std::get<MarketTrade>(event);
+        assert(later.sequence == 490859505);
+        assert(later.quantity == 25000);
+        assert(later.aggressor_side == Side::Sell);
+        assert(!reader->next(event));
+        std::filesystem::remove(okx_trades);
+    }
+
 }

@@ -21,6 +21,10 @@ struct InstrumentSpec
     double unit_notional_usd{0.0};
     uint64_t lot_size{1};
     uint64_t min_order_quantity{1};
+    // Base asset amount in one quantity unit of the feed, for an instrument quoted in contracts. One OKX
+    // BTC-USDT-SWAP contract is 0.01 BTC, so a size of 250 in the file is 2.5 BTC. An instrument whose
+    // size is already a base amount leaves this at 1.
+    double contract_size{1.0};
     double maker_fee_rate{0.0};
     double taker_fee_rate{0.0};
 };
@@ -65,6 +69,24 @@ inline InstrumentSpec deribit_btc_perpetual_spec()
                           .unit_notional_usd = 10.0,
                           .lot_size = 1,
                           .min_order_quantity = 1,
+                          .maker_fee_rate = 0.0002,
+                          .taker_fee_rate = 0.0005};
+}
+
+// A linear swap, so the unit value is the traded price times the base amount the contract carries, which is
+// what the zero in unit_notional_usd means. The derived order size that strategy_factory computes from
+// quantity_scale is a thousandth of a base unit here and therefore below the venue's one contract minimum,
+// so a run on this instrument sets --order-size and --inventory-limit explicitly.
+inline InstrumentSpec okx_btc_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return InstrumentSpec{.exchange = "okx",
+                          .symbol = "BTC-USDT-SWAP",
+                          .tick_size = 0.1,
+                          .quantity_scale = quantity_scale,
+                          .lot_size = 1,
+                          .min_order_quantity = 10000,
+                          // One contract is 0.01 BTC, so with this scale the minimum order is 10000 units.
+                          .contract_size = 0.01,
                           .maker_fee_rate = 0.0002,
                           .taker_fee_rate = 0.0005};
 }

@@ -35,3 +35,10 @@ std::unique_ptr<IMarketEventReader> make_deribit_incremental_book_reader(
 std::unique_ptr<IMarketEventReader> make_deribit_depth_reader(const std::string& path);
 
 std::unique_ptr<IMarketEventReader> make_deribit_trade_reader(const std::string& path);
+
+// OKX order book JSON Lines and the traded CSV that tools/fetch_okx_trades.py produces from the archive.
+std::unique_ptr<IMarketEventReader> make_okx_book_reader(const std::string& path, const std::string& symbol,
+                                                         double contract_size, uint64_t quantity_scale);
+
+std::unique_ptr<IMarketEventReader> make_okx_trade_reader(const std::string& path, const std::string& symbol,
+                                                          double contract_size, uint64_t quantity_scale);
