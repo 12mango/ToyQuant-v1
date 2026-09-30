@@ -57,6 +57,24 @@ ensure_slices() {
   if [ ! -f "$SLICE_0501" ] && [ -f "$SNAPSHOT_0501" ]; then
     zcat "$SNAPSHOT_0501" 2>/dev/null | head -n 200001 > "$SLICE_0501"
   fi
+  # The out-of-sample table in docs/PERFORMANCE_HISTORY.md quotes one replay per day, each against a slice of that
+  # day, and the blocks name the slice. Cutting them here means a day whose slice is missing fails with a run rather
+  # than a confusing "input file does not exist", for the same reason as the three above.
+  for day_file in data/v2/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv data/v2/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv.gz; do
+    [ -e "$day_file" ] || continue
+    case "$day_file" in
+      *2020-05-01*) continue ;;
+    esac
+    day=$(printf '%s' "$day_file" | sed -n 's/.*_\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)_BTC-PERPETUAL\.csv\(\.gz\)\{0,1\}$/\1/p')
+    [ -n "$day" ] || continue
+    day_slice="/tmp/snap_$(printf '%s' "$day" | tr -d -)_200k.csv"
+    if [ ! -f "$day_slice" ]; then
+      case "$day_file" in
+        *.gz) zcat "$day_file" | head -n 200001 > "$day_slice" ;;
+        *) head -n 200001 "$day_file" > "$day_slice" ;;
+      esac
+    fi
+  done
 }
 
 # Sort the tokens so the comparison does not depend on the order the summary lines happen to print in.

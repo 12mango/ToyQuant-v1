@@ -29,6 +29,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 HISTORY_URL = "https://www.okx.com/api/v5/public/market-data-history"
+# The endpoint answers a plain HTTP client but refuses the bare Python user agent, so it is set explicitly.
+HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) toyquant-history/1.0"}
 # The file day is UTC+8, which is eight hours ahead of the timestamps inside it.
 FILE_DAY_OFFSET = timedelta(hours=8)
 
@@ -58,7 +60,8 @@ def find_url(symbol, start_ms, end_ms):
             "end": end_ms,
         }
     )
-    with urllib.request.urlopen(f"{HISTORY_URL}?{query}", timeout=60) as response:
+    with urllib.request.urlopen(urllib.request.Request(f"{HISTORY_URL}?{query}", headers=HEADERS),
+                                timeout=60) as response:
         payload = json.load(response)
     if payload.get("code") != "0":
         raise RuntimeError(f"the history endpoint said {payload.get('code')} {payload.get('msg')!r}")
@@ -71,12 +74,13 @@ def find_url(symbol, start_ms, end_ms):
 
 
 def download(url, path):
-    with urllib.request.urlopen(url, timeout=600) as response, path.open("wb") as target:
-        while True:
-            chunk = response.read(1 << 20)
-            if not chunk:
-                break
-            target.write(chunk)
+    with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=600) as response:
+        with path.open("wb") as target:
+            while True:
+                chunk = response.read(1 << 20)
+                if not chunk:
+                    break
+                target.write(chunk)
 
 
 def slice_symbol(archive_path, symbol, output, max_rows):

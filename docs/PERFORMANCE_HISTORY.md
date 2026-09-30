@@ -227,34 +227,49 @@ improvement.
 Both tables are reproduced by the commands in their sections above; their inputs to the invariant are the two
 numbers in the marked block, which the fast gate re-computes on every change.
 
-## Out of Sample: the Same Policy on a Second Day
+## Out of Sample: the Same Policy on Five Days
 
-Every conclusion above comes from one day, and the repository holds a second one: a 25-level snapshot file and
-a trades file for 2020-05-01. Both days are replayed through the **same depth format**, which is the point of
-the design — a difference between the rows below is the day, not the feed.
+Every conclusion above comes from one day, and four more days of the same instrument were added later: a 25-level
+snapshot file and a trades file for the first of each month from 2020-05-01 to 2020-08-01. All five days are
+replayed through the **same depth format**, which is the point of the design — a difference between the rows below
+is the day, not the feed.
 
 | Window | Depth source | submitted | fills | fill rate | captured ticks/contract | captured USD | fees USD | fees / captured | realized USD | queue min-fraction p50 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 04-01 | snapshot (control) | 1146 | 146 | 12.7% | 0.086 | 0.00987 | 0.292 | 29.6x | -0.757 | 0.992 |
-| **05-01** | snapshot (out of sample) | 526 | 58 | 11.0% | 0.034 | 0.00114 | 0.116 | **102x** | -0.287 | 0.951 |
+| **05-01** | snapshot (day two) | 526 | 58 | 11.0% | 0.034 | 0.00114 | 0.116 | **102x** | -0.287 | 0.951 |
+| **06-01** | snapshot (day three) | 306 | 31 | 10.1% | 0.242 | 0.00397 | 0.062 | 15.6x | -0.115 | 0.905 |
+| **07-01** | snapshot (day four) | 196 | 29 | 14.8% | 0.379 | 0.00604 | 0.058 | **9.6x** | -0.083 | 0.906 |
+| **08-01** | snapshot (day five) | 339 | 26 | 7.7% | 0.462 | 0.00531 | 0.052 | 9.8x | -0.063 | 0.991 |
 | 04-01 | incremental (mainline) | 182 | 21 | 11.5% | 0.095 | 0.00157 | 0.042 | 26.8x | -0.109 | 0.961 |
 
 <!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+then: submitted_orders=1146 trade_reports=146 fill_rate=0.1274 captured_edge_per_unit_ticks=0.0856164 captured_edge_usd=0.00987095 fees_paid=0.292 realized_pnl=-0.757038 queue_min_fraction_p50=0.991843
 run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
 then: submitted_orders=526 trade_reports=58 fill_rate=0.110266 captured_edge_per_unit_ticks=0.0344828 captured_edge_usd=0.00113946 fees_paid=0.116 realized_pnl=-0.287468 queue_min_fraction_p50=0.951289
+run: l2_replay data/v2/deribit_trades_2020-06-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200601_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+then: submitted_orders=306 trade_reports=31 fill_rate=0.101307 captured_edge_per_unit_ticks=0.241935 captured_edge_usd=0.00396559 fees_paid=0.062 realized_pnl=-0.114748 queue_min_fraction_p50=0.904849
+run: l2_replay data/v2/deribit_trades_2020-07-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200701_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+then: submitted_orders=196 trade_reports=29 fill_rate=0.147959 captured_edge_per_unit_ticks=0.37931 captured_edge_usd=0.00603727 fees_paid=0.058 realized_pnl=-0.0832212 queue_min_fraction_p50=0.905757
+run: l2_replay data/v2/deribit_trades_2020-08-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200801_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+then: submitted_orders=339 trade_reports=26 fill_rate=0.0766962 captured_edge_per_unit_ticks=0.461538 captured_edge_usd=0.00531196 fees_paid=0.052 realized_pnl=-0.0633193 queue_min_fraction_p50=0.990675
 -->
 
 What survives is the reason for doing it.
 
-1. **The fill rate is 11 to 13% on all three windows**, so "a quote rarely fills" is not a property of one day.
-2. **The captured edge per contract stays in the tenths of a tick** (0.034, 0.086, 0.095) and stays positive,
-   while the fee per contract is fixed at 0.002 USD by the fee schedule and cannot move.
-3. **The fee is between 27 and 102 times the captured edge, and never below 27 times.** The second day is the
-   *worst* case for the strategy rather than the best, which is the useful direction for the claim: the
-   conclusion does not rest on having chosen a favourable day.
+1. **The fill rate stays between 8 and 15% on all five days**, so "a quote rarely fills" is not a property of one
+   day.
+2. **The captured edge per contract stays positive and below one tick** (0.034 to 0.462 ticks), while the fee per
+   contract is fixed at 0.002 USD by the fee schedule and cannot move.
+3. **The fee is between 9.6 and 102 times the captured edge.** An earlier version of this section said "never
+   below 27 times", on three windows; days four and five fell below that at 9.6 and 9.8 times, so the bound is the
+   measured range rather than the three-window minimum. The direction of the claim does not move: on every day the
+   fee is at least an order of magnitude larger than what the fills capture, and every realized PnL is negative.
 4. **The realized loss scales with the fill count, not with the parameters.** 21 fills lose 0.109 USD and 146
-   fills lose 0.757 USD, about seven times the loss for about seven times the fills. That is the same
-   scale-invariance the order-size sweep found, reproduced on a day the parameters were not chosen on.
+   fills lose 0.757 USD, about seven times the loss for about seven times the fills. The added days repeat it: 58
+   fills lose 0.287 USD against 26 fills losing 0.063 USD. That is the same scale-invariance the order-size sweep
+   found, reproduced on days the parameters were not chosen on.
 
 One claim needs narrowing rather than repeating. On the mainline window `queue_zero_orders` equalled the fill
 count exactly, which supported "every order that reached the front traded". On the second day it is 59 orders
