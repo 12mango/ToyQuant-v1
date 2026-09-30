@@ -169,6 +169,11 @@ it over as a `.data` member inside a `tar.gz`, and every line is a JSON object:
   detected from the file itself, and a batch is stamped with the exchange timestamp in both stamp fields.
 * A long file re-sends a full snapshot periodically — five of them in the first three hundred thousand records —
   so the snapshot's ordering token is its timestamp, which is the only monotone key the archive carries.
+* Applying every update since a snapshot does **not** reproduce the next one exactly: on the first three hundred
+  thousand records, 39 of about 800 levels disagree, in ways that look like a level leaving or entering the
+  400-level window and like a small size difference inside it. The archive is therefore not a lossless record of
+  the top of the book, and a reader must not assume that updates reconstruct a snapshot. The first snapshot itself
+  is exact, which is what a reader's output is compared against. `tools/check_okx_book.py` performs both checks.
 * `size` is in contracts and the price is quoted with a quote character around it, so the reader removes the quote
   and multiplies by the contract value before the quantity reaches the engine.
 
