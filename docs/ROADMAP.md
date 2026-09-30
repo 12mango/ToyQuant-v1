@@ -55,6 +55,30 @@ what a change produces:
 The same line explains the rejections above: the sources that would extend the evidence are used, and the
 sources that would start a different project are not.
 
+## Venues: what fits a personal user after the demo
+
+Judged as a personal trader rather than as a simulator: small capital, no colocation, one person, and a model
+that expresses a position as a price times a quantity or a fixed face value times a quantity, with limit orders
+only.
+
+| Venue and instrument | Fit | Why |
+|---|---|---|
+| Crypto USDT perpetuals (OKX, Binance, Bybit) | **best** | small capital, twenty four hour operation, free daily data, published fee tiers, and a single leg limit order is all the model needs |
+| OKX specifically | **best of those** | free consecutive book history with discrete levels, so the multi-day test needs no purchase |
+| Binance specifically | good | the widest free daily set, trades and best bid and offer and funding and open interest, but no free book history |
+| Deribit perpetuals | good | the existing lineage, so no new code, but few symbols and a USD quoted contract |
+| Crypto spot, paired with a perpetual | good | a second leg for a carry position, and the model already handles a price based unit |
+| Venues that pay a maker rebate | possible | the same shape as a USDT perpetual, and a rebate changes the fee term that currently binds, which is worth measuring |
+| CME futures | later | margin, a trading calendar and roll dates, and paid data all rise at once |
+| Equities and ETFs | later | intraday rules, subscription market data, and restricted shorting |
+| Options anywhere | no | expiry, exercise, multiple legs and greeks are not in the model |
+| FX and contracts for difference | no | worse data and cost, and the broker is usually the counterparty |
+
+The rule behind the table: a personal account wins on capital and patience and loses on speed, so the venues
+that fit are the ones where a position is held rather than won by being first in a queue. Adapting to another
+USDT perpetual is a reader and one instrument entry, and the chain of measurements that exists today does not
+move, because a second venue is an additional workload rather than a replacement for one.
+
 ## Deliberately not planned
 
 * **Order-by-order (L3) data.** The bounds experiment shows the conclusions do not move between the

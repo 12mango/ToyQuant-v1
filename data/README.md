@@ -96,6 +96,29 @@ python3 tools/slice_l2_snapshot.py \
 	/tmp/trades_tiny.csv --max-rows 1000
 ```
 
+## More Deribit Days
+
+The out-of-sample check in `docs/PERFORMANCE_HISTORY.md` compares days of the same policy through the same depth
+format, so a new day is two files and one command. Tardis publishes free samples of the first day of each month
+for its whole catalogue, and the two datasets this path uses are `book_snapshot_25` and `trades` for
+`BTC-PERPETUAL`. Download them from the dataset pages on tardis.dev, which serve samples to a browser session,
+and save them here as:
+
+- `deribit_book_snapshot_25_YYYY-MM-DD_BTC-PERPETUAL.csv.gz`
+- `deribit_trades_YYYY-MM-DD_BTC-PERPETUAL.csv.gz`
+
+Then one command prints a row per day in the table's column order, together with the recorded block that
+`tools/check_docs.py` re-derives:
+
+```bash
+bash tools/multi_day_check.sh                 # every day found under data/v2/
+bash tools/multi_day_check.sh 2020-06-01      # or the days named on the command line
+```
+
+It cuts the same 200,000-row slice per day, refuses a file that is not a complete gzip rather than reading a
+prefix of it, and warns when a day yields fewer rows than the others, because a short slice would otherwise look
+like a quiet day rather than a short download.
+
 ## Runtime Output
 
 The application writes strategy orders and trades to:
