@@ -271,6 +271,33 @@ What survives is the reason for doing it.
    fills lose 0.287 USD against 26 fills losing 0.063 USD. That is the same scale-invariance the order-size sweep
    found, reproduced on days the parameters were not chosen on.
 
+### The Decision Layer: Refusing to Quote
+
+Every row above comes from a policy that quotes whenever it can. The fee is between 9.6 and 102 times what a fill
+captures, so the arithmetic says a quote that cannot pay for itself should not be placed at all, and that is a
+decision rather than a parameter: `--edge-cover-ticks` requires a quote to capture the maker fee, measured in
+ticks at the reference price, plus the ticks the flag names. A zero value leaves the gate off, which is why every
+run above keeps its numbers.
+
+| Day | Gate | submitted | fills | captured USD | fees USD | realized USD |
+|---|---|---:|---:|---:|---:|---:|
+| 04-01 | off | 1146 | 146 | 0.00987 | 0.292 | -0.757 |
+| 04-01 | fee-covering | 463 | 10 | 0.00474 | 0.020 | **-0.168** |
+| 05-01 | off | 526 | 58 | 0.00114 | 0.116 | -0.287 |
+| 05-01 | fee-covering | 121 | 5 | 0.00345 | 0.010 | **+0.002** |
+
+Refusing to quote removes about nine tenths of the fills and with them about nine tenths of the fee, which is the
+whole point: it turns a slow loss into roughly nothing, and on the second day into a slightly positive number.
+Five fills on one day is not evidence of an edge, and the gate as written covers the fee only, not the adverse
+selection a fill suffers, which is the next thing the same gate should carry.
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --edge-cover-ticks=0.001
+then: submitted_orders=463 trade_reports=10 captured_edge_usd=0.00474021 fees_paid=0.02 realized_pnl=-0.167803
+run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --edge-cover-ticks=0.001
+then: submitted_orders=121 trade_reports=5 captured_edge_usd=0.00345258 fees_paid=0.01 realized_pnl=0.00218216
+-->
+
 One claim needs narrowing rather than repeating. On the mainline window `queue_zero_orders` equalled the fill
 count exactly, which supported "every order that reached the front traded". On the second day it is 59 orders
 against 58 fills, and on the control 150 against 146, so the honest form is **almost every** order that reached
