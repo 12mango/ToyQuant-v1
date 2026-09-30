@@ -319,6 +319,20 @@ ends positive, +13.89 USD, but the exposure reached ten times the starting cash,
 move taken with unhedged size rather than anything the quotes captured. A result without the limit is not evidence
 about a strategy.
 
+With the limit on and an order size below it, the same hour behaves: exposure is held at 2,808 USD against the
+1,000 USD it started with, the gate refuses 34,704 orders, and the equity ends at 973. The run also reproduces the
+bucket split on the second venue, which had only ever been measured on Deribit:
+
+| bucket | ticks | fills |
+|---|---:|---:|
+| buy, at least a tick from the midpoint | 110.2 | 97 |
+| buy, at the midpoint | 44.4 | 121 |
+| sell, at least a tick from the midpoint | 78.7 | 72 |
+| sell, at the midpoint | 34.3 | 125 |
+
+Fills away from the midpoint are worth two to three times the ones at it, on a venue with a different tick, price
+and contract size, which is the strongest form the finding has taken.
+
 <!-- toyquant:check
 run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
 then: submitted_orders=737 trade_reports=35 fees_paid=0.07 realized_pnl=-0.0967336
