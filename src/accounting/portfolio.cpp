@@ -138,3 +138,43 @@ const PortfolioPosition* Portfolio::find_position(const std::string& symbol) con
     const auto it = positions_.find(symbol);
     return it == positions_.end() ? nullptr : &it->second;
 }
+
+double Portfolio::accrue_interval_flow(const std::string& symbol, double interval_rate,
+                                       double mark_price)
+{
+    const auto it = positions_.find(symbol);
+    if (it == positions_.end() || it->second.quantity == 0) return 0.0;
+    // A price-quoted unit needs a positive price before it has a notional to charge a rate to; a fixed
+    // USD face value does not, because that value does not come from the price.
+    if (unit_notional_usd_ <= 0.0 && mark_price <= 0.0) return 0.0;
+
+    const double notional =
+        units(static_cast<uint64_t>(std::llabs(it->second.quantity))) * unit_value(mark_price);
+    const double flow =
+        it->second.quantity > 0 ? notional * interval_rate : -notional * interval_rate;
+    if (flow == 0.0) return 0.0;
+
+    cash_ += flow;
+    realized_pnl_ += flow;
+    equity_ += flow;
+    return flow;
+}
+
+double Portfolio::accrue_interval_flows(
+    const std::unordered_map<std::string, double>& interval_rates,
+    const std::unordered_map<std::string, double>& mark_prices)
+{
+    double total = 0.0;
+    // The accrual changes cash, realized PnL and equity but never positions_, so the iteration is safe
+    // to hold while the single-symbol method looks the position up again.
+    for (const auto& [symbol, position] : positions_)
+    {
+        if (position.quantity == 0) continue;
+        const auto rate_it = interval_rates.find(symbol);
+        if (rate_it == interval_rates.end()) continue;
+        const auto mark_it = mark_prices.find(symbol);
+        if (mark_it == mark_prices.end()) continue;
+        total += accrue_interval_flow(symbol, rate_it->second, mark_it->second);
+    }
+    return total;
+}

@@ -60,6 +60,37 @@ class Portfolio
     void mark_to_market(const std::unordered_map<std::string, double>& prices);
     void reset();
 
+    // One interval of a per-interval cash flow on one position: the funding a perpetual pays, the basis
+    // a future pays at roll, a dividend, or the financing a position is charged. One method for all four
+    // because the ledger side is identical and only the source of the rate differs.
+    //
+    // `interval_rate` is the rate one USD of notional earns per interval to a long position, so the
+    // position's own sign decides the direction of the payment: the flow is the rate times the signed
+    // notional. One rate therefore serves both sides of the same market, and a short pays exactly what
+    // a long receives. A published funding rate is the rate longs pay, so it enters as `-funding_rate`;
+    // a dividend is positive, financing is negative, and the basis a future pays at roll is negative on
+    // the long leg.
+    //
+    // The notional is the USD value this class already assigns the position at `mark_price`
+    // (unit_notional_at): a price-quoted unit accrues on `quantity * mark_price` and a fixed-USD-face
+    // contract on its face value, so the entry price and unrealized PnL play no part.
+    //
+    // Cash, realized PnL and equity move by the returned amount, because an accrued flow has been paid
+    // rather than marked: unlike a price move it does not wait for a closing trade. Equity tracks cash
+    // so the identity mark_to_market produced still holds between marks.
+    //
+    // Returns the signed USD amount credited to cash. A flat position, an unknown symbol, or a
+    // non-positive mark price on a price-quoted instrument accrues nothing, because none of them has a
+    // notional to charge a rate to.
+    double accrue_interval_flow(const std::string& symbol, double interval_rate, double mark_price);
+
+    // One interval across the whole book, which is the shape a rate series has and the shape two legs
+    // will need: a rate per symbol and a mark per symbol. A position that either map does not name
+    // accrues nothing rather than being guessed at, so a leg that pays no carry, or a symbol with no
+    // price, is simply absent. Returns the summed amount.
+    double accrue_interval_flows(const std::unordered_map<std::string, double>& interval_rates,
+                                 const std::unordered_map<std::string, double>& mark_prices);
+
     const std::unordered_map<std::string, PortfolioPosition>& positions() const
     {
         return positions_;

@@ -1069,3 +1069,36 @@ The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 
 The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating formulas in `main.cpp`.
 
+**Files:** `src/accounting/portfolio.*`, `tests/portfolio_test.cpp`
+
+`Portfolio` books execution reports and values cash, realized PnL and equity. Until the carry line it
+knew one income stream, the spread a fill captures, and one cost, the fee.
+`accrue_interval_flow` adds the flow a *position* earns or pays for as long as it is held: funding on
+a perpetual, the basis a future pays at roll, a dividend, or the financing a position is charged. One
+method for all four, because the ledger side is identical in each and only the source of the rate
+differs:
+
+```cpp
+double flow = portfolio.accrue_interval_flow(symbol, interval_rate, mark_price);
+```
+
+`interval_rate` is the rate one USD of notional earns per interval to a long position, so the
+position's own sign decides the direction of the payment and one rate serves both sides of a market:
+a short pays exactly what a long receives. A published funding rate is the rate longs pay and enters
+as `-funding_rate`; a dividend is positive and financing negative. The notional is the USD value the
+class already assigns the position at `mark_price` through `unit_notional_at`, so a fixed-USD-face
+contract accrues on its face value and a price-quoted unit on `quantity * mark_price`; the entry price
+and unrealized PnL play no part. `accrue_interval_flows` applies one interval across the whole book
+from a rate map and a mark map, which is the shape a rate series has and the shape two legs will need,
+and a position that either map does not name accrues nothing rather than being guessed at.
+
+Cash, realized PnL and equity move together by the amount returned. An accrued flow has been paid
+rather than marked, so it does not wait for a closing trade to become realized, and equity tracks cash
+so the identity `mark_to_market` produced still holds between marks. `tests/portfolio_test.cpp` states
+the cash, the equity and the realized PnL after N intervals for a price-quoted position, a fixed-face
+contract and a short, pins the notional basis and the sign rule, and checks that a flat position, an
+unknown symbol and an unpriced price-quoted instrument all accrue nothing. There is deliberately no
+data plumbing yet: the mechanism is checkable before a rate series exists, the way the queue model was
+checked before live fills were discussed. The order of the remaining steps is scoped in
+[Roadmap](ROADMAP.md#the-carry-line-financing-flows-before-carry-strategies).
+

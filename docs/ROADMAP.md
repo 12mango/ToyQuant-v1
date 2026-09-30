@@ -89,6 +89,11 @@ cannot represent any of it. Adding it is the next capability, and it is delibera
 * **First a flow with a fixed rate**, applied per interval to a position, verified by a unit test that states the
   cash, the equity and the realized PnL after N intervals. This makes the mechanism checkable before any data
   plumbing exists, in the same way the queue model was verified before live fills were discussed.
+  **Done:** `Portfolio::accrue_interval_flow` and its per-interval pass over the whole book, with those three
+  fields asserted after N intervals in `tests/portfolio_test.cpp` for a price-quoted position, a fixed-face
+  contract and a short, and the channel described in [Architecture](ARCHITECTURE.md#7-backtest-and-performance-metrics).
+  The rate is the per-interval return to a long on the position's notional, so the position's sign decides the
+  direction and one rate serves both sides of a market, which is the shape the next step needs.
 * **Then a rate series as an input**, because the real rate varies by the hour and changes sign. The free sources are
   the exchange's own funding history, which costs nothing and is a few megabytes per symbol per year.
 * **Then two legs**, because a carry position is a position and its hedge, and the ledger has to hold both without

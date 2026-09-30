@@ -163,4 +163,204 @@ int main()
         assert(std::abs(flip.metrics().unrealized_pnl - 2.727272727) < 1e-6);
         assert(std::abs(flip.metrics().equity - 1004.727272727) < 1e-6);
     }
+
+    // A per-interval cash flow on a position whose USD value comes from the traded price, which is the
+    // dividend and stock-financing case. The notional is the position marked at the price, so two units
+    // at 100 is 200 USD and the rate applies to that rather than to the entry price. A rate the position
+    // receives is positive, so 0.5% per interval credits 1 USD and four intervals credit 4.
+    {
+        Portfolio stock(1, 1000.0);
+        stock.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                    .exec_type = ExecType::Trade,
+                                    .symbol = "STOCK",
+                                    .price = 100.0,
+                                    .quantity = 2,
+                                    .owner = "test",
+                                    .liquidity_role = LiquidityRole::Maker,
+                                    .fee = 0.0});
+        stock.mark_to_market({{"STOCK", 100.0}});
+        assert(std::abs(stock.metrics().equity - 1000.0) < 1e-9);
+
+        double credited = 0.0;
+        for (int interval = 0; interval < 4; ++interval)
+        {
+            credited += stock.accrue_interval_flow("STOCK", 0.005, 100.0);
+        }
+        assert(std::abs(credited - 4.0) < 1e-9);
+        assert(std::abs(stock.metrics().cash - 804.0) < 1e-9);
+        assert(std::abs(stock.metrics().realized_pnl - 4.0) < 1e-9);
+        // The position is untouched and still worth 200 USD, so equity is cash plus that 200.
+        assert(std::abs(stock.metrics().equity - 1004.0) < 1e-9);
+
+        // The rate applies to the mark, not to the entry: the same 0.5% at a doubled mark is 2 USD on
+        // 400 USD of notional. A flow is cash, so it is realized at once rather than only on a close.
+        assert(std::abs(stock.accrue_interval_flow("STOCK", 0.005, 200.0) - 2.0) < 1e-9);
+        assert(std::abs(stock.metrics().cash - 806.0) < 1e-9);
+        assert(std::abs(stock.metrics().realized_pnl - 6.0) < 1e-9);
+        assert(std::abs(stock.metrics().equity - 1006.0) < 1e-9);
+    }
+
+    // The same call with a negative rate is a position being charged rather than paid, which is the
+    // financing a long stock position pays: 0.2% per interval on 200 USD is 0.4 USD, and three intervals
+    // take cash, equity and realized PnL down by 1.2. A price-quoted position with no price has no
+    // notional, so the accrual refuses rather than charging a rate to zero.
+    {
+        Portfolio financed(1, 1000.0);
+        financed.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                       .exec_type = ExecType::Trade,
+                                       .symbol = "STOCK",
+                                       .price = 100.0,
+                                       .quantity = 2,
+                                       .owner = "test",
+                                       .liquidity_role = LiquidityRole::Maker,
+                                       .fee = 0.0});
+        financed.mark_to_market({{"STOCK", 100.0}});
+
+        for (int interval = 0; interval < 3; ++interval)
+        {
+            financed.accrue_interval_flow("STOCK", -0.002, 100.0);
+        }
+        assert(std::abs(financed.metrics().cash - 798.8) < 1e-9);
+        assert(std::abs(financed.metrics().realized_pnl + 1.2) < 1e-9);
+        assert(std::abs(financed.metrics().equity - 998.8) < 1e-9);
+
+        assert(std::abs(financed.accrue_interval_flow("STOCK", -0.002, 0.0)) < 1e-12);
+        assert(std::abs(financed.metrics().cash - 798.8) < 1e-9);
+    }
+
+    // The funding case on the fixed-face contract. Funding accrues on the contract's 10 USD face value
+    // rather than on the BTC price, which is the same `unit_notional_at` value the fee and the cash
+    // balance use. The published rate is the rate longs pay, so it enters as -0.0001, and one rate then
+    // serves both sides: the long pays 0.002 USD per interval and the same rate pays the short 0.001.
+    {
+        Portfolio perp(1, 1000.0, 10.0);
+        perp.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 6000.0,
+                                   .quantity = 2,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.0});
+        perp.mark_to_market({{"BTC-PERPETUAL", 6000.0}});
+        assert(std::abs(perp.metrics().equity - 1000.0) < 1e-9);
+
+        double paid = 0.0;
+        for (int interval = 0; interval < 3; ++interval)
+        {
+            paid += perp.accrue_interval_flow("BTC-PERPETUAL", -0.0001, 6000.0);
+        }
+        assert(std::abs(paid + 0.006) < 1e-9);
+        assert(std::abs(perp.metrics().cash - 979.994) < 1e-9);
+        assert(std::abs(perp.metrics().realized_pnl + 0.006) < 1e-9);
+        assert(std::abs(perp.metrics().equity - 999.994) < 1e-9);
+
+        // The face value does not move with the price, so doubling the mark leaves the flow unchanged.
+        // A price-quoted instrument would have doubled it, which is what the stock case shows.
+        assert(std::abs(perp.accrue_interval_flow("BTC-PERPETUAL", -0.0001, 12000.0) + 0.002) < 1e-9);
+        assert(std::abs(perp.metrics().equity - 999.992) < 1e-9);
+
+        // The short leg of the same market pays no new rate: the sign of the position is the only
+        // difference, and it turns the long's payment into a receipt.
+        Portfolio short_perp(1, 1000.0, 10.0);
+        short_perp.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                         .exec_type = ExecType::Trade,
+                                         .symbol = "BTC-PERPETUAL",
+                                         .price = 6000.0,
+                                         .quantity = 1,
+                                         .owner = "test",
+                                         .liquidity_role = LiquidityRole::Maker,
+                                         .fee = 0.0});
+        short_perp.mark_to_market({{"BTC-PERPETUAL", 6000.0}});
+        assert(std::abs(short_perp.metrics().equity - 1000.0) < 1e-9);
+
+        for (int interval = 0; interval < 3; ++interval)
+        {
+            short_perp.accrue_interval_flow("BTC-PERPETUAL", -0.0001, 6000.0);
+        }
+        assert(std::abs(short_perp.metrics().cash - 1010.003) < 1e-9);
+        assert(std::abs(short_perp.metrics().realized_pnl - 0.003) < 1e-9);
+        assert(std::abs(short_perp.metrics().equity - 1000.003) < 1e-9);
+    }
+
+    // One interval across the whole book, which is the shape a rate series has and the shape two legs
+    // will need. Both legs enter the same published rate and their signs separate payer from receiver,
+    // and a third position the rate map does not name accrues nothing rather than being guessed at.
+    {
+        Portfolio book(1, 1000.0, 10.0);
+        book.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "PERP-A",
+                                   .price = 6000.0,
+                                   .quantity = 2,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.0});
+        book.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "PERP-B",
+                                   .price = 6000.0,
+                                   .quantity = 1,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.0});
+        book.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "PERP-C",
+                                   .price = 6000.0,
+                                   .quantity = 1,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.0});
+        const std::unordered_map<std::string, double> marks{
+            {"PERP-A", 6000.0}, {"PERP-B", 6000.0}, {"PERP-C", 6000.0}};
+        const std::unordered_map<std::string, double> rates{{"PERP-A", -0.0001},
+                                                            {"PERP-B", -0.0001}};
+        book.mark_to_market(marks);
+        // 20 USD long, 10 USD short and 10 USD long again: 20 USD of marked value on 1000 USD of cash.
+        assert(std::abs(book.metrics().equity - 1000.0) < 1e-9);
+
+        const double per_interval = book.accrue_interval_flows(rates, marks);
+        // 0.002 paid by the long leg, 0.001 received by the short leg, nothing on PERP-C.
+        assert(std::abs(per_interval + 0.001) < 1e-9);
+
+        double total = per_interval;
+        for (int interval = 1; interval < 5; ++interval)
+        {
+            total += book.accrue_interval_flows(rates, marks);
+        }
+        assert(std::abs(total + 0.005) < 1e-9);
+        assert(std::abs(book.metrics().cash - 979.995) < 1e-9);
+        assert(std::abs(book.metrics().realized_pnl + 0.005) < 1e-9);
+        // PERP-C is untouched, so its 10 USD is still in equity: 979.995 cash plus 20 USD of net value.
+        assert(std::abs(book.metrics().equity - 999.995) < 1e-9);
+    }
+
+    // A flat position and an unknown symbol both have no notional to charge a rate to, so neither
+    // accrues and neither moves cash. The closed position is still in the map, which is why the guard
+    // is on the quantity rather than on the lookup alone.
+    {
+        Portfolio closed(1, 1000.0, 10.0);
+        closed.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                     .exec_type = ExecType::Trade,
+                                     .symbol = "BTC-PERPETUAL",
+                                     .price = 6000.0,
+                                     .quantity = 1,
+                                     .owner = "test",
+                                     .liquidity_role = LiquidityRole::Maker,
+                                     .fee = 0.0});
+        closed.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                     .exec_type = ExecType::Trade,
+                                     .symbol = "BTC-PERPETUAL",
+                                     .price = 6000.0,
+                                     .quantity = 1,
+                                     .owner = "test",
+                                     .liquidity_role = LiquidityRole::Maker,
+                                     .fee = 0.0});
+        assert(closed.find_position("BTC-PERPETUAL")->quantity == 0);
+        assert(std::abs(closed.accrue_interval_flow("BTC-PERPETUAL", 0.5, 6000.0)) < 1e-12);
+        assert(std::abs(closed.accrue_interval_flow("NOT-HELD", 0.5, 6000.0)) < 1e-12);
+        assert(std::abs(closed.metrics().cash - 1000.0) < 1e-9);
+        assert(std::abs(closed.metrics().equity - 1000.0) < 1e-9);
+    }
 }
