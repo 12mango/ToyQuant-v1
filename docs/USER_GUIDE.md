@@ -179,6 +179,20 @@ which makes every PnL a few cents and the inventory logic unreachable.
 
 The remaining `l2_replay` flags are `--no-output`, `--fast-validation` and `--profile-stages[=N]`.
 
+The symbol decides the instrument, through `instrument_spec_of`: `BTC-PERPETUAL`, `BTC-USDT-SWAP`, `SPY` and
+`MESZ6` are the entries today, and a symbol with no entry is an error rather than a default, because a default
+would quietly price the wrong tick with the wrong fee. A listed future also states its contract multiplier,
+which is what makes one micro E-mini S&P 500 unit worth five times the index price, and its quarter point tick
+worth 1.25 USD rather than 0.25, so a commission of about sixty cents a contract is half a tick a side:
+
+```bash
+./build/toy_quant l2_replay data/v2/glbx_MESZ6_trades.csv.gz data/v2/glbx_MESZ6_depth.csv.gz \
+  MESZ6 0 active_l2 1 conservative --order-size=5 --inventory-limit=20 --base-spread-ticks=1
+```
+
+The collateral fields stay a cash-only figure, which is the documented model and not a description of a margined
+future: such a run reports exposure over collateral and should be read for its capture, fee and markout columns.
+
 When the benchmark is given an incremental file, the tool reconstructs a compact top-five timeline
 from the grouped updates and reports the same output fields. Python `markout_5/20` means the
 mid-price difference at the fifth/twentieth subsequent sampled depth record; it is not the same

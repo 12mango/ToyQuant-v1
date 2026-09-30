@@ -663,10 +663,41 @@ int main()
         // The fee is both terms at once, on a fill where each is visible: a hundred shares at a hundred
         // dollars is ten thousand dollars of notional, so a maker rate of one basis point is 1.00 USD, and
         // 0.0035 a share adds another 0.35.
-        assert(std::abs(fee_on_fill(0.0001, 0.0, 0.0035, 100.0, 100, 1) - 1.35) < 1e-12);
+        assert(std::abs(fee_on_fill(0.0001, 0.0, 1.0, 0.0035, 100.0, 100, 1) - 1.35) < 1e-12);
         // A schedule that predates the equity entry leaves the second term at zero, so its fee is the rate
         // alone, and a per-share commission does not shrink with the share price the way a rate does.
-        assert(std::abs(fee_on_fill(0.0001, 0.0, 0.0, 100.0, 100, 1) - 1.00) < 1e-12);
-        assert(std::abs(fee_on_fill(0.0, 0.0, 0.0035, 10.0, 100, 1) - 0.35) < 1e-12);
+        assert(std::abs(fee_on_fill(0.0001, 0.0, 1.0, 0.0, 100.0, 100, 1) - 1.00) < 1e-12);
+        assert(std::abs(fee_on_fill(0.0, 0.0, 1.0, 0.0035, 10.0, 100, 1) - 0.35) < 1e-12);
+    }
+
+    // A listed future has a contract multiplier, and the micro E-mini is the instrument this repository
+    // needed: a quarter point tick worth 1.25 USD per contract because the multiplier is 5, and a commission
+    // charged per contract rather than as a fraction of the notional. Two sides therefore cost less than one
+    // tick, which is the first time that has been true here.
+    {
+        const InstrumentSpec mes = micro_es_spec();
+        assert(mes.exchange == "glbx");
+        assert(std::abs(mes.tick_size - 0.25) < 1e-12);
+        assert(std::abs(mes.multiplier - 5.0) < 1e-12);
+        assert(mes.unit_notional_usd == 0.0);
+        assert(mes.quantity_scale == 1);
+        assert(mes.maker_fee_rate == 0.0);
+        assert(std::abs(mes.fee_per_share - 0.62) < 1e-12);
+
+        const double tick_usd = mes.tick_size * mes.multiplier;
+        assert(std::abs(tick_usd - 1.25) < 1e-12);
+        assert(2.0 * mes.fee_per_share < tick_usd);
+        // One contract at an index price of 6100 is 30500 USD of notional, not 6100, and the fee per contract
+        // does not move with that price.
+        assert(std::abs(unit_notional_at(0.0, mes.multiplier, 6100.0) - 30500.0) < 1e-9);
+        assert(std::abs(fee_on_fill(0.0, 0.0, 5.0, 0.62, 6100.0, 1, 1) - 0.62) < 1e-12);
+        assert(std::abs(fill_notional_usd(0.0, 5.0, 6100.0, 1, 1) - 30500.0) < 1e-9);
+        // A multiplier of one leaves the price based unit exactly as it was, which is what keeps every
+        // schedule that predates the futures entry arithmetically unchanged.
+        assert(unit_notional_at(0.0, 1.0, 6100.0) == 6100.0);
+
+        InstrumentSpec looked_up{};
+        assert(instrument_spec_of("MESZ6", looked_up));
+        assert(looked_up.multiplier == 5.0);
     }
 }

@@ -348,6 +348,46 @@ int main()
         assert(profitable.markout_gate_skips() == 0);
     }
 
+    // The fee the gate has to cover is not only a rate. A US share and a listed future are billed per share and
+    // per contract with a zero rate, so a gate that read the rate alone treated those markets as free and quoted
+    // everything; the commission arrives as `fee_per_unit` and becomes ticks through the tick's USD value, which
+    // is its size times the instrument's multiplier. This book is one tick wide, so a touch quote can capture half
+    // a tick of 0.5 USD each, and the commission below is compared against exactly that.
+    {
+        const auto gated_with = [&](double fee_per_unit, double multiplier)
+        {
+            L2MarketMaker maker(L2MarketMakerConfig{.order_size = 1,
+                                                    .base_spread = 1.0,
+                                                    .inventory_limit = 100,
+                                                    .tick_size = 0.5,
+                                                    .fee_per_unit = fee_per_unit,
+                                                    .multiplier = multiplier,
+                                                    .markout_cover = true,
+                                                    .markout_cover_min_samples = 2});
+            return maker;
+        };
+        // No commission: the gate covers nothing and both sides quote, which is the behaviour every schedule
+        // that existed before the futures entry still gets.
+        auto free_maker = gated_with(0.0, 1.0);
+        assert(free_maker.on_l2_market_view(view).size() == 2);
+        assert(free_maker.edge_gate_skips() == 0);
+
+        // A commission the quote cannot cover. The quote sits a couple of ticks from the midpoint, and five
+        // dollars a unit on a half dollar tick is ten ticks of fee, so both sides are refused and attributed to
+        // the fee rather than to a measured cost. Before the commission reached the gate this run quoted both
+        // sides, because the only rate it read was zero.
+        auto dear = gated_with(5.0, 1.0);
+        assert(dear.on_l2_market_view(view).empty());
+        assert(dear.edge_gate_skips() == 2);
+        assert(dear.markout_gate_skips() == 0);
+
+        // The same commission on a contract whose tick is worth twenty times as much is half a tick, which the
+        // same quote covers, so the multiplier is part of what decides whether a per-unit fee is dear.
+        auto scaled = gated_with(5.0, 20.0);
+        assert(scaled.on_l2_market_view(view).size() == 2);
+        assert(scaled.edge_gate_skips() == 0);
+    }
+
     // Inventory discipline: above the band the position is reduced instead of carried, by one order priced at
     // the touch on the reducing side, which the engine fills as a taker at that price.
     {

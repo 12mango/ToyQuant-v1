@@ -70,10 +70,12 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                           .taker_rate = instrument.taker_fee_rate,
                                           .quantity_scale = instrument.quantity_scale,
-                                          .unit_notional_usd = instrument.unit_notional_usd},
+                                          .unit_notional_usd = instrument.unit_notional_usd,
+                                          .multiplier = instrument.multiplier},
                               1, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0, 0,
                               instrument.lot_size, instrument.min_order_quantity);
-        Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
+        Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
+                        instrument.multiplier);
         Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio,
                   instrument.tick_size);
 

@@ -89,8 +89,8 @@ CarrySummary run_carry(CarryConfig config)
     uint64_t order_id = 0;
     const auto fill = [&](const InstrumentSpec& leg, exchange::Side side, uint64_t ts)
     {
-        const double fee = fee_on_fill(leg.taker_fee_rate, leg.unit_notional_usd, leg.fee_per_share,
-                                       kUsdUnitPrice, quantity, leg.quantity_scale);
+        const double fee = fee_on_fill(leg.taker_fee_rate, leg.unit_notional_usd, leg.multiplier,
+                                       leg.fee_per_share, kUsdUnitPrice, quantity, leg.quantity_scale);
         portfolio.apply(ExecutionReport{.order_id = ++order_id,
                                         .side = side,
                                         .exec_type = ExecType::Trade,

@@ -52,6 +52,14 @@ struct L2MarketMakerConfig
     // touch cannot pay for itself. A zero rate or zero extra ticks leaves the gate off, so every documented
     // run that does not ask for the gate keeps its numbers.
     double maker_fee_rate{0.0};
+    // A commission charged for the instrument's own unit, in USD, and the USD value of one price unit in one
+    // quantity unit. Both are here because the gate has to see the whole fee: a US share and a listed future
+    // are billed per share and per contract with a zero rate, so a gate that only knew the rate would treat
+    // those markets as free and quote everything. The tick's USD value is tick_size * multiplier, so the
+    // commission in ticks is fee_per_unit / (tick_size * multiplier), which for a hundred dollar share is a
+    // third of a tick and for a micro E-mini is half of one.
+    double fee_per_unit{0.0};
+    double multiplier{1.0};
     double edge_cover_ticks{0.0};
     // The adverse-selection gate: a side is quoted only when the edge that fill would capture also covers what
     // passive fills at that distance from the midpoint have actually cost in this window, as the pipeline
@@ -395,8 +403,16 @@ class L2MarketMaker : public Strategy
         // reference price, and the cost it has to cover is the maker fee expressed in ticks at that price,
         // plus, when the run asked for it, what passive fills at that distance have actually cost.
         const double reference_price = 0.5 * (top.bid_price + top.ask_price);
+        // The fee a fill has to cover, in ticks: the rate on the reference notional, plus a commission
+        // charged for the unit itself, which is how a share and a listed future are billed and which a rate
+        // cannot express. The tick is worth tick_size * multiplier in USD, so dividing the commission by that
+        // puts it in the same units as the edge. An instrument with no commission leaves the second term
+        // exactly zero, so no recorded run moves.
+        const double tick_usd =
+            config_.tick_size * (config_.multiplier > 0.0 ? config_.multiplier : 1.0);
         const double fee_ticks = reference_price > 0.0 && config_.tick_size > 0.0
-                                     ? config_.maker_fee_rate * reference_price / config_.tick_size
+                                     ? config_.maker_fee_rate * reference_price / config_.tick_size +
+                                           (tick_usd > 0.0 ? config_.fee_per_unit / tick_usd : 0.0)
                                      : 0.0;
         // A measured markout is a signed number, and the gate only cares about the cost: a distance whose
         // passive fills have been profitable so far needs no cover beyond the fee, and one whose fills have

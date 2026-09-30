@@ -27,6 +27,9 @@ struct FeeSchedule
     // for spot style instruments. It must be set for contracts with a fixed USD face value,
     // otherwise the fee is charged on the base asset price instead of on the contract value.
     double unit_notional_usd{0.0};
+    // See InstrumentSpec::multiplier: USD value of one price unit in one quantity unit. 1, the default, is
+    // every instrument whose unit is worth its price, and a future with a contract multiplier sets its own.
+    double multiplier{1.0};
     // See InstrumentSpec::fee_per_share: a commission per unit on top of the rates, which is how a US equity
     // fill is priced. 0, the default, leaves every schedule that existed before the equity entry unchanged.
     double fee_per_share{0.0};

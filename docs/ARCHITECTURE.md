@@ -192,6 +192,19 @@ commission on an expensive one are the two ways a venue can make a tight quote u
 hundred dollar share, one tick is a basis point and the tiered commission is a third of it, which is
 the first fee in this repository that a tick can cover.
 
+`InstrumentSpec::multiplier` is the third field of the same kind, for an instrument whose unit is
+worth a multiple of its price. One micro E-mini S&P 500 contract is five dollars per index point, so
+a unit that is one contract is worth `price * 5`, a quarter point tick is 1.25 USD, and a position of
+one contract is notional of five times the price rather than the price. Without the field the fee and
+the cash balance would both be five times too small, which is the same class of error the fixed face
+value was added to fix in the other direction. It defaults to 1 and multiplying by 1 is exact, so no
+schedule that predates the futures entry moves.
+
+That combination is the point of the futures entry: a tick worth 1.25 USD against a commission of
+about sixty cents a contract is the first market measured here where a one tick quote can pay for
+itself before the queue and the adverse selection are counted, which is the question the perpetuals
+kept answering with 2.5 ticks of fee against 0.1 ticks of capture.
+
 BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
 and drive matching. External Tick/BBO state is stored separately from local strategy orders.
 `market_top()` exposes only venue prices through `IOrderBook`. Strategy orders are owned only by

@@ -44,10 +44,13 @@ class Portfolio
     // `unit_notional_usd` mirrors InstrumentSpec::unit_notional_usd: 0 means the traded price is
     // the USD value of one quantity unit, which is the spot case. A fixed value marks an
     // instrument whose contracts have a set USD face value.
+    // `multiplier` mirrors InstrumentSpec::multiplier: the USD value of one price unit in one quantity
+    // unit, which is 5 for a micro E-mini and 1 for everything whose unit value is just its price.
     explicit Portfolio(uint64_t quantity_scale = 1, double initial_cash = 1000.0,
-                       double unit_notional_usd = 0.0)
+                       double unit_notional_usd = 0.0, double multiplier = 1.0)
         : quantity_scale_(quantity_scale == 0 ? 1 : quantity_scale),
           unit_notional_usd_(unit_notional_usd),
+          multiplier_(multiplier),
           initial_cash_(initial_cash),
           cash_(initial_cash),
           // Matches reset(). Leaving equity at its default of zero made a summary that never
@@ -113,17 +116,18 @@ class Portfolio
     // USD value of one quantity unit at `price`.
     double unit_value(double price) const
     {
-        return unit_notional_at(unit_notional_usd_, price);
+        return unit_notional_at(unit_notional_usd_, multiplier_, price);
     }
 
     // USD value of `amount` units held from `entry_price` to `price`.
     double value_of(double amount, double entry_price, double price) const
     {
-        return position_value(unit_notional_usd_, amount, entry_price, price);
+        return position_value(unit_notional_usd_, multiplier_, amount, entry_price, price);
     }
 
     uint64_t quantity_scale_;
     double unit_notional_usd_;
+    double multiplier_;
     double initial_cash_;
     double cash_;
     double realized_pnl_{0.0};

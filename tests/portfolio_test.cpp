@@ -363,4 +363,38 @@ int main()
         assert(std::abs(closed.metrics().cash - 1000.0) < 1e-9);
         assert(std::abs(closed.metrics().equity - 1000.0) < 1e-9);
     }
+
+    // A contract multiplier is what makes a listed future worth more than its index price, so it is the
+    // difference between a micro E-mini position being 6100 USD and being 30500. One contract bought at 6100
+    // with a multiplier of 5 therefore costs 30500 of the cash this cash-only model holds, and a single index
+    // point of movement is 5 USD rather than 1.
+    {
+        Portfolio scaled(1, 100000.0, 0.0, 5.0);
+        scaled.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                     .exec_type = ExecType::Trade,
+                                     .symbol = "MESZ6",
+                                     .price = 6100.0,
+                                     .quantity = 1,
+                                     .owner = "test",
+                                     .liquidity_role = LiquidityRole::Maker,
+                                     .fee = 0.62});
+        assert(std::abs(scaled.metrics().cash - (100000.0 - 30500.0 - 0.62)) < 1e-6);
+        scaled.mark_to_market({{"MESZ6", 6101.0}});
+        assert(std::abs(scaled.metrics().unrealized_pnl - 5.0) < 1e-6);
+        assert(std::abs(scaled.metrics().equity - (100000.0 - 0.62 + 5.0)) < 1e-6);
+
+        // The same trade and the same one point move on an instrument whose unit is worth its price, which is
+        // every instrument this repository traded before this one, and the field left at its default.
+        Portfolio plain(1, 100000.0, 0.0);
+        plain.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                    .exec_type = ExecType::Trade,
+                                    .symbol = "SPY",
+                                    .price = 6100.0,
+                                    .quantity = 1,
+                                    .owner = "test",
+                                    .liquidity_role = LiquidityRole::Maker,
+                                    .fee = 0.0});
+        plain.mark_to_market({{"SPY", 6101.0}});
+        assert(std::abs(plain.metrics().unrealized_pnl - 1.0) < 1e-6);
+    }
 }

@@ -174,6 +174,63 @@ The instrument half is in place already: `us_equity_spec` states the one cent ti
 commission per share, `docs/ARCHITECTURE.md` explains why a per-share commission is a field of its own rather
 than a rate, and the registered symbol is looked up by the same `instrument_spec_of` the carry mode uses.
 
+## Databento L2: A Tradable Market With Real Depth
+
+The depth a market-making test needs is ten price levels per side plus the trades, and the first source here that
+is both that and a market a Hong Kong personal account may trade is Databento's `mbp-10`, which
+`tools/fetch_databento.py` downloads and converts. The key comes from `DATABENTO_API_KEY` and is never written to
+a file in this checkout:
+
+```bash
+export DATABENTO_API_KEY=db-...
+python3 tools/fetch_databento.py --cost --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
+  --start 2026-09-29T13:30 --end 2026-09-29T15:30
+python3 tools/fetch_databento.py --download --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
+  --start 2026-09-29T13:30 --end 2026-09-29T15:30 --pretty-px \
+  --output data/v2/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv
+python3 tools/fetch_databento.py --convert --input data/v2/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv \
+  --symbol MESZ6 --exchange glbx --depth-out data/v2/glbx_MESZ6_depth.csv.gz \
+  --trades-out data/v2/glbx_MESZ6_trades.csv.gz
+```
+
+What the route is, read on 2026-09-30 from the API itself rather than from a page: the endpoints take their
+parameters **in the query string**, and a JSON body is rejected with every field reported missing, which is what
+the first version of the tool did for an hour. The `mbp-10` schema carries **the whole ten level book on every
+row**, with `action` describing what happened at the top, so one download is both the depth and the trades: the
+trades are the `action=T` rows and cost nothing extra, where a separate trade feed is twenty-eight dollars a
+gigabyte on the same venue. Prices are integers scaled by 1e-9 unless `--pretty-px` asks for decimals, and the
+bill is on the DBN size rather than the CSV size, so a busy two hours of the micro E-mini is about half a dollar
+and a session is about two. The depth file itself is several gigabytes of CSV, which is why it stays untracked.
+
+The conversion writes the CSV pair the existing readers already consume — the Deribit incremental book shape and
+the Deribit trade shape — so no C++ was added for this format. The converter checks its own work twice on the way
+through, because a conversion is the kind of step where a plausible bug is invisible:
+
+* it rebuilds every row's book from the deltas it emitted and compares that against the ten levels the vendor
+  sent, which came out exact over 2.98 million rows of one download;
+* it counts the aggressor convention rather than assuming it: of the trade rows in one slice, 43,467 printed at
+  the ask with `side=B` and 44,160 printed at the bid with `side=A`, with 3,678 inside or beyond the touch, so
+  `B` is the buy and the price agrees with the label on every trade that had a touch to agree with. The
+  convention is a convention, and the counts are what make it a measured one.
+
+Two facts about the file that a reader has to know, both measured here rather than assumed: the vendor's
+`sequence` **ties** across the rows one event produces, so the trade file's `id` column is the converter's own
+running index because the reader requires strict increase; and `local_timestamp` is the vendor's receive time, so
+rows are grouped into batches by a clock that can repeat between events, which the reader handles by applying the
+batch in order.
+
+A third fact is a decision: Databento labels a trade with the side of the aggressing order, and uses `N` where
+there is no aggressor to name. Those prints cannot drive a model whose fills and markouts are keyed by the
+aggressor, so the converter **drops them and counts them**: 4,294 of the 28,592 prints in the SPY two hours, and
+none in the futures file. Dropping them removes trades the queue model would otherwise consume, which is the
+conservative direction, and the count is printed on every conversion so a file that was mostly dropped is
+visible rather than quietly thinner.
+
+The raw instrument, before conversion, is one contract of a micro E-mini S&P 500 future: a quarter point tick
+worth 1.25 USD because the contract multiplier is 5, and a commission charged per contract. The same tool takes
+an equity: SPY on the Nasdaq book, one cent tick, sizes in shares, 2.18 million depth rows and 28,592 trade rows
+in two hours. `tools/f4_windows.sh` re-runs both, and `docs/ROADMAP.md` records what the runs found.
+
 ## OKX Trades, and What the Public Route Cannot Do
 
 The public history endpoint answers without a key, and `tools/fetch_okx_trades.py` turns it into one CSV per

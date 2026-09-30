@@ -214,18 +214,21 @@ void Application::run_replay_mode() const
                                       .taker_rate = instrument.taker_fee_rate,
                                       .quantity_scale = instrument.quantity_scale,
                                       .unit_notional_usd = instrument.unit_notional_usd,
+                                      .multiplier = instrument.multiplier,
                                       .fee_per_share = instrument.fee_per_share},
                           1, cfg_.queue_model, cfg_.queue_lump_chunks,
                           cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
                           cfg_.arrival_share, cfg_.order_latency_us,
                           cfg_.cancel_latency_us, instrument.lot_size,
                           instrument.min_order_quantity);
-    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
+    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
+                        instrument.multiplier);
     Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
                       portfolio, instrument.tick_size);
     // The replay path reports the same collateral and quantity scale as the L2 path, so its exposure
     // and edge figures are in dollars rather than in raw instrument units.
-    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale);
+    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
+                            instrument.multiplier);
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_trace_order(cfg_.trace_order);
     // The funding series is optional and owned here, because the pipeline only borrows it. A file that names
@@ -274,14 +277,11 @@ void Application::run_l2_replay_mode() const
     const std::string format = market_data_format_of(depth_file);
     const bool okx = format == "okx";
 
+    // The symbol decides the instrument, through the one registry the rest of the program reads, so a new
+    // market is an entry there rather than another branch here. A symbol with no entry is an error rather
+    // than a default, because a default would quietly price the wrong tick with the wrong fee.
     InstrumentSpec instrument;
-    if (cfg_.symbol == "BTC-PERPETUAL")
-        instrument = deribit_btc_perpetual_spec();
-    else if (cfg_.symbol == "BTC-USDT-SWAP")
-        // The scale comes from the specification rather than the command line, because this feed counts
-        // contracts and only a scale of a hundred thousand or more holds one contract exactly.
-        instrument = okx_btc_swap_spec();
-    else
+    if (!instrument_spec_of(cfg_.symbol, instrument))
         throw std::invalid_argument("no instrument specification for L2 replay symbol: " + cfg_.symbol);
     // A different maker fee rate than the venue's, for the runs that ask what the fee would have had to be.
     if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
@@ -322,19 +322,22 @@ void Application::run_l2_replay_mode() const
                                       .taker_rate = instrument.taker_fee_rate,
                                       .quantity_scale = instrument.quantity_scale,
                                       .unit_notional_usd = instrument.unit_notional_usd,
+                                      .multiplier = instrument.multiplier,
                                       .fee_per_share = instrument.fee_per_share},
                           1, cfg_.queue_model, cfg_.queue_lump_chunks,
                           cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
                           cfg_.arrival_share, cfg_.order_latency_us,
                           cfg_.cancel_latency_us, instrument.lot_size,
                           instrument.min_order_quantity);
-    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd);
+    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
+                        instrument.multiplier);
     Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
                       portfolio, instrument.tick_size);
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
     // enforced. 0, the default, reports the ceiling without blocking anything.
-    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale);
+    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
+                            instrument.multiplier);
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_profiler(profiler);
     pipeline.set_trace_order(cfg_.trace_order);

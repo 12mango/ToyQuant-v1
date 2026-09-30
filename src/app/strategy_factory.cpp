@@ -112,6 +112,11 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         // The decision layer's expected-value gate lives on the strategy, so it is set here where the
         // instrument's fee schedule is in scope. A zero override leaves it off.
         base_config.maker_fee_rate = instrument ? instrument->maker_fee_rate : 0.0;
+        // The commission and the multiplier travel with the fee rate, because the gate has to see the whole
+        // fee: a market billed per share or per contract has a zero rate, and a gate that only knew the rate
+        // would treat it as free. Both default to the values that leave the arithmetic unchanged.
+        base_config.fee_per_unit = instrument ? instrument->fee_per_share : 0.0;
+        base_config.multiplier = instrument ? instrument->multiplier : 1.0;
         base_config.edge_cover_ticks = config.edge_cover_ticks_override;
         base_config.min_spread_ticks = config.min_spread_ticks_override;
         base_config.markout_cover = config.markout_cover;

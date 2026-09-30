@@ -336,9 +336,13 @@ One script, four tiers, run on every change. `tools/verify_l2.sh all`:
 | Tier | Time | What it checks |
 |---|---|---|
 | 0 | 0.2 s | CTest: 15 unit-test binaries |
-| 1 | ~3 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, and the prose lints |
+| 1 | ~50 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, and the IEX and futures registries' own checks |
 | 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against a stored reference |
 | 3 | ~5 s | the same 15 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
+
+Most of tier 1 is the document check: it re-runs the 45 recorded blocks the documents quote, which include the
+F4 windows on converted Databento data, so a claim about a market moves the per-edit loop from seconds to about a
+minute. That is the cost of the rule that a documented number is a claim about the code.
 
 Tier 3 is the one standard C++ check this project did not run until now, and it is **checked to be live
 rather than assumed**: the sanitizer binary links `libasan` and `libubsan` and contains 34 `__asan`

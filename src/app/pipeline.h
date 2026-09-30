@@ -54,11 +54,12 @@ class Pipeline
     // unit is a millionth of a BTC, so a notional computed from raw quantities is a million times too
     // large, which is exactly what the first version of these fields reported.
     void set_collateral(double starting_cash_usd, double unit_notional_usd,
-                        uint64_t quantity_scale = 1)
+                        uint64_t quantity_scale = 1, double multiplier = 1.0)
     {
         starting_cash_usd_ = starting_cash_usd;
         unit_notional_usd_ = unit_notional_usd;
         quantity_scale_ = quantity_scale == 0 ? 1 : quantity_scale;
+        multiplier_ = multiplier;
     }
 
     // Optional per-stage timing. The profiler is owned by the caller and has to outlive
@@ -158,6 +159,9 @@ class Pipeline
     uint64_t risk_rejected_orders_{0};
     double starting_cash_usd_{0.0};
     double unit_notional_usd_{0.0};
+    // USD value of one price unit in one quantity unit, from the instrument: 1 unless the contract has a
+    // multiplier, which is how a futures notional is five times its index price rather than equal to it.
+    double multiplier_{1.0};
     uint64_t quantity_scale_{1};
     double max_abs_exposure_usd_{0.0};
     uint64_t exposure_over_collateral_fills_{0};

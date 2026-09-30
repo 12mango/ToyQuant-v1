@@ -1926,3 +1926,58 @@ Both mechanisms work, and neither makes the quoting profitable on this instrumen
 happen at all, the capture does not cover the fee plus what the fills cost. That is the argument for the last step
 rather than another attempt at this one — a market whose spread is wide relative to its fee, where this same
 decision layer has something to capture in the first place.
+
+## The Market Where the Fee Is Not the Wall
+
+The last two sections end on the same sentence: on a perpetual the fee is 2.57 ticks against a capture of 0.095,
+so nothing about the quoting can matter until the instrument changes. Two markets where the fee is a *fraction*
+of a tick are reachable from a Hong Kong personal account, and both are now measured with the decision layer the
+perpetuals were measured with, on the same two hours of one session (2026-09-29 13:30 to 15:30 UTC, the US cash
+open), from Databento `mbp-10` downloads converted by `tools/fetch_databento.py` into the CSV pair the existing
+readers take. A micro E-mini S&P 500 contract pays about 0.62 USD of commission against a tick worth 1.25, and a
+US share pays 0.0035 USD against a tick of one cent.
+
+| Window | Fills | Units | Fee USD | Capture, ticks | Markout, ticks | Gross USD | Net USD | Net per fill | Breakeven maker rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| micro E-mini, one tick | 1675 | 3934 | 2439.08 | 0.013091 | 0.157092 | -387.5 | -2826.58 | -1.68751 | -2.54567e-06 |
+| micro E-mini, two ticks | 57 | 122 | 75.64 | 0.479508 | -0.688525 | -196.25 | -271.89 | -4.77 | -4.15733e-05 |
+| micro E-mini, four ticks | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| micro E-mini, gate on | 1599 | 3750 | 2325 | 0.0110667 | 0.1596 | -98.75 | -2423.75 | -1.51579 | -6.806e-07 |
+| **SPY, one tick** | 799 | 33352 | 116.732 | 0.267855 | 0.0919135 | 379.24 | 262.508 | 0.328546 | 1.48655e-05 |
+| SPY, two ticks | 263 | 12279 | 42.9765 | 0.672978 | -0.246926 | -32.83 | -75.8065 | -0.288238 | -3.49544e-06 |
+| SPY, one tick, gate on | 791 | 33116 | 115.906 | 0.247146 | 0.111895 | 216.18 | 100.274 | 0.126769 | 8.53436e-06 |
+| SPY, one tick, flattening above 1000 shares | 832 | 34618 | 121.163 | 0.241161 | 0.114406 | 282.58 | 161.417 | 0.194011 | 1.07956e-05 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
+then: trade_reports=799 trade_report_quantity=33352 fees_paid=116.732 captured_edge_per_unit_ticks=0.267855 markout_per_unit_ticks=0.0919135 gross_pnl_usd=379.24 closed_pnl_usd=330.519 net_pnl_usd=262.508 net_per_fill_usd=0.328546 breakeven_maker_rate=1.48655e-05
+-->
+
+The whole table is re-derived by `tools/f4_windows.sh`, which needs those two converted files and says so rather
+than printing numbers without them. The pinned row is the one claim the per-edit gate keeps true; the other seven
+cost about forty seconds together, which is too much for the loop that runs on every edit, and the script is the
+re-derivation instead.
+
+Three of the rows are the same finding the perpetuals produced, so they are read the same way. Widening the quote
+multiplies the capture and cuts the fills — on SPY from 799 fills to 263, and on the micro E-mini from 1,675 to 57
+before four ticks produce none at all in two hours. Flattening the position costs more than it saves, on SPY
+lowering 262.508 to 161.417, which is now the second market to say so. And the 0.013091 of capture on the
+micro E-mini is a hundredth of a tick against a fee of half a tick: a fee a tick can cover is not the same thing
+as a capture that a fee can pay for, and the micro E-mini is where those two came apart.
+
+Two rows are new, and they are the reason this section exists. **SPY's closed PnL is +447.251 USD gross and
++330.519 after fees**, so the 262.508 net is quoting rather than a position carried into a favourable mark — the
+opposite of the perpetuals row the flatten-band section ends on. And its **breakeven maker rate is +0.0000149
+rather than negative**: a rate on top of the commission would still leave the window flat, where every earlier
+window needed a rebate. The other new row is the gate behaving as a filter rather than an improvement: it cuts
+the micro E-mini gross loss from -387.5 to -98.75, which is its purpose, and on SPY, whose measured markout is
+positive, it lowers +262.508 to +100.274 by refusing fills that were paying.
+
+What this is not: the book is Nasdaq's alone, so the queue ahead of a quote is one venue's displayed size out of
+a consolidated market and the fill population is optimistic where it matters; it is two hours of one session
+taken from the part of the day with the most mean reversion; the commission is a large retail broker's tiered
+rate and the tier a Hong Kong account receives is unverified; and the venue's own maker rebate, of the same order
+as that commission, is not in the model. The claim this section makes is only that the inequality the perpetuals
+could never satisfy **is satisfiable**, and that the row which satisfies it says so in a field the gate
+re-derives.
+

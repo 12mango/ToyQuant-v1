@@ -19,6 +19,12 @@ struct InstrumentSpec
     // price, so it sets 10 here. Getting this wrong scales every fee and every cash balance by
     // the price, which is roughly 630x at 2020 BTC prices.
     double unit_notional_usd{0.0};
+    // USD value of one price unit in one quantity unit: the contract multiplier of a listed future. One micro
+    // E-mini S&P 500 contract is 5 USD per index point, so a unit that is one contract is worth `price * 5` and
+    // a quarter point tick is 1.25 USD rather than 0.25. 1, the default, leaves the unit value as the traded
+    // price, which is every instrument this repository traded before the futures entry; multiplying by it is
+    // exact, so no schedule that existed before moves.
+    double multiplier{1.0};
     uint64_t lot_size{1};
     uint64_t min_order_quantity{1};
     // Base asset amount in one quantity unit of the feed, for an instrument quoted in contracts. One OKX
@@ -37,32 +43,33 @@ struct InstrumentSpec
 
 // USD value of one quantity unit at `price`. Shared by the fee model and the portfolio so the
 // two cannot disagree about what a filled quantity is worth.
-inline double unit_notional_at(double unit_notional_usd, double price)
+inline double unit_notional_at(double unit_notional_usd, double multiplier, double price)
 {
-    return unit_notional_usd > 0.0 ? unit_notional_usd : price;
+    return unit_notional_usd > 0.0 ? unit_notional_usd : price * multiplier;
 }
 
 // USD value of `quantity` units held from `entry_price` to `price`. With a price based unit this
 // is quantity * price. With a fixed USD face value the position holds a fixed USD exposure whose
 // base amount was acquired at the entry price, which is the inverse contract relationship, so
 // its value scales with the price ratio.
-inline double position_value(double unit_notional_usd, double quantity, double entry_price,
-                             double price)
+inline double position_value(double unit_notional_usd, double multiplier, double quantity,
+                             double entry_price, double price)
 {
     if (entry_price <= 0.0) return 0.0;
-    return unit_notional_at(unit_notional_usd, entry_price) * quantity * (price / entry_price);
+    return unit_notional_at(unit_notional_usd, multiplier, entry_price) * quantity *
+           (price / entry_price);
 }
 
 // USD value of a fill of `quantity` units at `price`: what a venue charges its rate on, and what a carry's
 // funding is measured against. With a price based unit it is `price * quantity`; with a fixed USD face value
 // it is the face value times the number of contracts.
-inline double fill_notional_usd(double unit_notional_usd, double price, uint64_t quantity,
-                                uint64_t quantity_scale)
+inline double fill_notional_usd(double unit_notional_usd, double multiplier, double price,
+                                uint64_t quantity, uint64_t quantity_scale)
 {
     const double units = quantity_scale > 0
                              ? static_cast<double>(quantity) / static_cast<double>(quantity_scale)
                              : static_cast<double>(quantity);
-    return unit_notional_at(unit_notional_usd, price) * units;
+    return unit_notional_at(unit_notional_usd, multiplier, price) * units;
 }
 
 // USD fee a venue charges for filling `quantity` units at `price`: the USD value of the fill times `rate`,
@@ -70,13 +77,13 @@ inline double fill_notional_usd(double unit_notional_usd, double price, uint64_t
 // charge both and because a per-share commission is what a US equity fill actually costs. Shared by the
 // matching engine and by a caller that books a fill outside a book, so the two cannot disagree about what a
 // fill costs, exactly as unit_notional_at is shared by the fee model and the portfolio.
-inline double fee_on_fill(double rate, double unit_notional_usd, double fee_per_share, double price,
-                          uint64_t quantity, uint64_t quantity_scale)
+inline double fee_on_fill(double rate, double unit_notional_usd, double multiplier, double fee_per_share,
+                          double price, uint64_t quantity, uint64_t quantity_scale)
 {
     const double units = quantity_scale > 0
                              ? static_cast<double>(quantity) / static_cast<double>(quantity_scale)
                              : static_cast<double>(quantity);
-    return fill_notional_usd(unit_notional_usd, price, quantity, quantity_scale) * rate +
+    return fill_notional_usd(unit_notional_usd, multiplier, price, quantity, quantity_scale) * rate +
            units * fee_per_share;
 }
 
@@ -146,6 +153,27 @@ inline InstrumentSpec us_equity_spec(const std::string& symbol, double fee_per_s
                           .fee_per_share = fee_per_share};
 }
 
+// A CME micro E-mini S&P 500 future as Databento publishes it: a quarter point tick, a five dollar multiplier,
+// and a commission charged per contract rather than as a fraction of notional. It is the first instrument here
+// whose fee is a fraction of one tick — a retail round turn of about a dollar against a tick worth 1.25 — and
+// whose market a Hong Kong personal account can reach, which is what the fee question needed. One quantity unit
+// is one contract, so the multiplier is what makes a unit worth five times its price.
+inline InstrumentSpec micro_es_spec(const std::string& symbol = "MESZ6",
+                                    double fee_per_contract = 0.62)
+{
+    return InstrumentSpec{.exchange = "glbx",
+                          .symbol = symbol,
+                          .tick_size = 0.25,
+                          .quantity_scale = 1,
+                          .unit_notional_usd = 0.0,
+                          .multiplier = 5.0,
+                          .lot_size = 1,
+                          .min_order_quantity = 1,
+                          .maker_fee_rate = 0.0,
+                          .taker_fee_rate = 0.0,
+                          .fee_per_share = fee_per_contract};
+}
+
 // The specification this repository carries for a symbol, looked up by the name the feeds, the instruments
 // and the funding files all use. False means nothing is registered for it, and a caller says what it was
 // looking for rather than getting a default that would price the wrong instrument.
@@ -169,6 +197,11 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "SPY")
     {
         out = us_equity_spec(symbol);
+        return true;
+    }
+    if (symbol == "MESZ6")
+    {
+        out = micro_es_spec(symbol);
         return true;
     }
     return false;

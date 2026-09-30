@@ -102,7 +102,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
             if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade &&
                 report.liquidity_role == LiquidityRole::Maker)
                 maker_notional_usd_ +=
-                    fill_notional_usd(unit_notional_usd_, report.price, report.executed_quantity(),
+                    fill_notional_usd(unit_notional_usd_, multiplier_, report.price, report.executed_quantity(),
                                       quantity_scale_);
             if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
             {
@@ -135,7 +135,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 const double exposure =
                     std::abs(static_cast<double>(position_)) /
                     static_cast<double>(quantity_scale_) *
-                    unit_notional_at(unit_notional_usd_, report.price);
+                    unit_notional_at(unit_notional_usd_, multiplier_, report.price);
                 max_abs_exposure_usd_ = std::max(max_abs_exposure_usd_, exposure);
                 if (starting_cash_usd_ > 0.0 && exposure > starting_cash_usd_)
                     ++exposure_over_collateral_fills_;
@@ -155,7 +155,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 // by quantity * face value * edge / price, so this is the figure that can be compared
                 // with fees_paid. For a spot instrument the face value is zero, the price is the unit
                 // value, and the expression reduces to quantity * edge.
-                const double unit_value_at_fill = unit_notional_at(unit_notional_usd_, report.price);
+                const double unit_value_at_fill = unit_notional_at(unit_notional_usd_, multiplier_, report.price);
                 execution_quality_.captured_edge_usd +=
                     executed / static_cast<double>(quantity_scale_) * unit_value_at_fill *
                     unit_edge / std::max(report.price, 1e-9);
@@ -397,7 +397,7 @@ void Pipeline::process_event(const MarketEvent& event)
                     execution_quality_.markout_ticks_quantity +=
                         markout / std::max(tick_size_, PRICE_TICK_SIZE) *
                         static_cast<double>(observation.quantity);
-                    const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, last_mid_);
+                    const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, multiplier_, last_mid_);
                     execution_quality_.markout_usd +=
                         static_cast<double>(observation.quantity) /
                         static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
@@ -480,7 +480,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
             execution_quality_.markout_ticks_quantity +=
                 markout / std::max(tick_size_, PRICE_TICK_SIZE) *
                 static_cast<double>(observation.quantity);
-            const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, last_mid_);
+            const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, multiplier_, last_mid_);
             execution_quality_.markout_usd +=
                 static_cast<double>(observation.quantity) /
                 static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
