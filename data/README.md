@@ -136,6 +136,44 @@ is what a reader's output gets compared against. It reads the first rows by defa
 multi-gigabyte file, and it reads the gzip stream once to say whether a download is complete rather than
 interpreting a partial file as a short day.
 
+## IEX HIST: US Equity Depth, and Where It Stops
+
+The equity market is the first venue here where the fee can be smaller than a tick, so it is the market the fee
+question needs an answer from, and its free depth is a daily archive rather than an endpoint.
+`tools/fetch_iex_hist.py` prints that route and then verifies whatever the operator downloaded:
+
+```bash
+python3 tools/fetch_iex_hist.py --plan --date 2026-09-29
+python3 tools/fetch_iex_hist.py --verify data/v2/iex/20260929_IEXTP1_DEEP1.0.pcap.gz --sample 4
+python3 tools/fetch_iex_hist.py --self-test      # also run by tier 1 of the gate
+```
+
+What the IEX market-data page says, read on 2026-09-30: HIST is available for download "on a T+1 basis", the
+binary output of each feed is "provided in pcap format", it is captured via the lower level IEX Transport
+Protocol, and "firms must use appropriate specification versions to decode each pcap". The example name on that
+page is `20170515_IEXTP1_DEEP1.0.pcap.gz`, which is date, protocol version, feed and specification version.
+DEEP is the depth feed and TOPS is the top of book only, and the file list on that page has a Login column, so
+the download is behind an account and an acceptance of the IEX Historical Data Terms of Use rather than an
+endpoint a script can call unattended.
+
+That is why the tool does not fetch. `--verify` reads the container instead: the gzip stream first, then the pcap
+global header and records, then IPv4 and UDP, then the IEX-TP segment prefix, and it counts the message type
+bytes it finds. It prints the packet count, the first and last packet time, the ports, the protocol versions, the
+message lengths and whether a segment holds one message or several — all measured on the file, none assumed.
+`--sample N` prints the raw first bytes of N messages, which is what a decoder gets written against, and
+`--self-test` builds such a file and checks the walk against it, because the archive itself cannot be fetched in
+a test.
+
+**What the tool will not do is decode a DEEP message.** The published specification no longer answers at the URL
+this repository knew, and a decoder written from memory would produce a book that looks right and is not, so the
+type bytes and lengths above are the anatomy half and the decoder is the next half. Until that decoder exists and
+a real day of DEEP has been checked against it, this repository has no equity depth to replay and no equity run
+to report, which is what the venue table in `docs/ROADMAP.md` records.
+
+The instrument half is in place already: `us_equity_spec` states the one cent tick, the share scale and the
+commission per share, `docs/ARCHITECTURE.md` explains why a per-share commission is a field of its own rather
+than a rate, and the registered symbol is looked up by the same `instrument_spec_of` the carry mode uses.
+
 ## OKX Trades, and What the Public Route Cannot Do
 
 The public history endpoint answers without a key, and `tools/fetch_okx_trades.py` turns it into one CSV per

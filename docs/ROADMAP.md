@@ -35,6 +35,7 @@ Checked once, at the time of writing, so re-verify before paying for anything.
 |---|---|---|
 | **Tardis.dev free samples** | the first day of each month, in the format this repository already parses | **used**: the multi-day evidence grows one free day at a time, with no new code, which is why the two days already here are the first of their months |
 | **OKX official historical data** | trade history from 2021-09, funding rates from 2022-03, and high-resolution L2 order book from 2023-03, free and daily | **planned** (phase 2a): the second venue, for consecutive-day tests |
+| **IEX HIST, US equity depth** | free DEEP price level and TOPS archives, one pcap per day, T+1, behind a login and the IEX terms of use, and it is IEX's own book only rather than a consolidated one | **planned** (F4): the one market in the table below where a retail commission is smaller than a tick, whose archive needs a DEEP decoder that the published specification has to be obtained for |
 | Binance Vision, USD-M futures | free daily aggTrades, trades, book ticker (best bid and offer) updates, premium index klines and open-interest metrics | **used for research outside this repository**: funding and basis work, which needs no price ladder |
 | Binance Vision `bookDepth` | percentage bands around the mid, not discrete levels | **rejected**: a tick ladder cannot be rebuilt from it |
 | Bybit public data | trades, premium index and spot index; no order book directory | **rejected**: no L2 history |
@@ -67,7 +68,7 @@ columns of reasoning below rather than the same one.
 | Crypto USDT perpetuals (OKX, Binance, Bybit) | **best for measurement** | free consecutive book history with discrete levels, a published fee schedule, and one leg of limit orders is all the model needs, but access is restricted in some jurisdictions, so this is the test bench rather than the trading venue |
 | Locally licensed crypto spot venues | possible | legal and openable, but spot only for retail in some regimes, and a fee schedule an order of magnitude above the offshore perpetuals |
 | Micro futures on a major exchange | good | accessible through a local broker, a small contract size, and nearly round the clock operation; the fee is about a tick per side, which is the same conclusion the simulator reaches for a maker at one tick |
-| Equities and ETFs | good | the lowest measured fee of any venue here once the share commission is set against a notional, free history and a free paper account, and the natural home for a low frequency position rather than a quote |
+| Equities and ETFs | good | a fee that is a fraction of a tick once the share commission is set against a notional, free daily depth behind a login rather than an endpoint, a free paper account at the broker, and the natural home for a low frequency position rather than a quote |
 | Local index futures and cash equities | possible | accessible, but a transaction levy on both sides and paid depth make this the most expensive of the listed markets |
 | Derivative products of a licensed crypto venue | only for professional investors in some regimes | the rule is about the account category, not the venue, so it is worth checking before it is planned around |
 | Options anywhere | no | expiry, exercise, multiple legs and greeks are not in the model |
@@ -77,6 +78,39 @@ The rule behind the table: a personal account wins on capital and patience and l
 that fit are the ones where a position is held rather than won by being first in a queue. Adapting to another
 USDT perpetual is a reader and one instrument entry, and the chain of measurements that exists today does not
 move, because a second venue is an additional workload rather than a replacement for one.
+
+### Access, cost and data, market by market
+
+The table above ranks fit. This one is the three facts that decide whether a market can be measured at all, asked
+for a Hong Kong personal account specifically: may this account trade it, is the fee smaller than a tick, and is
+there continuous free depth to test the answer on.
+
+| Market | Tradable by a Hong Kong individual | Fee in ticks | Free continuous depth |
+|---|---|---|---|
+| US stocks and ETFs | yes, through a broker with US market access | a share commission is a fraction of a cent on a hundred dollar share whose tick is one cent, so about a third to a half of a tick a side, and a zero commission tier makes the fee not the wall at all | **yes: IEX HIST**, DEEP and TOPS, one pcap per day, T+1, free after a login and the terms of use, but it is IEX's own book only, so no national best bid can be built from it |
+| HKEX index futures | yes, through local brokers | no stamp duty on futures; the exchange and levy per contract are a fraction of the HK$50 HSI tick and a broker commission is of the same order, so about a tick a side, which is close to the width of a one tick quote | **no**: realtime and historical depth are licensed subscription products, so the only route is to record a broker's own realtime feed into the replay format |
+| HK cash equities | yes | a stamp duty of 0.1% a side is about ten basis points, an order of magnitude over any spread measured in this repository, plus levies and commission | no |
+| A-shares through northbound | yes | a sell side stamp duty of 0.05% plus commission, and settlement is T+1 | no |
+| Micro futures on a US exchange | yes, through a broker | about a tick a side | no |
+| Offshore crypto USDT perpetuals | no: the offshore venues are not licensed here, so this stays a measurement bench | a fraction of a tick at a hundred thousand dollar price, which is the whole problem | yes, and this repository's readers already consume it |
+| Locally licensed virtual asset venues | spot yes, derivatives generally professional investors only | above the offshore perpetuals by an order of magnitude | no archive exists, so the same self-recording route as index futures |
+
+Read on 2026-09-30: the IEX market-data page's T+1, pcap, IEX-TP and specification wording, its example file
+name, and its Login column; and that IBKR advertises "$0 commissions on US stocks and ETFs with IBKR Lite" on its
+own commissions page. Read earlier in this work: the 0.1% Hong Kong stamp duty a side, the 0.05% northbound sell
+duty, that HKEX publishes free statistics and announcements but no free depth archive, and that offshore
+perpetual depth is free because this repository reads it daily.
+
+Still to verify before anything is planned around it: **whether a Hong Kong resident is eligible for IBKR Lite or
+is on the per-share Pro schedule** (the advertised tier is a product fact, not an entitlement), the current list
+of SFC licensed virtual asset venues, and the exact HKEX futures exchange fee and levy per contract, since the
+contract specification pages this repository tried did not answer.
+
+**The conclusion is narrower than the question.** Only one market in this table has all three columns at once:
+a US ETF, priced in cents, with a commission that is a fraction of one, and a free daily depth archive to test
+the fee question on. That is why the equity entry is the one being built, and why the local index futures are the
+runner up rather than the start: they are tradable and their fee is about a tick, but their depth has to be
+recorded before anything can be said about it.
 
 ## The carry line: financing flows before carry strategies
 
@@ -153,7 +187,7 @@ The order this leaves, each step measurable on its own:
 | **F1 — the fee question** (done) | `[PNL]` splits quoting from the position left open and reports the breakeven maker rate; `--maker-fee-rate` and `tools/fee_sweep.sh` sweep it | whether a fee tier could pay for this, answered per window |
 | **F2 — a decision rule that covers adverse selection** (done) | the gate now requires a quote to cover the fee **and** what our own passive fills at that distance have cost, measured from the venue's prints first and from our own fills after the record showed the two disagree in sign | the mechanism works: refusing the quotes that cannot pay cut the one-tick loss from 0.859 to 0.050 USD and turned the four-tick row positive. What it cannot yet settle is the measured part, because the gate's own success starves its estimator below twenty samples |
 | **F3 — inventory discipline** (done) | `--flatten-band=N` reduces a position past N units with a taker order at the touch, and the closed-versus-total split says which part of a result came from quoting and which from the position carried | flattening works and costs more than it saves, and the one positive run in the table was positive *because* it carried a position: the bet paid, not the quoting |
-| **F4 — a market where the inequality can hold** | the same method on an instrument whose spread is wide relative to its fee: a thin perpetual, or one whose tick is coarse relative to its price | whether the wall is BTC's competitiveness or the strategy |
+| **F4 — a market where the inequality can hold** (started) | the instrument half is in: `us_equity_spec` states the one cent tick and the commission per share, and the fee model charges both terms, so a share of a hundred dollar ETF costs a third of a tick rather than a multiple of it. The data half is IEX HIST, whose decoder is not written because the specification is not in hand; the alternative is a self-recorded index futures feed | whether the wall is BTC's competitiveness or the strategy. Half of it is answered already: on this instrument the fee is not the constraint, so a result here would be about quoting rather than about the fee |
 
 The three levers a market maker actually has are a rebate, a wide spread and speed. This repository can measure
 the first two, model the third, and say which of them a given window needs; what it will not do is present a

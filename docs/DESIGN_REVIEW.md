@@ -352,6 +352,7 @@ tier0()  { ctest --test-dir "$build_dir" ...; }                       # a red te
 tier1()  {
   python3 tools/check_written_fields.py   # every summary field is actually computed
   python3 tools/lint_prose.py docs/*.md   # every flag, queue model and tools/ path exists
+  python3 tools/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
   python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/DESIGN_REVIEW.md
 }
@@ -372,6 +373,11 @@ then: submitted_orders=182 trade_reports=21 fill_rate=0.115385 captured_edge_per
 claim about the code, so it is treated as one. `lint_prose.py` covers the other half: it reads the flag
 literals out of the parser and fails when a document omits a flag the binary accepts, invents one it does
 not, or names a `tools/` script that is missing. Both lints have caught real drift here, twice on flags.
+
+The IEX line is the third shape, for a tool whose real input cannot be fetched in a test at all: the
+archive is behind an account, so the self-test builds a pcap in the container shape and checks that the
+walk reads back what went in. It is a statement about the walk and not about the feed, which is why the
+tool decodes no message and says so on every run.
 
 Two habits come out of this design, and both are in the history as failures:
 

@@ -27,6 +27,12 @@ struct InstrumentSpec
     double contract_size{1.0};
     double maker_fee_rate{0.0};
     double taker_fee_rate{0.0};
+    // Commission charged for each unit of the instrument, on top of the rates above, in USD. A rate cannot
+    // express the cost of a US equity fill: five tenths of a cent a share is 0.5 basis points at a 100 dollar
+    // share price and 5 basis points at a 10 dollar one, so the cost of a fill depends on the share price in a
+    // way a fraction of notional cannot represent. Every instrument this repository traded before the equity
+    // entry leaves it at zero, which is what makes the field additive rather than a change to those schedules.
+    double fee_per_share{0.0};
 };
 
 // USD value of one quantity unit at `price`. Shared by the fee model and the portfolio so the
@@ -59,14 +65,19 @@ inline double fill_notional_usd(double unit_notional_usd, double price, uint64_t
     return unit_notional_at(unit_notional_usd, price) * units;
 }
 
-// USD fee a venue charges for filling `quantity` units at `price` when its rate is `rate`: the USD value
-// of the fill times the rate. Shared by the matching engine and by a caller that books a fill outside a
-// book, so the two cannot disagree about what a fill costs, exactly as unit_notional_at is shared by the
-// fee model and the portfolio.
-inline double fee_on_fill(double rate, double unit_notional_usd, double price, uint64_t quantity,
-                          uint64_t quantity_scale)
+// USD fee a venue charges for filling `quantity` units at `price`: the USD value of the fill times `rate`,
+// plus `fee_per_share` for each unit. The two terms are added rather than chosen between, because a venue can
+// charge both and because a per-share commission is what a US equity fill actually costs. Shared by the
+// matching engine and by a caller that books a fill outside a book, so the two cannot disagree about what a
+// fill costs, exactly as unit_notional_at is shared by the fee model and the portfolio.
+inline double fee_on_fill(double rate, double unit_notional_usd, double fee_per_share, double price,
+                          uint64_t quantity, uint64_t quantity_scale)
 {
-    return fill_notional_usd(unit_notional_usd, price, quantity, quantity_scale) * rate;
+    const double units = quantity_scale > 0
+                             ? static_cast<double>(quantity) / static_cast<double>(quantity_scale)
+                             : static_cast<double>(quantity);
+    return fill_notional_usd(unit_notional_usd, price, quantity, quantity_scale) * rate +
+           units * fee_per_share;
 }
 
 inline InstrumentSpec btc_usdt_spec(uint64_t quantity_scale = 1000000)
@@ -113,6 +124,28 @@ inline InstrumentSpec okx_btc_swap_spec(uint64_t quantity_scale = 1000000)
                           .taker_fee_rate = 0.0005};
 }
 
+// A US equity or ETF as IEX publishes it: prices in whole cents, sizes in shares. This is the first instrument
+// in this repository where the fee is not a multiple of a tick — one tick on a hundred dollar share is one
+// basis point, and a retail commission of a few tenths of a cent a share is a fraction of it, where the
+// perpetuals this repository traded before paid tens of ticks or more. The commission is per share and the rate
+// is zero, because that is how a US broker prices an equity fill; the default is the tiered rate of a large
+// retail broker, and a zero-commission plan is `fee_per_share = 0.0`.
+inline InstrumentSpec us_equity_spec(const std::string& symbol, double fee_per_share = 0.0035)
+{
+    return InstrumentSpec{.exchange = "iex",
+                          .symbol = symbol,
+                          .tick_size = 0.01,
+                          // IEX publishes sizes in shares, so one quantity unit is one share and its USD value
+                          // is the traded price, the spot case.
+                          .quantity_scale = 1,
+                          .unit_notional_usd = 0.0,
+                          .lot_size = 1,
+                          .min_order_quantity = 1,
+                          .maker_fee_rate = 0.0,
+                          .taker_fee_rate = 0.0,
+                          .fee_per_share = fee_per_share};
+}
+
 // The specification this repository carries for a symbol, looked up by the name the feeds, the instruments
 // and the funding files all use. False means nothing is registered for it, and a caller says what it was
 // looking for rather than getting a default that would price the wrong instrument.
@@ -131,6 +164,11 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "BTC-USDT-SWAP")
     {
         out = okx_btc_swap_spec();
+        return true;
+    }
+    if (symbol == "SPY")
+    {
+        out = us_equity_spec(symbol);
         return true;
     }
     return false;

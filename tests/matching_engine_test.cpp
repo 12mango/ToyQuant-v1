@@ -4,6 +4,7 @@
 #undef NDEBUG
 #endif
 
+#include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
 
 #include <algorithm>
@@ -530,6 +531,45 @@ int main()
     assert(taker_trade->liquidity_role == LiquidityRole::Taker);
     assert(std::abs(taker_trade->fee - 0.02) < 1e-12);
 
+    // A US equity fill is priced per share rather than as a fraction of notional, which is why the fee model
+    // carries both terms. A hundred shares at a hundred dollars is ten thousand dollars of notional, a zero
+    // maker rate, and three and a half tenths of a cent a share: 0.35 USD, which is 0.35 basis points, a third
+    // of the one cent tick that the same fill would have to capture to pay for itself.
+    {
+        MatchingEngine equity_engine(0.01, FeeSchedule{.maker_rate = 0.0,
+                                                       .taker_rate = 0.0,
+                                                       .quantity_scale = 1,
+                                                       .fee_per_share = 0.0035});
+        std::vector<ExecutionReport> equity_reports;
+        equity_engine.set_report_callback([&equity_reports](const ExecutionReport& report)
+                                          { equity_reports.push_back(report); });
+        equity_engine.send_order({70, "SPY", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 100,
+                                  100, 40, "MarketMaker"});
+        equity_engine.process_market_trade({21, "SPY", 100.0, 100, Side::Sell, 0, "test"});
+        const auto equity_trade =
+            std::find_if(equity_reports.begin(), equity_reports.end(), [](const ExecutionReport& report)
+                         { return report.exec_type == ExecType::Trade && report.order_id == 70; });
+        assert(equity_trade != equity_reports.end());
+        assert(equity_trade->liquidity_role == LiquidityRole::Maker);
+        assert(std::abs(equity_trade->fee - 0.35) < 1e-12);
+
+        // A commission-free plan is the same instrument with the term at zero, which is the assumption the
+        // fee question is answered under when a reader has one. The tick is unchanged, so the ratio a run
+        // reports moves for a reason the document states rather than for one it hid.
+        MatchingEngine free_engine(0.01, FeeSchedule{.quantity_scale = 1, .fee_per_share = 0.0});
+        std::vector<ExecutionReport> free_reports;
+        free_engine.set_report_callback([&free_reports](const ExecutionReport& report)
+                                        { free_reports.push_back(report); });
+        free_engine.send_order({71, "SPY", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 100,
+                                100, 41, "MarketMaker"});
+        free_engine.process_market_trade({22, "SPY", 100.0, 100, Side::Sell, 0, "test"});
+        const auto free_trade =
+            std::find_if(free_reports.begin(), free_reports.end(), [](const ExecutionReport& report)
+                         { return report.exec_type == ExecType::Trade && report.order_id == 71; });
+        assert(free_trade != free_reports.end());
+        assert(std::abs(free_trade->fee) < 1e-15);
+    }
+
     // A contract with a fixed USD face value pays its fee on the face value, not on the base
     // asset price. One Deribit BTC-PERPETUAL contract is worth 10 USD, so a 0.02% maker fee is
     // 0.002 USD. Charging on the BTC price instead would report about 1.27 USD per contract.
@@ -582,5 +622,51 @@ int main()
                          });
         assert(spot_trade != spot_reports.end());
         assert(std::abs(spot_trade->fee - 1.2748) < 1e-9);
+    }
+
+    // The instrument carries the commission, and the commission is what makes the fee a fraction of a tick:
+    // one cent of a hundred dollar share is one basis point, and 0.0035 USD a share is 0.35 of it. A
+    // specification that claimed the tick without the commission would make a run that lost 0.35 a share
+    // look free.
+    {
+        const InstrumentSpec btc = btc_usdt_spec();
+        assert(std::abs(btc.tick_size - 0.10) < 1e-12);
+        assert(btc.unit_notional_usd == 0.0);
+        assert(btc.fee_per_share == 0.0);
+
+        const InstrumentSpec equity = us_equity_spec("SPY");
+        assert(equity.quantity_scale == 1);
+        assert(equity.lot_size == 1);
+        assert(equity.unit_notional_usd == 0.0);
+        assert(equity.maker_fee_rate == 0.0);
+        assert(std::abs(equity.fee_per_share - 0.0035) < 1e-15);
+        // The base a commission is read against: one tick of a hundred dollar share is a basis point, and the
+        // commission is 0.35 of it.
+        assert(std::abs(equity.tick_size / 100.0 * 10000.0 - 1.0) < 1e-12);
+        assert(std::abs(equity.fee_per_share / 100.0 * 10000.0 - 0.35) < 1e-9);
+        assert(us_equity_spec("SPY", 0.0).fee_per_share == 0.0);
+
+        InstrumentSpec looked_up{};
+        assert(instrument_spec_of("SPY", looked_up));
+        assert(looked_up.exchange == "iex");
+        assert(looked_up.fee_per_share == equity.fee_per_share);
+        // The perpetuals keep a zero commission, so registering the equity entry changed no schedule that
+        // existed before it.
+        assert(instrument_spec_of("BTC-USDT-SWAP", looked_up));
+        assert(looked_up.exchange == "okx");
+        assert(looked_up.fee_per_share == 0.0);
+        assert(instrument_spec_of("BTC-PERPETUAL", looked_up));
+        assert(looked_up.unit_notional_usd == 10.0);
+        assert(looked_up.fee_per_share == 0.0);
+        assert(!instrument_spec_of("NOT-AN-INSTRUMENT", looked_up));
+
+        // The fee is both terms at once, on a fill where each is visible: a hundred shares at a hundred
+        // dollars is ten thousand dollars of notional, so a maker rate of one basis point is 1.00 USD, and
+        // 0.0035 a share adds another 0.35.
+        assert(std::abs(fee_on_fill(0.0001, 0.0, 0.0035, 100.0, 100, 1) - 1.35) < 1e-12);
+        // A schedule that predates the equity entry leaves the second term at zero, so its fee is the rate
+        // alone, and a per-share commission does not shrink with the share price the way a rate does.
+        assert(std::abs(fee_on_fill(0.0001, 0.0, 0.0, 100.0, 100, 1) - 1.00) < 1e-12);
+        assert(std::abs(fee_on_fill(0.0, 0.0, 0.0035, 10.0, 100, 1) - 0.35) < 1e-12);
     }
 }

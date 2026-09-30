@@ -28,8 +28,8 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
                            .ts = ts,
                            .owner = order.owner,
                            .liquidity_role = liquidity_role,
-                           .fee = fee_on_fill(rate, fee_schedule_.unit_notional_usd, price, quantity,
-                                              fee_schedule_.quantity_scale)});
+                           .fee = fee_on_fill(rate, fee_schedule_.unit_notional_usd, fee_schedule_.fee_per_share,
+                                              price, quantity, fee_schedule_.quantity_scale)});
 }
 
 uint64_t MatchingEngine::queue_ahead_at(const std::string& symbol, const Side side,

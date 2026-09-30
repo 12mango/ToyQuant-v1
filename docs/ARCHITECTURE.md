@@ -176,6 +176,22 @@ Execution reports then carry the liquidity role and fee for each MarketMaker fil
 offline backtest can consume those recorded fees while retaining a fee-rate fallback for legacy
 six-column trade files.
 
+`InstrumentSpec::fee_per_share` is the second half of the same idea for the first instrument where the
+fee is not a fraction of the notional. A US equity broker charges cents a share, and a rate cannot say
+that: half a cent a share is 0.5 basis points on a hundred dollar share and 5 basis points on a ten
+dollar one, so the cost of a fill depends on the share price in a way a fraction of notional cannot
+represent. `us_equity_spec` therefore states a one cent tick, one quantity unit per share, and a
+commission per share, and it leaves the maker and taker rates at zero, because that is how an equity
+fill is billed. `fee_on_fill` adds both terms rather than choosing between them, so an instrument can
+carry a rate, a commission, both or neither, and every schedule that existed before the equity entry
+leaves the new field at zero and is arithmetically unchanged.
+
+The two terms differ in what they scale with, which is the reason both are kept: a rate charges for
+size in dollars and a commission charges for size in shares, so a rate on a cheap instrument and a
+commission on an expensive one are the two ways a venue can make a tight quote unprofitable. On a
+hundred dollar share, one tick is a basis point and the tiered commission is a third of it, which is
+the first fee in this repository that a tick can cover.
+
 BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
 and drive matching. External Tick/BBO state is stored separately from local strategy orders.
 `market_top()` exposes only venue prices through `IOrderBook`. Strategy orders are owned only by

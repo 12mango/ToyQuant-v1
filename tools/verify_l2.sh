@@ -36,6 +36,7 @@ BIN="${2:-out/build/linux-debug/toy_quant}"
 DOC_CHECK_LOG="$(mktemp)"
 FIELD_CHECK_LOG="$(mktemp)"
 PROSE_CHECK_LOG="$(mktemp)"
+TOOL_CHECK_LOG="$(mktemp)"
 TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 L1_TRADES=data/v2/test_aggTrades_5k.csv
 L1_BBO=data/v2/test_bookTicker_5k.csv
@@ -145,13 +146,21 @@ tier1() {
   local doc_check=0
   python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
     docs/DESIGN_REVIEW.md > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
-  if [ $rc -eq 0 ] && [ $doc_check -eq 0 ] && [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ]; then
+  # The IEX HIST reader walks the pcap, IP, UDP and IEX-TP framing that a decoder sits on top of. The file it
+  # walks in this test is built by the tool rather than downloaded, because the archive is behind an account,
+  # so the container walk is the part that can be checked on every edit. It says nothing about DEEP messages,
+  # which is why the tool decodes none.
+  local tool_check=0
+  python3 tools/fetch_iex_hist.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  if [ $rc -eq 0 ] && [ $doc_check -eq 0 ] && [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] &&
+     [ $tool_check -eq 0 ]; then
     echo "tier1 OK"
     return 0
   fi
   echo "tier1 MISMATCH"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
+  [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"
   [ "$l2" = "$L2_WANT" ] || { echo "  L2 want: $L2_WANT"; echo "  L2 got : $l2"; }
   [ "$l1" = "$L1_WANT" ] || { echo "  L1 want: $L1_WANT"; echo "  L1 got : $l1"; }
   [ $doc_check -eq 0 ] || sed 's/^/  doc: /' "$DOC_CHECK_LOG"
