@@ -64,6 +64,11 @@ struct AppConfig
 
     // The order whose queue the run should trace, 0 for none. Reports as [QUEUE_TRACE] lines.
     uint64_t trace_order = 0;
+    // A maker fee rate the command line supplies, for the runs that ask what a different fee schedule would
+    // have produced. The venues' rates are in the instrument specifications, so this is a sensitivity input
+    // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.
+    bool has_maker_fee_rate = false;
+    double maker_fee_rate = 0.0;
     // A funding rate history for the replayed instrument, empty for no funding. The replay applies one
     // settlement each time the event clock passes one, reported as a [FUNDING] line that appears only when
     // this is set, so a run without it reproduces the recorded output byte for byte.

@@ -34,6 +34,7 @@ constexpr std::string_view kSymbolAPrefix = "--symbol-a=";
 constexpr std::string_view kSymbolBPrefix = "--symbol-b=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
+constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -100,6 +101,8 @@ void print_usage(const char* executable)
                      "starts behind; 1.0 is FIFO\n";
         std::cerr << "   funding: --funding-rates=FILE applies the instrument's funding history as the "
                      "replay passes each settlement, reported as a [FUNDING] line\n";
+        std::cerr << "   fees: --maker-fee-rate=R replaces the venue's maker rate for a sensitivity "
+                     "measurement, and the run reports it in the [Mode] line\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -320,13 +323,24 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
             }
+            else if (flag.compare(0, kMakerFeePrefix.size(), kMakerFeePrefix) == 0)
+            {
+                std::istringstream stream(flag.substr(kMakerFeePrefix.size()));
+                if (!(stream >> cfg.maker_fee_rate))
+                {
+                    error = "--maker-fee-rate must be a number, and may be negative for a rebate";
+                    return false;
+                }
+                cfg.has_maker_fee_rate = true;
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
                         "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
-                        "--cancel-latency-us=N, --trace-order=N, or --funding-rates=FILE";
+                        "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, or "
+                        "--maker-fee-rate=R";
                 return false;
             }
         }

@@ -176,14 +176,17 @@ void Application::run_replay_mode() const
     if (cfg_.symbol != "BTCUSDT")
         throw std::invalid_argument("no instrument specification for replay symbol: " + cfg_.symbol);
 
-    const InstrumentSpec instrument = btc_usdt_spec(cfg_.quantity_scale);
+    InstrumentSpec instrument = btc_usdt_spec(cfg_.quantity_scale);
+    // The venue's fee schedule unless a run asks for a different one. The override exists for the fee
+    // question, so it is echoed in the mode line rather than left for a reader to infer from the numbers.
+    if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
     const std::string trades_file = to_abs_path(cfg_.path_or_port);
     const std::string quotes_file = to_abs_path(cfg_.quotes_path);
     Logger logger(application_log_path(cfg_.discard_output));
     configure_logger(logger);
     logger.log("[Mode: Replay] trades=", trades_file, " quotes=", quotes_file,
                " symbol=", cfg_.symbol, " quantity_scale=", cfg_.quantity_scale,
-               " strategy=", cfg_.strategy_name);
+               " strategy=", cfg_.strategy_name, " maker_fee_rate=", instrument.maker_fee_rate);
 
     const std::string source = "binance;trades=" + trades_file + ";quotes=" + quotes_file +
                                ";symbol=" + cfg_.symbol +
@@ -279,11 +282,14 @@ void Application::run_l2_replay_mode() const
         instrument = okx_btc_swap_spec();
     else
         throw std::invalid_argument("no instrument specification for L2 replay symbol: " + cfg_.symbol);
+    // A different maker fee rate than the venue's, for the runs that ask what the fee would have had to be.
+    if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
     Logger logger(application_log_path(cfg_.discard_output));
     configure_logger(logger);
     logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
                " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
-               " queue_model=", queue_model_name(cfg_.queue_model));
+               " queue_model=", queue_model_name(cfg_.queue_model),
+               " maker_fee_rate=", instrument.maker_fee_rate);
 
     // Per-stage timing is opt-in. The profiler allocates nothing until sampling starts, so
     // a run without --profile-stages pays nothing beyond this construction.

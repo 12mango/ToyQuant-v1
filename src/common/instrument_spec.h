@@ -47,6 +47,18 @@ inline double position_value(double unit_notional_usd, double quantity, double e
     return unit_notional_at(unit_notional_usd, entry_price) * quantity * (price / entry_price);
 }
 
+// USD value of a fill of `quantity` units at `price`: what a venue charges its rate on, and what a carry's
+// funding is measured against. With a price based unit it is `price * quantity`; with a fixed USD face value
+// it is the face value times the number of contracts.
+inline double fill_notional_usd(double unit_notional_usd, double price, uint64_t quantity,
+                                uint64_t quantity_scale)
+{
+    const double units = quantity_scale > 0
+                             ? static_cast<double>(quantity) / static_cast<double>(quantity_scale)
+                             : static_cast<double>(quantity);
+    return unit_notional_at(unit_notional_usd, price) * units;
+}
+
 // USD fee a venue charges for filling `quantity` units at `price` when its rate is `rate`: the USD value
 // of the fill times the rate. Shared by the matching engine and by a caller that books a fill outside a
 // book, so the two cannot disagree about what a fill costs, exactly as unit_notional_at is shared by the
@@ -54,10 +66,7 @@ inline double position_value(double unit_notional_usd, double quantity, double e
 inline double fee_on_fill(double rate, double unit_notional_usd, double price, uint64_t quantity,
                           uint64_t quantity_scale)
 {
-    const double units = quantity_scale > 0
-                             ? static_cast<double>(quantity) / static_cast<double>(quantity_scale)
-                             : static_cast<double>(quantity);
-    return unit_notional_at(unit_notional_usd, price) * units * rate;
+    return fill_notional_usd(unit_notional_usd, price, quantity, quantity_scale) * rate;
 }
 
 inline InstrumentSpec btc_usdt_spec(uint64_t quantity_scale = 1000000)

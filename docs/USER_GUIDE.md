@@ -264,6 +264,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--cancel-latency-us=N` | One-way latency between sending a cancel and the exchange applying it | 0, a synchronous engine |
 | `--trace-order=N` | Trace the queue in front of order N, reported as `[QUEUE_TRACE]` lines | 0, no trace |
 | `--funding-rates=FILE` | Apply an instrument's funding history as the replay passes each settlement | Off, and the summary then has no `[FUNDING]` line |
+| `--maker-fee-rate=R` | Replace the venue's maker rate, for the fee question; the run echoes it in its `[Mode]` line and may be negative for a rebate | Off, the venue's own rate |
 
 ### Funding as an input
 
@@ -450,6 +451,23 @@ comparison in the form a decision needs, because the fees are paid once and the 
 here the position must be held 745 hours to pay for its fees and it was held for 728, which is why the net is
 just below zero. The run is recorded with its numbers in
 [Performance History](PERFORMANCE_HISTORY.md#the-acceptance-number).
+
+The replay then reports a `[PNL]` line for every run, which splits what completed from what is still open and
+adds the fees back to each:
+
+```text
+[PNL] gross_pnl_usd=-0.0818127 net_pnl_usd=-0.123813 gross_closed_pnl_usd=-0.0672835
+      closed_pnl_usd=-0.109283 maker_notional_usd=210 net_per_fill_usd=-0.00589584
+      gross_closed_per_fill_usd=-0.00320398 breakeven_maker_rate=-0.000389584
+```
+
+`closed_pnl_usd` is the portfolio's realized PnL, so a position the run was still holding at the end is not in
+it; `net_pnl_usd` adds that position marked at the last price; the `gross_` pair adds the fees back to each, and
+a negative gross PnL says the run lost money before the venue charged anything. `maker_notional_usd` is what the
+maker fees were charged on, and `breakeven_maker_rate` is the maker rate at which this window's total PnL would
+have been zero: **a negative answer means no fee at all would still have lost money**, and that size of rebate
+would have been needed instead. `tools/fee_sweep.sh` runs the sweep over the windows the documents quote and
+prints the table with the block that re-derives it.
 
 ## Scenarios
 

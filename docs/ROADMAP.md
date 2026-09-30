@@ -123,6 +123,42 @@ recorded in [Performance History](PERFORMANCE_HISTORY.md#the-acceptance-number) 
 them, and the two funding files are fetched with one command each, named in
 [the data index](https://github.com/12mango/ToyQuant-v1/blob/main/data/README.md).
 
+## Back to the market-making line: what would make a quote pay for itself
+
+The carry line answered its criterion and the answer was thin, so the demo's first line is the one worth
+returning to — with the question stated as an inequality rather than as a hope:
+
+```text
+capture per fill + rebate  >=  maker fee + adverse selection
+```
+
+Every term in it is already measured here, and the third was the one no run had reported as a target: the fee is
+in the portfolio, the capture and the markout are in `[EXECUTION]`, and the `[PNL]` line now turns the fee into a
+rate. The first experiment (`tools/fee_sweep.sh`) asked the fee question directly, on four windows and three
+maker rates:
+
+* At a one-tick quote a window loses 0.0030 to 0.0032 USD **before any fee** — about three to four ticks a fill
+  against a capture of 0.1 to 0.3 ticks — so its breakeven maker rate is -0.0003, which means the venue would have
+  to pay a rebate larger than its own 0.0002 maker fee. Zero maker fees still leave the largest window down 0.86
+  USD over 267 fills. **At a tight quote the fee is not the binding constraint; the fill population is.**
+* The capture only exceeds that cost at eight ticks of width, where one fill traded and nothing closed: the door
+  exists and its width is unknown, which is a statement about sample size rather than about the mechanism.
+* Both tables are recorded with every field in
+  [Performance History](PERFORMANCE_HISTORY.md#the-maker-fee-each-window-would-have-needed).
+
+The order this leaves, each step measurable on its own:
+
+| Step | What it does | What it settles |
+|---|---|---|
+| **F1 — the fee question** (done) | `[PNL]` splits quoting from the position left open and reports the breakeven maker rate; `--maker-fee-rate` and `tools/fee_sweep.sh` sweep it | whether a fee tier could pay for this, answered per window |
+| **F2 — a decision rule that covers adverse selection** | require a quote to cover its fee **and** the markout the fills in its bucket have actually suffered, and count the refusals | whether a rule can select a fill population whose expected value is positive, at a fill count worth reporting |
+| **F3 — inventory discipline** | skew and flatten instead of carrying the position into the final mark, and report what closing it costs | how much of the PnL is quoting and how much is the bet the run left open |
+| **F4 — a market where the inequality can hold** | the same method on an instrument whose spread is wide relative to its fee: a thin perpetual, or one whose tick is coarse relative to its price | whether the wall is BTC's competitiveness or the strategy |
+
+The three levers a market maker actually has are a rebate, a wide spread and speed. This repository can measure
+the first two, model the third, and say which of them a given window needs; what it will not do is present a
+window selected for being positive as an edge.
+
 ## Deliberately not planned
 
 * **Order-by-order (L3) data.** The bounds experiment shows the conclusions do not move between the

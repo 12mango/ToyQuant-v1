@@ -1741,3 +1741,100 @@ What it says, and it is not one thing:
 
 The second run's fields are the first run's with the sign flipped. `data/README.md` records where the two funding
 files come from, one command each, and both blocks are re-derived by `tools/check_docs.py` on every gate run.
+
+## The Maker Fee Each Window Would Have Needed
+
+The market-making line's binding claim has always been about the fee: at a one-tick spread the fee is 2.57 ticks
+against 0.088 captured. That comparison assumes the loss *is* the fee, and a reader is entitled to the other half
+of the question: which maker rate would have made these windows profitable, and is it one a venue offers? The
+answer needs two numbers the summary did not report, the PnL before fees and the notional the fees were charged
+on, and both are now in every run's `[PNL]` line.
+
+`closed_pnl_usd` is what completed, so a position the run was still holding is not in it; `net_pnl_usd` adds that
+position marked at the last price; the `gross_` pair adds the fees back to each, and a negative gross PnL says the
+run lost money before the venue charged anything, which no fee tier can fix. `maker_notional_usd` turns that into
+a rate: `breakeven_maker_rate` is the maker fee at which the window would have been exactly flat, and a negative
+one means the venue would have had to pay a rebate instead.
+
+`tools/fee_sweep.sh` runs the sweep and prints the table with the block that re-derives every number. The three
+rates are the venue's own maker fee, zero, and a rebate half the size of the fee:
+
+| window | maker rate | fills | net USD | gross USD | closed USD | gross/fill USD | breakeven rate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0401 incremental 200k | 0.0002 | 21 | -0.123813 | -0.0818127 | -0.109283 | -0.00320398 | -0.000389584 |
+| 0401 incremental 200k | 0 | 21 | -0.0818127 | -0.0818127 | -0.0672835 | -0.00320398 | -0.000389584 |
+| 0401 incremental 200k | -0.0002 | 21 | -0.0398127 | -0.0818127 | -0.0252835 | -0.00320398 | -0.000389584 |
+| 0401 snapshot 200k | 0.0002 | 146 | -0.757038 | -0.465038 | -0.757038 | -0.00318519 | -0.000318519 |
+| 0401 snapshot 200k | 0 | 146 | -0.465038 | -0.465038 | -0.465038 | -0.00318519 | -0.000318519 |
+| 0401 snapshot 200k | -0.0002 | 146 | -0.173038 | -0.465038 | -0.173038 | -0.00318519 | -0.000318519 |
+| 0501 snapshot 200k | 0.0002 | 58 | -0.287468 | -0.171468 | -0.287468 | -0.00295634 | -0.000295634 |
+| 0501 snapshot 200k | 0 | 58 | -0.171468 | -0.171468 | -0.171468 | -0.00295634 | -0.000295634 |
+| 0501 snapshot 200k | -0.0002 | 58 | -0.055468 | -0.171468 | -0.055468 | -0.00295634 | -0.000295634 |
+| 0401 incremental 2M | 0.0002 | 267 | -1.39317 | -0.859172 | -1.38723 | -0.00319563 | -0.000321787 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: trade_reports=21 net_pnl_usd=-0.123813 gross_pnl_usd=-0.0818127 closed_pnl_usd=-0.109283 gross_closed_per_fill_usd=-0.00320398 breakeven_maker_rate=-0.000389584
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
+then: trade_reports=21 net_pnl_usd=-0.0818127 gross_pnl_usd=-0.0818127 closed_pnl_usd=-0.0672835 gross_closed_per_fill_usd=-0.00320398 breakeven_maker_rate=-0.000389584
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
+then: trade_reports=21 net_pnl_usd=-0.0398127 gross_pnl_usd=-0.0818127 closed_pnl_usd=-0.0252835 gross_closed_per_fill_usd=-0.00320398 breakeven_maker_rate=-0.000389584
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: trade_reports=146 net_pnl_usd=-0.757038 gross_pnl_usd=-0.465038 closed_pnl_usd=-0.757038 gross_closed_per_fill_usd=-0.00318519 breakeven_maker_rate=-0.000318519
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
+then: trade_reports=146 net_pnl_usd=-0.465038 gross_pnl_usd=-0.465038 closed_pnl_usd=-0.465038 gross_closed_per_fill_usd=-0.00318519 breakeven_maker_rate=-0.000318519
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
+then: trade_reports=146 net_pnl_usd=-0.173038 gross_pnl_usd=-0.465038 closed_pnl_usd=-0.173038 gross_closed_per_fill_usd=-0.00318519 breakeven_maker_rate=-0.000318519
+run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: trade_reports=58 net_pnl_usd=-0.287468 gross_pnl_usd=-0.171468 closed_pnl_usd=-0.287468 gross_closed_per_fill_usd=-0.00295634 breakeven_maker_rate=-0.000295634
+run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
+then: trade_reports=58 net_pnl_usd=-0.171468 gross_pnl_usd=-0.171468 closed_pnl_usd=-0.171468 gross_closed_per_fill_usd=-0.00295634 breakeven_maker_rate=-0.000295634
+run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
+then: trade_reports=58 net_pnl_usd=-0.055468 gross_pnl_usd=-0.171468 closed_pnl_usd=-0.055468 gross_closed_per_fill_usd=-0.00295634 breakeven_maker_rate=-0.000295634
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: trade_reports=267 net_pnl_usd=-1.39317 gross_pnl_usd=-0.859172 closed_pnl_usd=-1.38723 gross_closed_per_fill_usd=-0.00319563 breakeven_maker_rate=-0.000321787
+-->
+
+Three things follow, and the first is not the one this line has been repeating:
+
+- **The fee is not what loses the money at a tight quote.** Before any fee is charged, every window loses between
+  0.00296 and 0.00320 USD per fill, which is three to four ticks a fill, against a capture of 0.1 to 0.3 ticks.
+  `breakeven_maker_rate` is negative on all four windows, between -0.000296 and -0.000390, which says the venue
+  would have had to *pay* a rebate larger than its own maker fee for these windows to break even. At zero maker
+  fees the largest sample is still down 0.86 USD over 267 fills.
+- **Widening the quote does not pass through a profitable middle.** On the largest window, asking for two ticks
+  halves the loss per fill and asking for four reverses the improvement, while the capture rises from 0.088 to
+  0.367 ticks: the fills that arrive at a wider quote are worse per fill, not better, which is what the markout
+  buckets and the out-of-sample corner had already said in a different form.
+- **The capture finally beats the cost at eight ticks, with one fill.** There the capture is 6.5 ticks and
+  `breakeven_maker_rate` turns positive at +0.000515, above the venue's 0.0002, so the window is up 0.0051 USD —
+  but nothing closed in it, so that gain is the mark on the position the run is still holding, and one fill is not
+  evidence. The honest form of this row is that the door exists and its width is unknown.
+- **So the constraint is the fill population, not the schedule.** A maker is profitable when the capture per fill
+  covers the fee plus the adverse selection it suffers, and on this instrument that second term is three to four
+  ticks at every width where fills actually happen. That is why the next step is a rule that refuses a quote
+  unless the expected fill covers both, rather than a hunt for a cheaper venue: at 0.0032 USD of loss a fill, no
+  fee schedule on earth makes the tight-quote population profitable.
+
+| quote width | fills | captured ticks/fill | gross USD | gross/fill USD | breakeven rate |
+|---:|---:|---:|---:|---:|---:|
+| 1 tick | 267 | 0.088015 | -0.859172 | -0.00319563 | -0.000321787 |
+| 2 ticks | 207 | 0.0966184 | -0.480513 | -0.00232323 | -0.000232132 |
+| 4 ticks | 15 | 0.366667 | -0.0452864 | -0.00315111 | -0.000301909 |
+| 8 ticks | 1 | 6.5 | 0.00514688 | 0 | 0.000514688 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: trade_reports=207 captured_edge_per_unit_ticks=0.0966184 gross_pnl_usd=-0.480513 gross_closed_per_fill_usd=-0.00232323 breakeven_maker_rate=-0.000232132
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=4 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: trade_reports=15 captured_edge_per_unit_ticks=0.366667 gross_pnl_usd=-0.0452864 gross_closed_per_fill_usd=-0.00315111 breakeven_maker_rate=-0.000301909
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=8 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: trade_reports=1 captured_edge_per_unit_ticks=6.5 gross_pnl_usd=0.00514688 gross_closed_per_fill_usd=0 breakeven_maker_rate=0.000514688
+-->
+
+**The reference hash was re-recorded.** The `[PNL]` line is printed unconditionally and the `[Mode]` line now
+echoes the maker rate, so `tools/verify_l2.sh full` failed until the reference was refreshed. The re-record is
+justified by proving the change is exactly those two additions: stripping the `[PNL]` line and the
+`maker_fee_rate=` token from the new output reproduces the previous reference `f95d1c98` byte for byte over the
+1.5 GB stream. The new reference is `cfabcd88`, and a reader holding a cached one should run
+`tools/verify_l2.sh ref` once.

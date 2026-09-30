@@ -228,6 +228,10 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `[CARRY]` `carry_leg_a_funding_usd`, `carry_leg_b_funding_usd`, `carry_funding_usd` | What each leg's funding paid or received and what is left after the hedge takes its side back, which is the carry |
 | `[CARRY]` `carry_fees_usd`, `carry_net_usd` | The round trip at the venues' taker rates, and the carry minus it |
 | `[CARRY]` `carry_annualized_carry_usd`, `carry_annualized_return`, `carry_to_fees`, `carry_breakeven_hours` | The carry as a yearly rate, as a fraction of one leg's notional, against the fees it paid, and the holding period that comparison implies |
+| `[PNL]` `closed_pnl_usd`, `net_pnl_usd` | What the run completed, and the same plus the position it was still holding marked at the last price. The first is the quoting result and the second is the bet left open, so neither is called "the PnL" |
+| `[PNL]` `gross_pnl_usd`, `gross_closed_pnl_usd` | The two above with the fees added back: a negative gross PnL is a loss before the venue charged anything, which no fee tier can fix |
+| `[PNL]` `maker_notional_usd`, `breakeven_maker_rate` | The notional the maker fees were charged on, and the maker rate that would have made this run flat. A negative rate is the fee question's real answer: zero fees would still lose, and that rebate would be needed instead |
+| `[PNL]` `net_per_fill_usd`, `gross_closed_per_fill_usd` | The same two quantities per trade report, which is the number a quote decision can be judged by rather than a total |
 
 Every field above is written somewhere under `src/`. `tools/check_written_fields.py` fails the build if
 one stops being written, because a field that is read but never written looks exactly like a field whose

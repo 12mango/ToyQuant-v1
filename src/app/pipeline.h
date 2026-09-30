@@ -148,6 +148,10 @@ class Pipeline
     uint64_t strategy_position_mismatches_{0};
     double last_mid_{0.0};
     uint64_t inventory_samples_{0};
+    // Maker notional traded, which is what the maker fees were charged on. It is what turns a PnL into the
+    // fee rate that would have made it zero, which is the question a market-making run has to answer and
+    // which cannot be answered from the fee itself once a fee of zero is one of the cases.
+    double maker_notional_usd_{0.0};
     struct FillObservation
     {
         Side side;
@@ -231,4 +235,10 @@ class Pipeline
     // last price seen at or before that event. A settlement reached before any price exists for the
     // instrument is applied to an account that holds nothing yet, which is a no-op rather than an error.
     void apply_due_funding(uint64_t ts);
+
+    // The account's result, split into what completed and what is still open, and into what it was before
+    // the venue was paid. The formulas live here rather than in the summary literal so that the fields and
+    // their definitions are read together: `closed_pnl_usd` is the portfolio's realized PnL, `net_pnl_usd`
+    // adds the open position's mark, and the gross pair adds the fees back to each.
+    PnlSummary pnl_summary() const;
 };

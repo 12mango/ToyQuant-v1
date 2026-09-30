@@ -96,6 +96,14 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 }
             }
             if (report.owner == "MarketMaker") portfolio_.apply(report);
+            // The notional a maker fill traded, which is what its fee was charged on. The breakeven fee rate
+            // needs it, and it cannot be recovered from the fee itself once the rate is zero, which is
+            // exactly the case that has to be measured.
+            if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade &&
+                report.liquidity_role == LiquidityRole::Maker)
+                maker_notional_usd_ +=
+                    fill_notional_usd(unit_notional_usd_, report.price, report.executed_quantity(),
+                                      quantity_scale_);
             if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
             {
                 const int64_t previous_position = position_;
@@ -543,8 +551,35 @@ void Pipeline::apply_due_funding(uint64_t ts)
     }
 }
 
+PnlSummary Pipeline::pnl_summary() const
+{
+    const auto metrics = portfolio_.metrics();
+    PnlSummary pnl;
+    pnl.closed_pnl_usd = metrics.realized_pnl;
+    pnl.net_pnl_usd = metrics.realized_pnl + metrics.unrealized_pnl;
+    pnl.gross_closed_pnl_usd = pnl.closed_pnl_usd + metrics.fees_paid;
+    pnl.gross_pnl_usd = pnl.net_pnl_usd + metrics.fees_paid;
+    pnl.maker_notional_usd = maker_notional_usd_;
+    if (trade_reports_ > 0)
+    {
+        const double fills = static_cast<double>(trade_reports_);
+        pnl.net_per_fill_usd = pnl.net_pnl_usd / fills;
+        pnl.gross_closed_per_fill_usd = pnl.gross_closed_pnl_usd / fills;
+    }
+    // The maker rate that would have made the run exactly flat, on the notional its maker fills traded. A
+    // negative answer is the statement the fee question is really asking about: no fee at all would still
+    // lose money, and a rebate of that size would be needed to break even.
+    if (maker_notional_usd_ > 0.0) pnl.breakeven_maker_rate = pnl.gross_pnl_usd / maker_notional_usd_;
+    return pnl;
+}
+
 RunSummary Pipeline::summary() const
 {
+    // The account's result. `realized_pnl` is what completed, which is the part a market maker chose to
+    // close, and `unrealized_pnl` is the position it was still holding when the input ended: the first is
+    // the quoting result and the second is the bet the run left open, and the two are worth different
+    // conclusions, so both are reported and neither is called "the PnL".
+    PnlSummary pnl = pnl_summary();
     // The longest waiting order that is still in the book. The audit map holds the open orders, and their
     // lifetime is the one measure of patience this project has, so the maximum over it names the quote
     // whose queue is worth watching: it has survived every requote the run made.
@@ -584,6 +619,7 @@ RunSummary Pipeline::summary() const
             .exposure_over_collateral_fills = exposure_over_collateral_fills_,
             .working_orders = strategy_.working_order_count(),
             .portfolio = portfolio_.metrics(),
+            .pnl = pnl,
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
             .funding_requested = funding_rates_ != nullptr,

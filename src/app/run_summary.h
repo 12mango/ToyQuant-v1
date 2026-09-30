@@ -95,6 +95,28 @@ struct FundingSummary
     double flow_usd{0.0};
 };
 
+// What a run earned and what it paid, split so that quoting and the position left at the end are not read
+// as the same thing. `net_pnl_usd` is the closed result plus the open position marked at the last price,
+// `closed_pnl_usd` is the closed result alone, and `gross_*` adds the fees back. A market maker whose gross
+// PnL is negative loses money before the venue charges anything, which is a different problem from one whose
+// gross PnL is positive and whose fees are larger, and only the second of the two can be fixed by a fee tier.
+struct PnlSummary
+{
+    double net_pnl_usd{0.0};          // closed plus the open position's mark, before the split below
+    double closed_pnl_usd{0.0};       // what completed, so a position still open is not counted
+    double gross_pnl_usd{0.0};        // net, before fees
+    double gross_closed_pnl_usd{0.0}; // closed, before fees
+    double maker_notional_usd{0.0};   // what the maker fees were charged on
+    double net_per_fill_usd{0.0};     // net PnL per trade report
+    double gross_closed_per_fill_usd{0.0};
+    // The maker rate that would have made this run's total PnL zero, which is the fee question in one number:
+    // negative means even a fee of zero leaves a loss and a rebate of that size would be needed. It is exact
+    // when the fee does not feed back into the strategy's decisions, which is the case for every run with the
+    // fee-covering gate off, and a first-order estimate otherwise, because there the rate changes which
+    // quotes are placed.
+    double breakeven_maker_rate{0.0};
+};
+
 struct RunSummary
 {
     uint64_t submitted_orders{0};
@@ -122,6 +144,9 @@ struct RunSummary
     uint64_t exposure_over_collateral_fills{0};
     size_t working_orders{0};
     PortfolioMetrics portfolio;
+    // Printed for every run, because whether a run earns anything before the venue is paid is the question
+    // the market-making line exists to answer, and a reader should not have to subtract two fields by hand.
+    PnlSummary pnl;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
     // Printed only when --funding-rates supplied a series: a [FUNDING] line in a run that has no funding
@@ -225,7 +250,15 @@ struct RunSummary
                << " max_abs_exposure_usd=" << max_abs_exposure_usd
                << " exposure_over_collateral_fills=" << exposure_over_collateral_fills
                << " working_orders=" << working_orders << "\n"
-               << "[PORTFOLIO] " << portfolio.to_log_string();
+               << "[PORTFOLIO] " << portfolio.to_log_string()
+               << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
+               << " net_pnl_usd=" << pnl.net_pnl_usd
+               << " gross_closed_pnl_usd=" << pnl.gross_closed_pnl_usd
+               << " closed_pnl_usd=" << pnl.closed_pnl_usd
+               << " maker_notional_usd=" << pnl.maker_notional_usd
+               << " net_per_fill_usd=" << pnl.net_per_fill_usd
+               << " gross_closed_per_fill_usd=" << pnl.gross_closed_per_fill_usd
+               << " breakeven_maker_rate=" << pnl.breakeven_maker_rate;
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
         if (funding_requested)
             stream << "\n[FUNDING] funding_points=" << funding.points
