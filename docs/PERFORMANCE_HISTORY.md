@@ -303,6 +303,22 @@ The fee to captured ratio is 142x on one hour, 206x on the full day and 262x on 
 than on Deribit because the tick is 0.1 on a price near 93000, which puts the fee at about 186 ticks against 2.55 on
 the Deribit contract, which is the same mechanism at two scales rather than a second phenomenon.
 
+The pre-trade gate already exists and was simply off, which is worth saying because a roadmap row claimed it was
+missing. `--max-position` refuses an order whose projected position, including the quantity resting in other orders,
+would exceed the limit. On the same OKX hour it does what it is for and it also shows the trap in its units:
+
+| order size | max position | fills | refused | max exposure USD | equity |
+|---:|---:|---:|---:|---:|---:|
+| 100000 | none | 1323 | 0 | 18384 | 810.2 |
+| 100000 | 20000 | 0 | 372660 | 0 | 1000.0 |
+| 10000 | none | 505 | 0 | 10099 | 1014.8 |
+
+The middle row is a limit smaller than a single order, so every order is refused and the run does nothing: loud in
+the counter, silent in the output. The last row is the reason the gate matters. With a smaller order the same hour
+ends positive, +13.89 USD, but the exposure reached ten times the starting cash, so what it earned was a favourable
+move taken with unhedged size rather than anything the quotes captured. A result without the limit is not evidence
+about a strategy.
+
 <!-- toyquant:check
 run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
 then: submitted_orders=737 trade_reports=35 fees_paid=0.07 realized_pnl=-0.0967336
