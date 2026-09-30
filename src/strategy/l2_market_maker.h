@@ -399,4 +399,10 @@ class L2MarketMaker : public Strategy
     uint64_t queue_activity_{0};
     uint64_t queue_hold_count_{0};
     StrategyMetrics metrics_;
+
+   public:
+    // How often the decision layer refused to quote, so a run can report what it declined to do rather than only
+    // what it did. Exposed through accessors because the counters themselves live in the configuration.
+    [[nodiscard]] uint64_t edge_gate_skips() const { return config_.edge_gate_skips; }
+    [[nodiscard]] uint64_t min_spread_skips() const { return config_.min_spread_skips; }
 };

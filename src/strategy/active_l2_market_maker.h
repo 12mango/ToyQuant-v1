@@ -68,6 +68,8 @@ class ActiveL2MarketMaker final : public L2MarketMaker
     {
         auto result = L2MarketMaker::metrics();
         result.risk_pause_count = risk_pause_count_;
+        result.edge_gate_skips = edge_gate_skips();
+        result.min_spread_skips = min_spread_skips();
         return result;
     }
 

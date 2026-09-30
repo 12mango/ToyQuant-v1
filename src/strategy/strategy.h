@@ -42,6 +42,9 @@ struct StrategyMetrics
     uint64_t price_refresh_count{0};
     uint64_t age_refresh_count{0};
     uint64_t risk_pause_count{0};
+    // The decision layer's refusals, owned by the strategy because it is the thing that decided.
+    uint64_t edge_gate_skips{0};
+    uint64_t min_spread_skips{0};
     uint64_t buy_queue_consumed{0};
     uint64_t sell_queue_consumed{0};
     uint64_t buy_fill_count{0};
@@ -63,7 +66,9 @@ struct StrategyMetrics
                << " quote_count=" << quote_count << " fees_paid=" << fees_paid
                << " price_refresh_count=" << price_refresh_count
                << " age_refresh_count=" << age_refresh_count
-               << " risk_pause_count=" << risk_pause_count;
+               << " risk_pause_count=" << risk_pause_count
+               << " edge_gate_skips=" << edge_gate_skips
+               << " min_spread_skips=" << min_spread_skips;
         stream << " buy_queue_consumed=" << buy_queue_consumed
                << " sell_queue_consumed=" << sell_queue_consumed
                << " buy_fill_count=" << buy_fill_count
