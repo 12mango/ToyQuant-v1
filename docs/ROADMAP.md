@@ -24,7 +24,36 @@ reader, and paper trading is the existing book and matching engine against that 
 | **0 — packaging** | one branch, the `v1.0-demo` tag, the documents in the published navigation, a code CI | a reader sees a maintained repository with a history rather than two unfinished ones | done |
 | **1 — evidence** | the headline conclusions re-run on a second day, which the repository already holds, and the queue-model bounds experiment recorded | closes the two questions the documents could not answer: does it generalize, and how much does the queue model matter. Both are now recorded, and the second day's numbers are behind a marked block in the gate | done |
 | **2 — the live paper milestone** | a websocket book feed, a paper-trading mode reusing the book and the matching engine, and a recorder that writes the live feed in the replay format | the strongest statement available here: one strategy drives a replay and a live session, and a live session becomes replayable | one to two weeks |
+| **2a — a second venue** | a reader for the OKX historical format, added to `src/market/` beside the existing ones, plus a reconciliation check that the rebuilt book matches an independent recomputation of the top of book | consecutive-day free data with discrete levels, which is what a multi-day test needs; the existing pinned lineage is untouched because a new venue is an additional workload | days |
 | **3 — system only** | persistence and recovery, limits that refuse orders, a real venue adapter at small size, multi-instrument accounting | none of it is checkable by a reader, so it waits until the demo is finished | later |
+
+## Data: what is used, and what was rejected
+
+Checked once, at the time of writing, so re-verify before paying for anything.
+
+| Source | What it gives | Verdict |
+|---|---|---|
+| **Tardis.dev free samples** | the first day of each month, in the format this repository already parses | **used**: the multi-day evidence grows one free day at a time, with no new code, which is why the two days already here are the first of their months |
+| **OKX official historical data** | trade history from 2021-09, funding rates from 2022-03, and high-resolution L2 order book from 2023-03, free and daily | **planned** (phase 2a): the second venue, for consecutive-day tests |
+| Binance Vision, USD-M futures | free daily aggTrades, trades, book ticker (best bid and offer) updates, premium index klines and open-interest metrics | **used for research outside this repository**: funding and basis work, which needs no price ladder |
+| Binance Vision `bookDepth` | percentage bands around the mid, not discrete levels | **rejected**: a tick ladder cannot be rebuilt from it |
+| Bybit public data | trades, premium index and spot index; no order book directory | **rejected**: no L2 history |
+| Tardis paid, Crypto Lake, LOBSTER, Databento | wider L2 and L3 coverage | **rejected for now**: Tardis has a minimum order far above a few days of data, LOBSTER wants an academic address, and Databento is CME and Nasdaq, which would start a different measurement lineage rather than extend this one |
+
+## What stays inside this repository, and what does not
+
+The demo and a personal trading system share a method and one program, not a codebase. The line is drawn by
+what a change produces:
+
+* **Inside**: an input format behind a reader in `src/market/`, a new workload, a new pinned invariant, a
+  measured table. This repository accepts **data, configuration and conclusions**.
+* **Outside, and a separate project**: strategy research of any kind — designing, fitting and selecting a
+  funding, basis or execution strategy, portfolio construction, or scheduling. That work uses this simulator
+  as a fee and execution auditor when it needs to know what a trade costs, and it does not add a strategy here
+  until the work has become a measurement rather than a search.
+
+The same line explains the rejections above: the sources that would extend the evidence are used, and the
+sources that would start a different project are not.
 
 ## Deliberately not planned
 
