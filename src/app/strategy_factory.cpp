@@ -112,6 +112,7 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         // instrument's fee schedule is in scope. A zero override leaves it off.
         base_config.maker_fee_rate = instrument ? instrument->maker_fee_rate : 0.0;
         base_config.edge_cover_ticks = config.edge_cover_ticks_override;
+        base_config.min_spread_ticks = config.min_spread_ticks_override;
         return std::make_unique<ActiveL2MarketMaker>(make_active_l2_config(base_config));
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||

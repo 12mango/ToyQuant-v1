@@ -271,6 +271,33 @@ What survives is the reason for doing it.
    fills lose 0.287 USD against 26 fills losing 0.063 USD. That is the same scale-invariance the order-size sweep
    found, reproduced on days the parameters were not chosen on.
 
+### The Conditional Rule: Refusing a One Tick Book
+
+The bucketed markout says which fills are bad rather than only how bad the population is: fills that landed a tick
+or more away from the midpoint resolved positive on all five days, while fills at the midpoint resolved at or below
+zero, because a one tick book leaves the touch half a tick from the midpoint and that is where a passive quote gets
+picked off. `--min-spread-ticks` acts on that: when the top of book is narrower than the value asked for, nothing is
+quoted at all. A zero value leaves it off, so every run recorded above keeps its numbers.
+
+| Day | Condition | submitted | fills | fees USD | realized USD |
+|---|---|---:|---:|---:|---:|
+| 04-01 | none, and no gate | 1146 | 146 | 0.292 | -0.757 |
+| 04-01 | spread at least two ticks | 737 | 35 | 0.070 | -0.097 |
+| 04-01 | two ticks plus fee cover | 372 | 12 | 0.024 | **+0.00085** |
+
+Two things are worth saying plainly. The loss falls by four to eight times, and the loss **per fill** falls too, so
+the rule is not only trading less. But a wider condition is not a better one: asking for three ticks on 04-01 was
+worse than asking for two, and the far bucket's markout turned negative under it, so the condition changes which
+fills arrive rather than only how many. That is the reason the rule is a decision about the situation and not a
+parameter to be increased.
+
+<!-- toyquant:check
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
+then: submitted_orders=737 trade_reports=35 fees_paid=0.07 realized_pnl=-0.0967336
+run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2 --edge-cover-ticks=0.001
+then: submitted_orders=372 trade_reports=12 fees_paid=0.024 realized_pnl=0.000845982
+-->
+
 ### The Decision Layer: Refusing to Quote
 
 Every row above comes from a policy that quotes whenever it can. The fee is between 9.6 and 102 times what a fill

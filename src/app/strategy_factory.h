@@ -29,6 +29,8 @@ struct StrategyFactoryConfig
     // The decision layer's expected-value gate: extra ticks a quote has to cover on top of the maker fee.
     // 0 leaves the gate off, which is what every run recorded in the documents asks for.
     double edge_cover_ticks_override = 0.0;
+    // The conditional rule: quote only when the top of book is at least this many ticks wide. 0 leaves it off.
+    double min_spread_ticks_override = 0.0;
 };
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,

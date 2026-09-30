@@ -53,8 +53,14 @@ struct L2MarketMakerConfig
     // run that does not ask for the gate keeps its numbers.
     double maker_fee_rate{0.0};
     double edge_cover_ticks{0.0};
+    // A condition rather than a quote parameter: quote only when the top of book is at least this many ticks
+    // wide. The bucketed markout is why. When the spread is one tick, the best a quote can be is the touch,
+    // which sits half a tick from the midpoint, and those are the fills that resolve negative, so the rule
+    // refuses the situation instead of the price. Zero leaves it off, as every recorded run asks.
+    double min_spread_ticks{0.0};
     // Decision attribution: sides not quoted because the gate refused them.
     uint64_t edge_gate_skips{0};
+    uint64_t min_spread_skips{0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -326,6 +332,17 @@ class L2MarketMaker : public Strategy
         }
         if (!std::isfinite(bid_price) || !std::isfinite(ask_price) || bid_price >= ask_price)
             return orders;
+
+        // The conditional rule, applied before the price gate because it is about the situation rather than
+        // about the quote: a one tick book cannot offer anything but the touch, and the touch is the fill that
+        // resolves negative. Refusing it is a decision, and it is counted so the refusal can be attributed.
+        if (config_.min_spread_ticks > 0.0 &&
+            (top.ask_price - top.bid_price) / config_.tick_size < config_.min_spread_ticks)
+        {
+            if (buy_quantity > 0 || sell_quantity > 0) ++config_.min_spread_skips;
+            buy_quantity = 0;
+            sell_quantity = 0;
+        }
 
         // The expected-value gate, applied per side. The edge a fill would capture is the distance from the
         // reference price, and the cost it has to cover is the maker fee expressed in ticks at that price.
