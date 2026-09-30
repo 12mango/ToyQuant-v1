@@ -311,4 +311,24 @@ int main()
         std::filesystem::remove(okx_trades);
     }
 
+    // Cross-check against the independent recomputation in tools/check_okx_book.py: the first snapshot of the
+    // real archive slice has to be the same top of book that script prints, which is 93712.9 by 93713.0. The
+    // slice is not tracked, so a fresh clone reports the skip rather than failing on a missing file.
+    {
+        const auto okx_slice = std::filesystem::path("/tmp/okx_l2_300k.jsonl");
+        if (std::filesystem::exists(okx_slice))
+        {
+            auto reader = make_okx_book_reader(okx_slice.string(), "BTC-USDT-SWAP", 0.01, 1000000);
+            MarketEvent event;
+            assert(reader->next(event));
+            const auto& snapshot = std::get<MarketDepthSnapshot>(event);
+            assert(snapshot.bids.front().price == 93712.9);
+            assert(snapshot.asks.front().price == 93713.0);
+        }
+        else
+        {
+            std::cout << "skipped the OKX archive cross-check: " << okx_slice << " is absent\n";
+        }
+    }
+
 }

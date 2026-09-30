@@ -92,6 +92,15 @@ def download(url, path):
                 target.write(chunk)
 
 
+def is_readable_zip(path):
+    """A killed download leaves a partial file that exists and is not a zip, so it is checked before use."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return bool(archive.namelist())
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
 def slice_symbol(archive_path, symbol, output, max_rows):
     """Stream the single member and keep one symbol, so a 600 MB CSV is never unpacked to disk."""
     written = 0
@@ -144,8 +153,13 @@ def main():
             url, filename = find_url(args.symbol, start_ms, end_ms)
             print(f"url={url}")
             archive = Path("/tmp") / filename
+            if archive.exists() and not is_readable_zip(archive):
+                print(f"discarding an incomplete download: {archive}")
+                archive.unlink()
             if not archive.exists():
                 download(url, archive)
+            if not is_readable_zip(archive):
+                raise RuntimeError(f"the download is not a readable zip: {archive}")
             print(f"zip={archive} bytes={archive.stat().st_size}")
         written, first_ts, last_ts = slice_symbol(archive, args.symbol, output, args.max_rows)
     except (OSError, ValueError, RuntimeError, KeyError) as error:
