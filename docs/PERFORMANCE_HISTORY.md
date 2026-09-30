@@ -271,6 +271,31 @@ What survives is the reason for doing it.
    fills lose 0.287 USD against 26 fills losing 0.063 USD. That is the same scale-invariance the order-size sweep
    found, reproduced on days the parameters were not chosen on.
 
+### The Mechanism Space, Swept to Its Edge
+
+Every lever that decides when and where to quote, crossed with the others, on all five days: a base spread of 1, 2,
+3, 5 or 8 ticks, a minimum spread of 0 or 2 ticks, and a fee-covering requirement of 0, 0.001 or 1 tick. One hundred
+and fifty runs in total.
+
+| fills in a run | runs | fills | PnL USD | PnL per fill |
+|---|---:|---:|---:|---:|
+| 0 to 2 | 116 | 80 | -0.023 | -0.00029 |
+| 3 to 10 | 13 | 71 | -0.676 | -0.00952 |
+| 11 to 30 | 13 | 247 | -1.036 | -0.00420 |
+| 31 to 100 | 6 | 260 | -1.176 | -0.00452 |
+| over 100 | 2 | 248 | -1.194 | -0.00481 |
+
+Every band loses money in total, which is the same statement the earlier sweeps made from three other directions:
+participation is what pays the fee, and the fee is larger than what participation earns. The loss per fill is worst
+in the band where a setting trades a handful of times and best where it trades constantly, so no corner of this
+space is both busy and profitable.
+
+One corner is positive on four of the five days: a one tick base spread with a two tick minimum spread and a
+fee-covering requirement of 0.001 tick. It trades 17 times across the five days for +0.033 USD. It is recorded
+because it is the only corner that survives the sweep, not because it is a business: that is about three fills a
+day, its total is dominated by a single day, and the size is the venue minimum, so it cannot be scaled. Treating it
+as an edge would be the mistake this section exists to prevent.
+
 ### The Conditional Rule: Refusing a One Tick Book
 
 The bucketed markout says which fills are bad rather than only how bad the population is: fills that landed a tick
