@@ -78,6 +78,26 @@ that fit are the ones where a position is held rather than won by being first in
 USDT perpetual is a reader and one instrument entry, and the chain of measurements that exists today does not
 move, because a second venue is an additional workload rather than a replacement for one.
 
+## The carry line: financing flows before carry strategies
+
+Everything measured so far prices one income stream, the spread a fill captures, and one cost, the fee. That is why
+every sweep ends in the same place: the spread is a fraction of a tick and the fee is a multiple of it. A second
+income stream exists that does not depend on speed or on capturing a spread — a perpetual pays funding, a future
+pays or charges the basis at roll, a stock position pays dividends and charges financing — and today the accounting
+cannot represent any of it. Adding it is the next capability, and it is deliberately built in this order:
+
+* **First a flow with a fixed rate**, applied per interval to a position, verified by a unit test that states the
+  cash, the equity and the realized PnL after N intervals. This makes the mechanism checkable before any data
+  plumbing exists, in the same way the queue model was verified before live fills were discussed.
+* **Then a rate series as an input**, because the real rate varies by the hour and changes sign. The free sources are
+  the exchange's own funding history, which costs nothing and is a few megabytes per symbol per year.
+* **Then two legs**, because a carry position is a position and its hedge, and the ledger has to hold both without
+  letting one leg's exposure be read as the account's.
+
+The acceptance criterion is one number a reader can check: **annualized carry against every fee the position pays**,
+on real data, per venue. If that number is not larger than one, the line has no more to say than the market-making
+line did, and it will be recorded that way.
+
 ## Deliberately not planned
 
 * **Order-by-order (L3) data.** The bounds experiment shows the conclusions do not move between the
