@@ -137,6 +137,9 @@ class Pipeline
         double price;
         uint64_t quantity{0};
         uint64_t start_cycle;
+        // The condition at the fill, recorded here rather than derived when the markout resolves, because a
+        // condition read five cycles late would be the future.
+        int bucket{-1};
     };
     std::deque<FillObservation> pending_markouts_;
     std::unordered_map<uint64_t, uint64_t> order_start_cycles_;

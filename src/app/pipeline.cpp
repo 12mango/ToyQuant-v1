@@ -151,9 +151,17 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 execution_quality_.captured_edge_usd +=
                     executed / static_cast<double>(quantity_scale_) * unit_value_at_fill *
                     unit_edge / std::max(report.price, 1e-9);
+                // The condition is read here, at the fill: the side, and whether the fill price was at least a
+                // tick away from the midpoint then. The first attempt used the position, and it showed that with
+                // this sizing every fill starts from flat, so the second dimension has to be one that varies and
+                // that a quote decision could act on.
+                const bool at_least_a_tick_away =
+                    std::abs(report.price - last_mid_) >= std::max(tick_size_, PRICE_TICK_SIZE);
+                const int markout_bucket =
+                    (report.side == exchange::Side::Buy ? 0 : 2) + (at_least_a_tick_away ? 0 : 1);
                 pending_markouts_.push_back(
                     {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
-                     report.executed_quantity(), quote_cycle_});
+                     report.executed_quantity(), quote_cycle_, markout_bucket});
             }
             if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
             {
@@ -386,6 +394,14 @@ void Pipeline::process_event(const MarketEvent& event)
                         static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
                         std::max(last_mid_, 1e-9);
                     ++execution_quality_.markout_count;
+                    const std::size_t bucket =
+                        observation.bucket >= 0 ? static_cast<std::size_t>(observation.bucket) : 0;
+                    execution_quality_.markout_ticks_quantity_by_bucket[bucket] +=
+                        markout / std::max(tick_size_, PRICE_TICK_SIZE) *
+                        static_cast<double>(observation.quantity);
+                    execution_quality_.markout_quantity_by_bucket[bucket] +=
+                        static_cast<double>(observation.quantity);
+                    ++execution_quality_.markout_count_by_bucket[bucket];
                 }
                 const double abs_inventory = static_cast<double>(std::abs(position_));
                 ++inventory_samples_;
@@ -459,6 +475,14 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
                 static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
                 std::max(last_mid_, 1e-9);
             ++execution_quality_.markout_count;
+            const std::size_t bucket =
+                observation.bucket >= 0 ? static_cast<std::size_t>(observation.bucket) : 0;
+            execution_quality_.markout_ticks_quantity_by_bucket[bucket] +=
+                markout / std::max(tick_size_, PRICE_TICK_SIZE) *
+                static_cast<double>(observation.quantity);
+            execution_quality_.markout_quantity_by_bucket[bucket] +=
+                static_cast<double>(observation.quantity);
+            ++execution_quality_.markout_count_by_bucket[bucket];
         }
         profiler_end(Stage::TopBookKeeping);
     }

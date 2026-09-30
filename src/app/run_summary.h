@@ -9,6 +9,14 @@
 
 struct ExecutionQualityMetrics
 {
+    // Markout split by the condition captured at the fill: the side crossed with whether the fill added to
+    // the position (0 buy adding, 1 buy reducing, 2 sell adding, 3 sell reducing). A market maker's fills are
+    // not one population, and this is the cheapest way to find out whether the adverse ones are separable
+    // before a decision rule tries to depend on it.
+    static constexpr std::size_t kMarkoutBucketCount = 4;
+    std::array<double, kMarkoutBucketCount> markout_ticks_quantity_by_bucket{};
+    std::array<double, kMarkoutBucketCount> markout_quantity_by_bucket{};
+    std::array<uint64_t, kMarkoutBucketCount> markout_count_by_bucket{};
     double captured_edge{0.0};
     double adverse_selection{0.0};
     // Quantity-weighted companions to the two sums above. The sums mix prices with quantities, so the
@@ -60,6 +68,14 @@ struct TraceRow
     int64_t change{0};
     uint64_t queue_ahead{0};
 };
+
+// Quantity-weighted markout in ticks for one bucket, or zero when the bucket has no resolved fill. Zero has
+// to mean "no evidence" here rather than "no adverse selection", which is why the counts are printed beside it.
+inline double markout_bucket_ticks(const ExecutionQualityMetrics& quality, std::size_t bucket)
+{
+    const double quantity = quality.markout_quantity_by_bucket[bucket];
+    return quantity > 0.0 ? quality.markout_ticks_quantity_by_bucket[bucket] / quantity : 0.0;
+}
 
 struct RunSummary
 {
@@ -166,6 +182,14 @@ struct RunSummary
                        : 0.0)
                << " markout_usd=" << execution_quality.markout_usd
                << " markout_count=" << execution_quality.markout_count
+               << " markout_buy_add_ticks=" << markout_bucket_ticks(execution_quality, 0)
+               << " markout_buy_add_count=" << execution_quality.markout_count_by_bucket[0]
+               << " markout_buy_reduce_ticks=" << markout_bucket_ticks(execution_quality, 1)
+               << " markout_buy_reduce_count=" << execution_quality.markout_count_by_bucket[1]
+               << " markout_sell_add_ticks=" << markout_bucket_ticks(execution_quality, 2)
+               << " markout_sell_add_count=" << execution_quality.markout_count_by_bucket[2]
+               << " markout_sell_reduce_ticks=" << markout_bucket_ticks(execution_quality, 3)
+               << " markout_sell_reduce_count=" << execution_quality.markout_count_by_bucket[3]
                << " avg_abs_inventory=" << execution_quality.average_abs_inventory
                << " max_abs_inventory=" << execution_quality.max_abs_inventory
                << " inventory_sign_changes=" << execution_quality.inventory_sign_changes
