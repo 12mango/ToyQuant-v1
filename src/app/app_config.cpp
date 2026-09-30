@@ -29,6 +29,7 @@ constexpr std::string_view kArrivalSharePrefix = "--arrival-share=";
 constexpr std::string_view kOrderLatencyPrefix = "--order-latency-us=";
 constexpr std::string_view kCancelLatencyPrefix = "--cancel-latency-us=";
 constexpr std::string_view kTraceOrderPrefix = "--trace-order=";
+constexpr std::string_view kFundingRatesPrefix = "--funding-rates=";
 }  // namespace
 
 std::string to_abs_path(const std::string& input_path)
@@ -90,6 +91,8 @@ void print_usage(const char* executable)
                      "conservative (lower bound) | optimistic (upper bound)\n";
         std::cerr << "   arrival: --arrival-share=X sets the share of the displayed size a new quote "
                      "starts behind; 1.0 is FIFO\n";
+        std::cerr << "   funding: --funding-rates=FILE applies the instrument's funding history as the "
+                     "replay passes each settlement, reported as a [FUNDING] line\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -299,13 +302,22 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
             }
+            else if (flag.compare(0, kFundingRatesPrefix.size(), kFundingRatesPrefix) == 0)
+            {
+                cfg.funding_rates_path = flag.substr(kFundingRatesPrefix.size());
+                if (cfg.funding_rates_path.empty())
+                {
+                    error = "--funding-rates needs a file path";
+                    return false;
+                }
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
                         "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
-                        "--cancel-latency-us=N, or --trace-order=N";
+                        "--cancel-latency-us=N, --trace-order=N, or --funding-rates=FILE";
                 return false;
             }
         }

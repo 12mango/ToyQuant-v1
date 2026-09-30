@@ -186,6 +186,43 @@ tar -xzOf data/v2/BTC-USDT-SWAP-L2orderbook-400lv-2026-01-07.tar.gz | head -n 30
 The venue is taken from the depth file rather than from the command line, so the same command runs either the OKX
 archive or the Deribit files this repository holds.
 
+## Funding Rates
+
+The carry line's second input, and the smallest file this project reads: a funding history is a few megabytes
+per symbol per year even at an hourly settlement. `tools/fetch_funding_rates.py` fetches one instrument from
+either free source and writes it here:
+
+```bash
+python3 tools/fetch_funding_rates.py --source okx --date 2026-01-07 --symbol BTC-USDT-SWAP
+python3 tools/fetch_funding_rates.py --source binance --month 2024-03 --symbol BTCUSDT
+```
+
+That produces `data/v2/okx_funding_2026-01-07_BTC-USDT-SWAP.csv` (3 settlements,
+`instrument_name,funding_rate,funding_time`) and `data/v2/BTCUSDT-fundingRate-2024-03.csv` (93 settlements,
+`calc_time,funding_interval_hours,last_funding_rate`). Five properties decide how a series joins a replay:
+
+- **The OKX day is cut on midnight UTC+8**, like its trade archive, so the file named `2026-01-07` holds the
+  settlements at `2026-01-06 16:00`, `2026-01-07 00:00` and `08:00` UTC, while the book archive for the same
+  date is cut on UTC and starts at `00:00`. A settlement at UTC midnight therefore sits at the first record of
+  the book archive and at the file boundary of the funding archive, and the script prints the offset on every
+  run rather than leaving it in a comment.
+- **The OKX file carries the whole venue.** It is one CSV for every swap OKX lists, so the reader slices the
+  requested instrument out of it and a symbol the file does not mention yields an empty series.
+- **Binance publishes funding rates monthly, not daily.** `fundingRate/` has no daily folder, unlike
+  `premiumIndexKlines`, which is a different series (the premium index, not the rate). One archive is one
+  symbol-month.
+- **The Binance row declares its own interval** (`8` for BTCUSDT) and `calc_time` is a settlement timestamp in
+  milliseconds, with a few milliseconds of jitter: several rows end in `...000001`, so the series is eight
+  hours apart to within a second rather than exactly. `tests/funding_rate_test.cpp` asserts that tolerance and
+  says why, because a strict equality would be a red test about the venue's clock.
+- **The rate is what longs pay.** Both venues publish the funding rate in that direction, which is the opposite
+  of the rate `Portfolio::accrue_interval_flow` takes, so the sign is flipped once, where the pipeline applies
+  the settlement.
+
+A run consumes the file with `--funding-rates=FILE` and reports a `[FUNDING]` line. `docs/PERFORMANCE_HISTORY.md`
+records two runs over these files with the command that re-derives each number, and `docs/USER_GUIDE.md` explains
+the line's fields.
+
 ## Runtime Output
 
 The application writes strategy orders and trades to:

@@ -96,6 +96,12 @@ cannot represent any of it. Adding it is the next capability, and it is delibera
   direction and one rate serves both sides of a market, which is the shape the next step needs.
 * **Then a rate series as an input**, because the real rate varies by the hour and changes sign. The free sources are
   the exchange's own funding history, which costs nothing and is a few megabytes per symbol per year.
+  **Done:** `tools/fetch_funding_rates.py` fetches either source for one instrument (OKX `module=3`, and the Binance
+  Vision monthly `fundingRate` archive, which has no daily folder), `src/market/funding_rate.*` reads both formats and
+  the replay applies each settlement as the event clock passes it, reported as a `[FUNDING]` line with the file's own
+  arithmetic beside the USD the window moved. Two facts from the real files are recorded with it: the OKX day is cut
+  on midnight UTC+8 while its book archive is cut on UTC, and the Binance settlement clock carries milliseconds of
+  jitter, so its interval is eight hours to within a second rather than exactly.
 * **Then two legs**, because a carry position is a position and its hedge, and the ledger has to hold both without
   letting one leg's exposure be read as the account's.
 

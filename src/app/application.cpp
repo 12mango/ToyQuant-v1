@@ -16,6 +16,7 @@
 #include "legacy/tick.h"
 #include "legacy/tick_pipeline.h"
 #include "market/csv_feed.h"
+#include "market/funding_rate.h"
 #include "market/l2_replay_feed.h"
 #include "market/replay_feed.h"
 #include "market/udp_feed.h"
@@ -186,6 +187,18 @@ void Application::run_replay_mode() const
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale);
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_trace_order(cfg_.trace_order);
+    // The funding series is optional and owned here, because the pipeline only borrows it. A file that names
+    // no settlement for this instrument is an error rather than an empty input, since a wrong symbol would
+    // otherwise look like an instrument that never paid funding.
+    FundingRateSeries funding_series;
+    if (!cfg_.funding_rates_path.empty())
+    {
+        funding_series = read_funding_rate_series(to_abs_path(cfg_.funding_rates_path), instrument.symbol);
+        if (funding_series.empty())
+            throw std::invalid_argument("no funding settlements for " + instrument.symbol + " in " +
+                                        cfg_.funding_rates_path);
+        pipeline.set_funding_rates(&funding_series);
+    }
     // The replay can end holding a position, so the reported equity has to include its mark to
     // market. Every other mode already does this; the L1 replay used to leave equity and
     // unrealized PnL at zero no matter what the position was.
@@ -278,6 +291,17 @@ void Application::run_l2_replay_mode() const
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_profiler(profiler);
     pipeline.set_trace_order(cfg_.trace_order);
+    // The funding history of the instrument being replayed, applied as the event clock passes each
+    // settlement. Optional, and owned here because the pipeline only borrows it.
+    FundingRateSeries funding_series;
+    if (!cfg_.funding_rates_path.empty())
+    {
+        funding_series = read_funding_rate_series(to_abs_path(cfg_.funding_rates_path), instrument.symbol);
+        if (funding_series.empty())
+            throw std::invalid_argument("no funding settlements for " + instrument.symbol + " in " +
+                                        cfg_.funding_rates_path);
+        pipeline.set_funding_rates(&funding_series);
+    }
     double final_mid = 0.0;
     MarketDataValidationConfig validation_config;
     validation_config.validate_incremental_update_fields = !cfg_.fast_validation;

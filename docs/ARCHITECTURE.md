@@ -1102,3 +1102,19 @@ data plumbing yet: the mechanism is checkable before a rate series exists, the w
 checked before live fills were discussed. The order of the remaining steps is scoped in
 [Roadmap](ROADMAP.md#the-carry-line-financing-flows-before-carry-strategies).
 
+The rate then arrives from a file, which is `src/market/funding_rate.*`. Two shapes are recognised by
+their own header: an OKX daily funding archive, which holds every swap on the venue in one file, and a
+Binance Vision monthly archive, which holds one symbol. `FundingRateSeries` keeps one instrument's
+settlements in order and consumes them forward, so a settlement is applied exactly once, at the first
+event at or after its timestamp, on the position the previous event left and at the last price the run
+has seen. The settlement instant itself is not in the event stream, so that mark is the nearest causal
+one available; the position is exact, because no event between the settlement and the event that
+follows it could have changed it. The columns are read as published and the polarity is flipped once,
+here, because a published funding rate is what longs pay while `accrue_interval_flow` takes the rate a
+long earns. The run summary prints a `[FUNDING]` line with the file's own arithmetic (points, span,
+summed rate, annualized rate) next to what the replay did with it (settlements reached, USD moved), and
+only when `--funding-rates` supplied a series, which is why a run without one still produces exactly
+the output it produced before this input existed. A settlement reached before the account holds a
+position is counted and moves nothing: the line therefore reports two different things, and a window
+that begins after a settlement is the case where they disagree.
+

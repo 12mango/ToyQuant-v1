@@ -47,6 +47,16 @@ SLICE_2M=/tmp/depth_2m.csv
 # built on demand, so the cut costs a second once and nothing afterwards.
 SNAPSHOT_0501=data/v2/deribit_book_snapshot_25_2020-05-01_BTC-PERPETUAL.csv.gz
 SLICE_0501=/tmp/snap_0501_200k.csv
+# The funding block in docs/PERFORMANCE_HISTORY.md replays ten minutes around the 2024-03-28 08:00 UTC funding
+# settlement, because a Binance day file is cut on UTC midnight and midnight is itself a settlement instant, so a
+# window that begins with the day applies that settlement to an account that holds nothing. The two slices are one
+# streamed pass each over the day files, cached in /tmp like the rest, and skipped when the day is not on disk.
+BINANCE_TRADES_0328=data/v2/BTCUSDT-aggTrades-2024-03-28.csv
+BINANCE_BBO_0328=data/v2/BTCUSDT-bookTicker-2024-03-28.csv
+SLICE_SETTLE_TRADES=/tmp/btc_trades_settle.csv
+SLICE_SETTLE_BBO=/tmp/btc_bbo_settle.csv
+SETTLE_FROM=1711612500000
+SETTLE_TO=1711613100000
 REF_HASH=/tmp/l2_full_ref.sha256
 
 # The slices are cut from the tracked depth file. /tmp is volatile, so cut them again on demand
@@ -75,6 +85,18 @@ ensure_slices() {
       esac
     fi
   done
+  # The two slices the funding block names, cut from the Binance day files the same way and skipped when those are
+  # not on disk. The window starts five minutes before the 08:00 UTC settlement and ends five minutes after it, so
+  # the replay is holding a position when the settlement arrives; the cut is one pass per file through the tool the
+  # document names, rather than an inline filter that a reader would have to trust.
+  if [ ! -f "$SLICE_SETTLE_TRADES" ] && [ -f "$BINANCE_TRADES_0328" ]; then
+    python3 tools/slice_csv_window.py --input "$BINANCE_TRADES_0328" --column 6 \
+      --from "$SETTLE_FROM" --to "$SETTLE_TO" --output "$SLICE_SETTLE_TRADES" > /dev/null
+  fi
+  if [ ! -f "$SLICE_SETTLE_BBO" ] && [ -f "$BINANCE_BBO_0328" ]; then
+    python3 tools/slice_csv_window.py --input "$BINANCE_BBO_0328" --column 6 \
+      --from "$SETTLE_FROM" --to "$SETTLE_TO" --output "$SLICE_SETTLE_BBO" > /dev/null
+  fi
 }
 
 # Sort the tokens so the comparison does not depend on the order the summary lines happen to print in.

@@ -61,6 +61,10 @@ struct AppConfig
 
     // The order whose queue the run should trace, 0 for none. Reports as [QUEUE_TRACE] lines.
     uint64_t trace_order = 0;
+    // A funding rate history for the replayed instrument, empty for no funding. The replay applies one
+    // settlement each time the event clock passes one, reported as a [FUNDING] line that appears only when
+    // this is set, so a run without it reproduces the recorded output byte for byte.
+    std::string funding_rates_path;
     // How far the fair price has to move before a resting quote is pulled and replaced, in ticks.
     // 0 means "use the strategy default". This is the other half of the fill-rate question: a quote
     // that is replaced on every twitch never holds a queue position long enough to reach the front.

@@ -12,6 +12,7 @@
 #include "accounting/portfolio.h"
 #include "app/pipeline.h"
 #include "exchange/matching_engine.h"
+#include "market/funding_rate.h"
 #include "orderbook/orderbook.h"
 #include "strategy/l2_market_maker.h"
 #include "strategy/market_maker.h"
@@ -161,4 +162,49 @@ int main()
     // A pipeline that was never asked to trace an order reports no hints, which is what keeps the summary
     // of an ordinary run exactly as it was.
     assert(!fee_pipeline.summary().trace_requested);
+
+    // Funding as an input to the ledger. The published rate is what longs pay and the accounting takes the
+    // rate a long earns, so a settlement is a cost to a long position and the pipeline is what flips the
+    // sign. The timing rule is the other half: a settlement is applied at the first event at or after it, on
+    // the position the previous event left, at the last price the run has seen.
+    {
+        FundingRateSeries funding("BTC-PERPETUAL");
+        funding.add(0, 0.5);      // reached while the account is flat and no price exists yet
+        funding.add(30, 0.0001);  // 0.01%, which the long pays
+        std::ofstream funding_orders("/tmp/pipeline_funding_orders.csv");
+        std::ofstream funding_trades("/tmp/pipeline_funding_trades.csv");
+        NaiveMarketMaker funding_strategy(1, 0.0, 0.5);
+        OrderBook funding_book(0.5);
+        MatchingEngine funding_engine(0.5, FeeSchedule{.maker_rate = 0.0002,
+                                                       .taker_rate = 0.0005,
+                                                       .quantity_scale = 1,
+                                                       .unit_notional_usd = 10.0});
+        Portfolio funding_portfolio(1, 1000.0, 10.0);
+        Pipeline funding_pipeline(funding_orders, funding_trades, funding_book, funding_strategy,
+                                  funding_engine, funding_portfolio);
+        funding_pipeline.set_funding_rates(&funding);
+
+        funding_pipeline.process_event(BboQuote{20, "BTC-PERPETUAL", 99.0, 100, 101.0, 100, 1,
+                                                "deribit"});
+        funding_pipeline.process_event(
+            MarketTrade{21, "BTC-PERPETUAL", 100.0, 1, Side::Sell, 2, "deribit"});
+        // The settlement at ts=0 was reached by the first event, before any price and with a flat account:
+        // applied, and worth nothing. The one at ts=30 is still ahead of the clock.
+        assert(funding_pipeline.summary().funding.settlements == 1);
+        assert(std::abs(funding_pipeline.summary().funding.flow_usd) < 1e-15);
+
+        const double cash_before = funding_portfolio.metrics().cash;
+        funding_pipeline.process_event(BboQuote{30, "BTC-PERPETUAL", 99.0, 100, 101.0, 100, 3,
+                                                "deribit"});
+        // One contract is 10 USD of face value, the mark is the last mid the run saw (100), and the long
+        // pays 0.01% of the notional: 0.001 USD out of cash.
+        assert(funding_pipeline.summary().funding.settlements == 2);
+        assert(std::abs(funding_pipeline.summary().funding.flow_usd + 0.001) < 1e-12);
+        assert(std::abs(funding_portfolio.metrics().cash - (cash_before - 0.001)) < 1e-12);
+        // The line reports the file as well as the settlements, and exists only because a series was given.
+        assert(funding_pipeline.summary().funding_requested);
+        assert(funding_pipeline.summary().funding.points == 2);
+        assert(std::abs(funding_pipeline.summary().funding.sum_rate - 0.5001) < 1e-15);
+        assert(!fee_pipeline.summary().funding_requested);
+    }
 }

@@ -35,6 +35,7 @@ set(COMMON_INCLUDE_DIRS
 set(COMMON_SOURCES
     src/accounting/portfolio.cpp
     src/market/csv_feed.cpp
+    src/market/funding_rate.cpp
     src/market/market_data_adapter.cpp
     src/market/market_data_validator.cpp
     src/market/l2_replay_feed.cpp
@@ -154,6 +155,12 @@ add_test(NAME performance_test COMMAND performance_test)
 add_executable(portfolio_test tests/portfolio_test.cpp src/accounting/portfolio.cpp)
 target_include_directories(portfolio_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME portfolio_test COMMAND portfolio_test)
+
+add_executable(funding_rate_test tests/funding_rate_test.cpp src/market/funding_rate.cpp
+    src/market/line_reader.cpp src/accounting/portfolio.cpp)
+target_include_directories(funding_rate_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(funding_rate_test PRIVATE ZLIB::ZLIB)
+add_test(NAME funding_rate_test COMMAND funding_rate_test)
 
 add_executable(pipeline_accounting_test tests/pipeline_accounting_test.cpp
     src/app/pipeline.cpp ${COMMON_SOURCES})

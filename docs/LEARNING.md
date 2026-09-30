@@ -222,6 +222,8 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `strategy_net_position`, `strategy_position_mismatches` | The strategy's own position, and any divergence from the pipeline's |
 | `working_orders` | Orders still resting when the input ended |
 | `[PORTFOLIO]` `cash`, `realized_pnl`, `unrealized_pnl`, `equity`, `fees_paid` | The account, marked to market at the last price |
+| `[FUNDING]` `funding_points`, `funding_span_hours`, `funding_sum_rate`, `funding_annualized_rate` | The rate series the run was given: how many settlements it holds, over what span, and what a long holding one unit of notional paid over it and over a year |
+| `[FUNDING]` `funding_settlements`, `funding_flow_usd` | What the window did with it: settlements the event clock passed, and the USD they credited to cash. A settlement reached before the account holds a position is counted and moves nothing, so the two disagree by design. Printed only when `--funding-rates` supplied a series |
 
 Every field above is written somewhere under `src/`. `tools/check_written_fields.py` fails the build if
 one stops being written, because a field that is read but never written looks exactly like a field whose

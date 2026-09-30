@@ -78,6 +78,23 @@ inline double markout_bucket_ticks(const ExecutionQualityMetrics& quality, std::
     return quantity > 0.0 ? quality.markout_ticks_quantity_by_bucket[bucket] / quantity : 0.0;
 }
 
+// What the funding input contained and what it did to the account: the file's own arithmetic, and the
+// settlements the replay applied. Separated from PortfolioMetrics because a run without a funding series has
+// no funding facts at all, and a line of zeros pretending to be a measurement is worse than no line.
+struct FundingSummary
+{
+    // The file: how many settlements it holds, over what span, and the sum and the annualized form of the
+    // rates it carries. `sum_rate` is what a long holding one unit of notional paid over the span.
+    uint64_t points{0};
+    uint64_t span_hours{0};
+    double sum_rate{0.0};
+    double annualized_rate{0.0};
+    // The replay: settlements the event clock passed, and the USD amount they credited to cash. The two
+    // differ because a settlement that lands on a flat account is applied and moves nothing.
+    uint64_t settlements{0};
+    double flow_usd{0.0};
+};
+
 struct RunSummary
 {
     uint64_t submitted_orders{0};
@@ -107,6 +124,10 @@ struct RunSummary
     PortfolioMetrics portfolio;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
+    // Printed only when --funding-rates supplied a series: a [FUNDING] line in a run that has no funding
+    // input would change the output of every recorded run and say nothing.
+    bool funding_requested{false};
+    FundingSummary funding;
     // Which orders are worth tracing, so a reader does not have to guess an id. Printed only when a
     // trace was asked for: a hint about tracing inside a run that traces nothing is noise, and it would
     // also change the output of every ordinary run.
@@ -206,6 +227,13 @@ struct RunSummary
                << " working_orders=" << working_orders << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string();
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
+        if (funding_requested)
+            stream << "\n[FUNDING] funding_points=" << funding.points
+                   << " funding_span_hours=" << funding.span_hours
+                   << " funding_sum_rate=" << funding.sum_rate
+                   << " funding_annualized_rate=" << funding.annualized_rate
+                   << " funding_settlements=" << funding.settlements
+                   << " funding_flow_usd=" << funding.flow_usd;
         if (trace_requested)
         {
             stream << "\n[TRACE_HINTS] first_fill_order_id=" << first_fill_order_id

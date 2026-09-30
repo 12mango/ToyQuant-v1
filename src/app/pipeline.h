@@ -10,6 +10,7 @@
 
 #include "app/run_summary.h"
 #include "exchange/matching_engine.h"
+#include "market/funding_rate.h"
 #include "market/market_event.h"
 #include "orderbook/orderbook.h"
 #include "strategy/strategy.h"
@@ -65,6 +66,22 @@ class Pipeline
     void set_profiler(StageProfiler* profiler)
     {
         profiler_ = profiler;
+    }
+
+    // The funding history of the instrument being replayed, owned by the caller like the profiler. The
+    // pointer is non-const because the pipeline advances the series' consumption cursor as the replay passes
+    // each settlement; the series itself is unchanged, so a caller can read it afterwards.
+    //
+    // Passing nullptr, which is the default, is what every recorded run does, and it keeps the summary byte
+    // for byte what it was: a run without a funding series prints no [FUNDING] line at all.
+    //
+    // With a series, the pipeline applies one settlement each time the event clock passes one, on the
+    // positions as they stand and at the last price the run has seen for the instrument. The position is
+    // exact — no event between the settlement and the event that follows it could have changed it — and
+    // the mark is the nearest causal one, since the settlement instant itself is not in the event stream.
+    void set_funding_rates(FundingRateSeries* series)
+    {
+        funding_rates_ = series;
     }
 
     // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a
@@ -200,4 +217,18 @@ class Pipeline
     uint64_t longest_wait_filled_order_id_{0};
     uint64_t longest_wait_filled_cycles_{0};
     StageProfiler* profiler_{nullptr};
+
+    // Funding state. The series is the caller's; this only remembers how far the replay has consumed it and
+    // what the settlements did to the account. `funding_flow_usd_` is the amount credited to cash, which is
+    // zero over a window whose settlements fall on a flat account, and `funding_settlements_` counts the
+    // settlements the replay passed, including those, so the two answer different questions.
+    FundingRateSeries* funding_rates_{nullptr};
+    uint64_t funding_settlements_{0};
+    double funding_flow_usd_{0.0};
+
+    // Applies every settlement at or before `ts` that the replay has not applied yet. Called at the start of
+    // each event, so the account at the settlement is the one the previous event left, and the mark is the
+    // last price seen at or before that event. A settlement reached before any price exists for the
+    // instrument is applied to an account that holds nothing yet, which is a no-op rather than an error.
+    void apply_due_funding(uint64_t ts);
 };

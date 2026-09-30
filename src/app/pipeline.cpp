@@ -334,6 +334,7 @@ void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
 
 void Pipeline::process_event(const MarketEvent& event)
 {
+    apply_due_funding(std::visit([](const auto& value) { return value.ts; }, event));
     const auto exchange = std::visit([](const auto& value) { return value.exchange; }, event);
     if (!exchange.empty())
     {
@@ -420,6 +421,7 @@ void Pipeline::process_event(const MarketEvent& event)
 
 void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top)
 {
+    apply_due_funding(ts);
     current_ts_ = ts;
     submit_strategy_actions(symbol, ts, top);
     // The L1 path has no depth view to sample on, so it samples on its own updates; without this the
@@ -430,6 +432,7 @@ void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const
 
 void Pipeline::process_l2_market_view(const L2MarketView& view)
 {
+    apply_due_funding(view.ts);
     current_ts_ = view.ts;
     if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
     {
@@ -514,11 +517,30 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
 
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 {
+    apply_due_funding(trade.ts);
     current_ts_ = trade.ts;
     strategy_.on_market_trade(trade);
     engine_.process_market_trade(trade);
     record_trace_sample("trade", trade.ts);
     sample_resting_queues();
+}
+
+void Pipeline::apply_due_funding(uint64_t ts)
+{
+    if (funding_rates_ == nullptr) return;
+    FundingRatePoint point;
+    while (funding_rates_->next_settlement(ts, point))
+    {
+        ++funding_settlements_;
+        // A settlement before the first price is applied to an account that holds nothing yet, so there is
+        // no notional to charge and nothing to do; the settlement is still consumed, because the replay has
+        // passed it and a later event must not apply it again.
+        if (last_mid_ <= 0.0) continue;
+        // The published rate is what longs pay; the accounting takes the rate a long earns on the notional,
+        // so the sign is flipped once here and each position's own side then decides who pays whom.
+        funding_flow_usd_ +=
+            portfolio_.accrue_interval_flow(funding_rates_->symbol(), -point.rate, last_mid_);
+    }
 }
 
 RunSummary Pipeline::summary() const
@@ -564,6 +586,16 @@ RunSummary Pipeline::summary() const
             .portfolio = portfolio_.metrics(),
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
+            .funding_requested = funding_rates_ != nullptr,
+            // A settlement the replay never reached leaves the consumed count short of the file, which is
+            // visible here and is the honest reading: the series is longer than the window.
+            .funding = {.points = funding_rates_ != nullptr ? funding_rates_->size() : 0,
+                        .span_hours = funding_rates_ != nullptr ? funding_rates_->span_ms() / 3600000 : 0,
+                        .sum_rate = funding_rates_ != nullptr ? funding_rates_->sum_rate() : 0.0,
+                        .annualized_rate =
+                            funding_rates_ != nullptr ? funding_rates_->annualized_rate() : 0.0,
+                        .settlements = funding_settlements_,
+                        .flow_usd = funding_flow_usd_},
             .trace_requested = trace_order_id_ != 0,
             .first_fill_order_id = first_fill_order_id_,
             .longest_wait_filled_order_id = longest_wait_filled_order_id_,

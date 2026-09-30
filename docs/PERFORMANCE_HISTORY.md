@@ -1636,3 +1636,68 @@ new output and hashing the remainder reproduces the previous reference, `079a955
 interaction with the engine is a `const` accessor, so no run can behave differently because of this. A reader
 holding an older cached reference should run `tools/verify_l2.sh ref` once; the file lives in `/tmp` and is
 not tracked, which is why the change is recorded here rather than in the diff.
+
+## Funding Rates as an Input
+
+The carry line's second step, and the first time a rate series reached the ledger: a replay now pays or receives
+funding on whatever position it holds when a settlement arrives. Two free sources publish the series and they
+disagree about nearly everything except the sign convention, which is why both are recorded here: each
+difference is the kind that shifts a day or a factor without failing.
+
+| Source | Archive | What its file day is |
+|---|---|---|
+| OKX `module=3` (`tools/fetch_funding_rates.py --source okx`) | one CSV per day for **every** swap on the venue | midnight **UTC+8**: the file named `2026-01-07` opens at `2026-01-06 16:00` UTC |
+| Binance Vision `fundingRate` | one CSV per symbol per **month**; there is no daily folder, unlike `premiumIndexKlines` | UTC, and each row declares its own interval (`8` hours for BTCUSDT) |
+
+Two runs over these files answer different questions and both are recorded, because the funding line reports
+two different things.
+
+**A window inside a month, with no position yet.** The five minute Binance fixture the L1 path already
+documents starts at `2024-03-30 00:00:00.014` UTC, which is *after* 88 settlements of the March file. The replay
+applies every one of them at its first event, against an account that holds nothing, so the count and the money
+have to disagree:
+
+<!-- toyquant:check
+run: replay data/v2/test_aggTrades_5k.csv data/v2/test_bookTicker_5k.csv BTCUSDT 0 l1 1000000 --funding-rates=data/v2/BTCUSDT-fundingRate-2024-03.csv
+then: funding_points=93 funding_span_hours=736 funding_sum_rate=0.0314019 funding_annualized_rate=0.373751 funding_settlements=88 funding_flow_usd=0
+-->
+
+**Ten minutes around one settlement, with a position.** A Binance day file is cut on UTC midnight, which is
+itself a settlement instant, so a window that begins with the day cannot show the mechanism. The slice therefore
+starts at `2024-03-28 07:55` UTC and ends at `08:05`, which contains the 08:00 settlement after ten minutes of
+quoting. The same command with and without the funding file is the A/B: the fills and the fees are identical and
+the funding is the only difference in the account.
+
+<!-- toyquant:check
+run: replay /tmp/btc_trades_settle.csv /tmp/btc_bbo_settle.csv BTCUSDT 0 l1 1000000
+then: events=78477 trade_reports=111 fees_paid=1.25542 realized_pnl=-1.37681 equity=998.122
+run: replay /tmp/btc_trades_settle.csv /tmp/btc_bbo_settle.csv BTCUSDT 0 l1 1000000 --funding-rates=data/v2/BTCUSDT-fundingRate-2024-03.csv
+then: events=78477 trade_reports=111 fees_paid=1.25542 funding_settlements=83 funding_flow_usd=0.226775 realized_pnl=-1.15004 equity=998.349
+-->
+
+What the two runs establish:
+
+- **The flow is positive because the position was short.** The published rate is what longs pay, the accounting
+  takes the rate a long earns, and the `l1` strategy was net short when the settlement arrived, so 0.226775 USD
+  was paid to the account rather than charged to it. Realized PnL moved from -1.37681 to -1.15004, which is that
+  amount exactly, and equity moved with it from 998.122 to 998.349.
+- **83 of the 93 settlements were reached**: the 82 before the window, applied to an empty account, and the one
+  inside it, applied to a position. The ten after the window are why `funding_points` and `funding_settlements`
+  are printed side by side.
+- **The month is the carry number the acceptance criterion needs.** 93 settlements over 736 hours sum to
+  0.0314019 and annualize to 0.373751: a long holding BTCUSDT through March 2024 paid about 37% of its notional
+  to stay long. That is the base a hedged position has to beat after its own fees, and no fee schedule in this
+  repository is near it, which is the first statement the carry line makes that the market-making line could
+  not.
+- **The venue's settlement clock is not exact.** Several `calc_time` values end in `...000001`, so the eight hour
+  interval holds to within a second rather than exactly. `tests/funding_rate_test.cpp` asserts that tolerance
+  with the reason attached, because a strict equality would have been a red test about Binance's clock.
+- **The OKX day boundary needs both files.** Its funding archive is cut on UTC+8, so a range cut on UTC spans two
+  of them, and the book archive for `2026-01-07` opens exactly at the `00:00` UTC settlement that the funding
+  file named `2026-01-07` also contains. A replay on one file therefore reaches the settlements up to its own
+  start and none after it.
+
+The reader costs nothing measurable: it reads 93 rows once, and the ten minute settlement window replays in the
+same 0.2 s as the five minute fixture. Both runs leave every recorded number in this document untouched, because
+the funding path is entered only through `--funding-rates` and a run without it prints exactly what it printed
+before.

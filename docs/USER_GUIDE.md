@@ -261,6 +261,45 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--order-latency-us=N` | One-way latency between sending an order and the exchange having it | 0, a synchronous engine |
 | `--cancel-latency-us=N` | One-way latency between sending a cancel and the exchange applying it | 0, a synchronous engine |
 | `--trace-order=N` | Trace the queue in front of order N, reported as `[QUEUE_TRACE]` lines | 0, no trace |
+| `--funding-rates=FILE` | Apply an instrument's funding history as the replay passes each settlement | Off, and the summary then has no `[FUNDING]` line |
+
+### Funding as an input
+
+A perpetual pays funding for as long as a position is held, and that is a flow rather than a price, so it
+arrives as a file instead of in the event stream:
+
+```bash
+./out/build/linux-debug/toy_quant replay \
+  data/v2/test_aggTrades_5k.csv data/v2/test_bookTicker_5k.csv BTCUSDT 0 l1 1000000 \
+  --funding-rates=data/v2/BTCUSDT-fundingRate-2024-03.csv
+```
+
+Two free formats are recognised by their header: an OKX daily funding archive
+(`instrument_name,funding_rate,funding_time`, every swap on the venue in one file) and a Binance Vision
+monthly `fundingRate` archive (`calc_time,funding_interval_hours,last_funding_rate`, one symbol).
+`tools/fetch_funding_rates.py` fetches either for one instrument and `data/README.md` records what the two
+files this checkout holds are.
+
+The rate in both is the rate longs pay. The pipeline applies each settlement at the first event at or after
+it, on the positions as they stand and at the last price the run has seen, which is the nearest causal mark
+available because the settlement instant is not in the event stream. The run then reports:
+
+```text
+[FUNDING] funding_points=93 funding_span_hours=736 funding_sum_rate=0.0314019
+          funding_annualized_rate=0.373751 funding_settlements=88 funding_flow_usd=0
+```
+
+`funding_points`, `funding_span_hours`, `funding_sum_rate` and `funding_annualized_rate` describe the file —
+what a long holding one unit of notional paid over its span, and that sum continued over a year — while
+`funding_settlements` counts the settlements the window reached and `funding_flow_usd` is what they moved in
+cash. The two differ by design: a window that begins after a settlement applies it to an account that holds
+nothing yet, so it is counted and worth zero, which is what the line above shows for a five minute replay
+that starts inside a month of history. The run above and a ten minute window that does hold a position at a
+settlement are both recorded with their commands in
+[Performance History](PERFORMANCE_HISTORY.md#funding-rates-as-an-input). A file with no settlement for the
+instrument is an error rather than an empty input, because a wrong symbol would otherwise look like an
+instrument that never paid funding. Without the flag the summary is unchanged byte for byte, which is what
+keeps every recorded run reproducible.
 
 To read one order's life instead of the run's totals, name it and filter the summary for the trace block.
 Order ids are assigned in submission order and start at 1, so a small id is an early quote:
