@@ -136,6 +136,24 @@ is what a reader's output gets compared against. It reads the first rows by defa
 multi-gigabyte file, and it reads the gzip stream once to say whether a download is complete rather than
 interpreting a partial file as a short day.
 
+## OKX Trades, and What the Public Route Cannot Do
+
+The public history endpoint answers without a key, and `tools/fetch_okx_trades.py` turns it into one CSV per
+symbol per day:
+
+```bash
+python3 tools/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP
+```
+
+What that route serves, checked against the endpoint itself: `module=1` is tick trades, `2` is candles, `3` is
+funding rates, and `11` is margin borrow rates. **There is no order book module**, so the L2 dataset advertised on
+the historical data page is reachable only through the web portal and has to be downloaded by hand.
+
+Two properties of the trades file matter before it is joined to anything else. The day is cut on midnight UTC+8, so
+the file named `2023-03-01` begins at `2023-02-28 16:00` UTC, and `size` is in contracts, so a linear swap whose
+contract value is `0.01` needs that multiplication before the amount is a base amount. The script prints both
+rather than leaving them in a comment, because both shift a day or a size by a constant without failing.
+
 ## Runtime Output
 
 The application writes strategy orders and trades to:
