@@ -157,6 +157,21 @@ wait, the processing and the total.
   BTC-PERPETUAL 0 active_l2 1 --fast-validation --feed-thread
 ```
 
+**Put a broker between the strategy and the exchange**: `--paper-broker` refuses orders, fills in pieces,
+loses an execution report and takes the venue away for a while, and keeps its own statement of what the
+venue executed, which the run reports as `[BROKER]` and reconciles against the portfolio as `[RECON]`. With
+no fault configured it forwards every call and every report, so the run is the run without it and tier 1 of
+the gate asserts that; a fault is a count of orders or fills rather than a draw, so a faulted run is
+reproducible from its command line, and a fault the run cannot show is refused.
+
+```bash
+./out/build/linux-debug/toy_quant l2_replay \
+  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  BTC-PERPETUAL 0 active_l2 1 --fast-validation --paper-broker \
+  --broker-outage-after=50 --broker-outage-holds=100
+```
+
 **Analyze legacy generated order and trade records**:
 
 ```bash

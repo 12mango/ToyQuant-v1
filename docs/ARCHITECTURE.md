@@ -280,6 +280,23 @@ venue's leg is what `--order-latency-us` models. The threaded path reports the s
 one, and tier 1 of `tools/verify_l2.sh` asserts that by comparing every number except the `[LATENCY]`
 line itself.
 
+The broker layer is a decorator over that engine rather than a second execution model. `PaperBroker`
+(`src/exchange/paper_broker.*`) implements `IMatchingEngine`, takes over the venue's report callback and
+forwards every call and every report, so the pipeline, the strategy, the book and the portfolio are
+unchanged and a broker with no faults configured produces the run without it. What it adds is what a venue
+does not do: refusals for reasons a strategy cannot see in the price, each counted because a refusal emits
+no report — the same reason `IMatchingEngine::rejected_orders()` exists at all; a fill delivered as two
+prints with the fee split the same way, which is fee- and position-neutral by construction so only the
+report count moves; a report withheld on the way out while the venue's statement still records the
+execution; and an outage that holds orders and delivers them in submission order when the venue returns,
+answering a cancel for an order still held because that order is gone for good. Each fault is a count of
+orders or fills rather than a drawn probability, so a faulted run is reproducible from its command line.
+The broker also keeps a statement of its own, symbol by symbol, and `reconcile_positions`
+(`src/accounting/reconciliation.h`) compares it against the portfolio's positions, gross traded quantity,
+fill count and fees, which is the check the strategy already runs against the engine extended one layer
+out. Cash is deliberately outside that comparison: the broker's USD arithmetic would be a second
+implementation of the instrument model, and a copy that agrees because it was copied is not a check.
+
 Levels are held in `TickLadder`, a flat array indexed by price tick. A `std::map` access descends
 about ten pointer levels, and a sorted vector moves several kilobytes per insertion once a book holds
 a thousand levels; Deribit BTC-PERPETUAL keeps more than a thousand live levels per side across a

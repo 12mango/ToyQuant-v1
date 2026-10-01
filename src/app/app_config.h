@@ -84,6 +84,18 @@ struct AppConfig
     // Ring capacity for the threaded path, 0 for the feed's own default. A capacity the strategy
     // cannot keep up with shows up as backpressure on the feed rather than as a lost event.
     std::size_t ring_capacity = 0;
+    // The paper broker: a decorator over the matching engine that models what a broker does and a venue
+    // does not, and keeps its own statement of what the venue executed so the run's accounting can be
+    // reconciled against a second account of the same session. Off, the default, is the plain engine,
+    // and every recorded number stays what it was.
+    bool paper_broker = false;
+    // The broker's faults, each a count of orders or fills rather than a drawn probability, so a faulted
+    // run is reproducible from its command line alone. 0 is no fault, and each needs --paper-broker.
+    uint64_t broker_reject_every = 0;
+    uint64_t broker_partial_every = 0;
+    uint64_t broker_drop_every = 0;
+    uint64_t broker_outage_after = 0;
+    uint64_t broker_outage_holds = 0;
     // A maker fee rate the command line supplies, for the runs that ask what a different fee schedule would
     // have produced. The venues' rates are in the instrument specifications, so this is a sensitivity input
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.

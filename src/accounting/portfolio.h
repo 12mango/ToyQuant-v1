@@ -12,6 +12,11 @@ struct PortfolioPosition
 {
     int64_t quantity{0};
     double average_price{0.0};
+    // Quantity traded in this symbol, both directions counted, which is not recoverable from the position:
+    // a buy and a sell of the same size leave `quantity` where it was. It exists for reconciliation,
+    // where a lost fill that happened to net out is still a lost fill, and it is a plain count of what
+    // was applied rather than a second opinion about the position.
+    uint64_t traded_quantity{0};
 };
 
 struct PortfolioMetrics

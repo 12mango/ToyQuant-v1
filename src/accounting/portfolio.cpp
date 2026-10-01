@@ -22,6 +22,7 @@ void Portfolio::apply(const ExecutionReport& report)
     if (report.exec_type != ExecType::Trade || report.quantity == 0) return;
 
     auto& position = positions_[report.symbol];
+    position.traded_quantity += report.executed_quantity();
     fees_paid_ += report.fee;
     if (report.liquidity_role == LiquidityRole::Maker)
     {

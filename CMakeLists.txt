@@ -36,6 +36,7 @@ set(COMMON_INCLUDE_DIRS
 set(COMMON_SOURCES
     src/accounting/portfolio.cpp
     src/accounting/carry_ledger.cpp
+    src/accounting/reconciliation.cpp
     src/market/csv_feed.cpp
     src/market/funding_rate.cpp
     src/market/market_data_adapter.cpp
@@ -50,6 +51,7 @@ set(COMMON_SOURCES
     src/orderbook/orderbook.cpp
     src/orderbook/tick_ladder.cpp
     src/exchange/matching_engine.cpp
+    src/exchange/paper_broker.cpp
     src/utils/logger.cpp
     src/utils/stage_profiler.cpp
 )
@@ -147,6 +149,12 @@ add_executable(threaded_replay_test tests/threaded_replay_test.cpp
 target_include_directories(threaded_replay_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(threaded_replay_test PRIVATE Threads::Threads ZLIB::ZLIB)
 add_test(NAME threaded_replay_test COMMAND threaded_replay_test)
+
+add_executable(paper_broker_test tests/paper_broker_test.cpp
+    src/exchange/paper_broker.cpp src/exchange/matching_engine.cpp
+    src/accounting/reconciliation.cpp src/accounting/portfolio.cpp)
+target_include_directories(paper_broker_test PRIVATE ${COMMON_INCLUDE_DIRS})
+add_test(NAME paper_broker_test COMMAND paper_broker_test)
 
 add_executable(matching_engine_test tests/matching_engine_test.cpp ${COMMON_SOURCES})
 target_include_directories(matching_engine_test PRIVATE ${COMMON_INCLUDE_DIRS})

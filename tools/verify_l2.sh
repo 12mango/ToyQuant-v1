@@ -171,6 +171,29 @@ tier1() {
   thr_events=$(printf '%s' "$thr_raw" | grep -oE 'events=[0-9]+' | head -1 | sed 's/events=//')
   thr_handoffs=$(printf '%s' "$thr_raw" | grep -oE '^\[LATENCY\] handoffs=[0-9]+' | sed 's/.*=//')
   [ -n "$thr_events" ] && [ "$thr_events" = "$thr_handoffs" ] || thr_ok=1
+  # The broker sits between the strategy and the engine, so a broker with no faults configured has to
+  # produce the run without it, apart from the two lines that are the broker and the reconciliation, and
+  # the reconciliation has to agree with the portfolio. A faulted broker, on the other hand, has to be
+  # visible: a fault injection whose faults cannot be seen is worse than none, because the run carrying it
+  # looks exactly like a clean one.
+  local broker_ok=0 broker_raw broker_plain broker_break
+  broker_raw=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+        --paper-broker 2>&1)
+  broker_plain=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+        2>&1 | grep -v '^\[Mode:')
+  [ "$(printf '%s' "$broker_raw" | grep -v -e '^\[Mode:' -e '^\[BROKER\]' -e '^\[RECON\]')" = "$broker_plain" ] ||
+    broker_ok=1
+  printf '%s' "$broker_raw" | grep -q '^\[RECON\].*status=ok' || broker_ok=1
+  printf '%s' "$broker_raw" | grep -q '^\[RECON\].*quantity_breaks=0 max_quantity_break=0 net_quantity_break=0 gross_quantity_break=0' ||
+    broker_ok=1
+  printf '%s' "$broker_raw" | grep -q '^\[BROKER\].*orders_rejected=0 fills_seen=[0-9]* fills_split=0 fills_dropped=0' ||
+    broker_ok=1
+  # One lost execution report has to show up as a break, in the same columns the check above reads as
+  # zero. Which column it lands in depends on the fills the window happens to have, so only the verdict
+  # is asserted here.
+  broker_break=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+        --paper-broker --broker-drop-every=1 2>&1 | grep -oE '^\[RECON\].*status=[a-z]+$')
+  printf '%s' "$broker_break" | grep -q 'status=break' || broker_ok=1
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -183,7 +206,8 @@ tier1() {
   # which is why the tool decodes none.
   local tool_check=0
   python3 tools/fetch_iex_hist.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
-  if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $doc_check -eq 0 ] &&
+  if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
+     [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ]; then
     echo "tier1 OK"
     return 0
@@ -191,6 +215,7 @@ tier1() {
   echo "tier1 MISMATCH"
   [ $rec_ok -eq 0 ] || echo "  recorder: replaying the recording did not reproduce the run"
   [ $thr_ok -eq 0 ] || echo "  threads: the threaded run did not match the direct run, or its hand-off count did not"
+  [ $broker_ok -eq 0 ] || echo "  broker: the brokered run did not match the direct one, or a lost report was not reported"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

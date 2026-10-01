@@ -10,10 +10,12 @@
 
 #include "accounting/carry_ledger.h"
 #include "accounting/portfolio.h"
+#include "accounting/reconciliation.h"
 #include "app/pipeline.h"
 #include "app/strategy_factory.h"
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
+#include "exchange/paper_broker.h"
 #include "legacy/tick.h"
 #include "legacy/tick_pipeline.h"
 #include "market/csv_feed.h"
@@ -340,9 +342,24 @@ void Application::run_l2_replay_mode() const
                           cfg_.arrival_share, cfg_.order_latency_us,
                           cfg_.cancel_latency_us, instrument.lot_size,
                           instrument.min_order_quantity);
+    // The paper broker wraps the venue rather than replacing it: the strategy, the book and the
+    // accounting do not know it is there, and with no faults configured it forwards every call and every
+    // report, which is what makes a run with it comparable to one without.
+    std::unique_ptr<PaperBroker> broker;
+    if (cfg_.paper_broker)
+    {
+        broker = std::make_unique<PaperBroker>(
+            engine, BrokerFaults{.reject_every = cfg_.broker_reject_every,
+                                 .partial_every = cfg_.broker_partial_every,
+                                 .drop_every = cfg_.broker_drop_every,
+                                 .outage_after = cfg_.broker_outage_after,
+                                 .outage_holds = cfg_.broker_outage_holds});
+    }
+    IMatchingEngine& venue =
+        broker ? static_cast<IMatchingEngine&>(*broker) : static_cast<IMatchingEngine&>(engine);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
-    Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, engine,
+    Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, venue,
                       portfolio, instrument.tick_size);
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
@@ -473,6 +490,14 @@ void Application::run_l2_replay_mode() const
                " incremental_batches=", validation.incremental_batches,
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches);
     logger.log(pipeline.summary().to_log_string());
+    if (broker != nullptr)
+    {
+        // The broker's own counts, then the two accounts compared: the statement is built from the
+        // reports the venue sent and the portfolio from the reports the strategy received, so a fill the
+        // strategy never heard about appears here as a disagreement between them.
+        logger.log("[BROKER] ", broker->summary().to_log_string());
+        logger.log("[RECON] ", reconcile_positions(broker->statement(), portfolio).to_log_string());
+    }
     if (profiler != nullptr)
     {
         // Written straight to stdout rather than through the logger, because --no-output

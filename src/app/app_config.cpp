@@ -20,6 +20,12 @@ constexpr std::string_view kLivePacingPrefix = "--live-pacing=";
 constexpr std::string_view kRecordPrefix = "--record=";
 constexpr std::string_view kFeedThreadFlag = "--feed-thread";
 constexpr std::string_view kRingCapacityPrefix = "--ring-capacity=";
+constexpr std::string_view kPaperBrokerFlag = "--paper-broker";
+constexpr std::string_view kBrokerRejectPrefix = "--broker-reject-every=";
+constexpr std::string_view kBrokerPartialPrefix = "--broker-partial-every=";
+constexpr std::string_view kBrokerDropPrefix = "--broker-drop-every=";
+constexpr std::string_view kBrokerOutageAfterPrefix = "--broker-outage-after=";
+constexpr std::string_view kBrokerOutageHoldsPrefix = "--broker-outage-holds=";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
@@ -120,6 +126,12 @@ void print_usage(const char* executable)
         std::cerr << "   threads: --feed-thread (l2_replay) reads on its own thread and hands each "
                      "event to the strategy thread over a ring, reporting the hand-off as a "
                      "[LATENCY] line; --ring-capacity=N sizes that ring (default 4096)\n";
+        std::cerr << "   broker: --paper-broker (l2_replay) puts a broker between the strategy and the "
+                     "venue that keeps its own statement and reports [BROKER] and [RECON]; "
+                     "--broker-reject-every=N refuses every Nth order, --broker-partial-every=N splits "
+                     "every Nth fill, --broker-drop-every=N withholds every Nth fill from the strategy, "
+                     "and --broker-outage-after=N with --broker-outage-holds=M holds the next M orders "
+                     "while the venue is unreachable\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -186,6 +198,26 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             }
             first_optional_flag = 9;
         }
+        // The broker's faults are all "every Nth order or fill" counts, so one parser serves them. Each
+        // needs the broker itself: without it the number would be silently ignored, which is worse than
+        // being refused.
+        const auto parse_fault_count = [&cfg, &error](const std::string& flag, std::string_view prefix,
+                                                     const char* name, uint64_t& target) -> bool
+        {
+            if (cfg.mode != AppMode::L2Replay)
+            {
+                error = std::string(name) + " is an l2_replay flag, beside --paper-broker";
+                return false;
+            }
+            uint64_t count = 0;
+            if (!parse_unsigned(flag.substr(prefix.size()), count) || count == 0)
+            {
+                error = std::string(name) + " must be a positive integer";
+                return false;
+            }
+            target = count;
+            return true;
+        };
         for (int argument = first_optional_flag; argument < argc; ++argument)
         {
             const std::string flag = argv[argument];
@@ -274,6 +306,45 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.ring_capacity = static_cast<std::size_t>(capacity);
+            }
+            else if (flag == kPaperBrokerFlag)
+            {
+                if (cfg.mode != AppMode::L2Replay)
+                {
+                    error = "--paper-broker is an l2_replay flag: it wraps that mode's engine";
+                    return false;
+                }
+                cfg.paper_broker = true;
+            }
+            else if (flag.compare(0, kBrokerRejectPrefix.size(), kBrokerRejectPrefix) == 0)
+            {
+                if (!parse_fault_count(flag, kBrokerRejectPrefix, "--broker-reject-every",
+                                       cfg.broker_reject_every))
+                    return false;
+            }
+            else if (flag.compare(0, kBrokerPartialPrefix.size(), kBrokerPartialPrefix) == 0)
+            {
+                if (!parse_fault_count(flag, kBrokerPartialPrefix, "--broker-partial-every",
+                                       cfg.broker_partial_every))
+                    return false;
+            }
+            else if (flag.compare(0, kBrokerDropPrefix.size(), kBrokerDropPrefix) == 0)
+            {
+                if (!parse_fault_count(flag, kBrokerDropPrefix, "--broker-drop-every",
+                                       cfg.broker_drop_every))
+                    return false;
+            }
+            else if (flag.compare(0, kBrokerOutageAfterPrefix.size(), kBrokerOutageAfterPrefix) == 0)
+            {
+                if (!parse_fault_count(flag, kBrokerOutageAfterPrefix, "--broker-outage-after",
+                                       cfg.broker_outage_after))
+                    return false;
+            }
+            else if (flag.compare(0, kBrokerOutageHoldsPrefix.size(), kBrokerOutageHoldsPrefix) == 0)
+            {
+                if (!parse_fault_count(flag, kBrokerOutageHoldsPrefix, "--broker-outage-holds",
+                                       cfg.broker_outage_holds))
+                    return false;
             }
             else if (flag.compare(0, kProfileStagesPrefix.size(), kProfileStagesPrefix) == 0)
             {
@@ -437,7 +508,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
                         "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
-                        "--markout-cover, or --flatten-band=N";
+                        "--markout-cover, --flatten-band=N, or --paper-broker with one of its faults";
                 return false;
             }
         }
@@ -464,6 +535,20 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (cfg.flatten_band > 0 && cfg.mode != AppMode::L2Replay)
         {
             error = "--flatten-band is only supported by l2_replay, whose decision layer carries the band";
+            return false;
+        }
+        if (!cfg.paper_broker &&
+            (cfg.broker_reject_every > 0 || cfg.broker_partial_every > 0 || cfg.broker_drop_every > 0 ||
+             cfg.broker_outage_after > 0 || cfg.broker_outage_holds > 0))
+        {
+            // Silently ignoring a fault would make a faulted run and a clean run indistinguishable in
+            // the summary, which is the one thing a fault injection must never do.
+            error = "a --broker-* fault needs --paper-broker, the broker it is a fault of";
+            return false;
+        }
+        if (cfg.broker_outage_holds > 0 && cfg.broker_outage_after == 0)
+        {
+            error = "--broker-outage-holds needs --broker-outage-after: nothing says when the venue goes";
             return false;
         }
         if (cfg.markout_cover && cfg.strategy_name != "active_l2" &&

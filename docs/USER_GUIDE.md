@@ -178,7 +178,9 @@ which makes every PnL a few cents and the inventory logic unreachable.
 ```
 
 The remaining `l2_replay` flags are `--no-output`, `--fast-validation`, `--profile-stages[=N]`,
-`--live-pacing[=SPEED]`, `--record=PREFIX`, `--feed-thread` and `--ring-capacity=N`.
+`--live-pacing[=SPEED]`, `--record=PREFIX`, `--feed-thread`, `--ring-capacity=N`, `--paper-broker`, and the
+broker's faults `--broker-reject-every=N`, `--broker-partial-every=N`, `--broker-drop-every=N`,
+`--broker-outage-after=N` and `--broker-outage-holds=M`.
 
 `--record=PREFIX` taps the stream a run is fed and writes it back out in the replay's own shapes,
 `PREFIX_trades.csv` and `PREFIX_depth.csv`, so a paced session or a live feed becomes a file the same
@@ -231,6 +233,64 @@ which is what having both lines is for. Two combinations are refused rather than
 and this path calls it from two, and `--feed-thread` on the L1 replay, whose second stream is a BBO
 quote. The threaded path reports the same numbers as the direct one — `bash tools/verify_l2.sh fast`
 asserts exactly that — because the ring is FIFO and the strategy sees the same sequence either way.
+
+### The broker and the reconciliation
+
+`--paper-broker` puts a broker between the strategy and the engine, which is a layer a live path has and a
+replay does not: it refuses orders for reasons a strategy cannot see in the price, fills in pieces, loses an
+execution report, and goes away for a while. It decorates the engine rather than replacing it, so the
+strategy, the book and the accounting do not know it is there, and with no faults configured it forwards
+every call and every report — `bash tools/verify_l2.sh fast` asserts that a brokered run reports exactly the
+numbers of the same run without it — and then prints two lines of its own:
+
+```bash
+./out/build/linux-debug/toy_quant l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --paper-broker
+```
+
+```text
+[BROKER] orders_submitted=381 orders_rejected=0 fills_seen=3 fills_split=0 fills_dropped=0 outages=0 orders_held=0 orders_released=0 cancels_while_held=0
+[RECON] symbols_checked=1 quantity_breaks=0 max_quantity_break=0 net_quantity_break=0 gross_quantity_break=0 report_count_difference=0 fee_difference=0.000000 fees_match=1 status=ok
+```
+
+The faults are counts of orders or fills rather than drawn probabilities, so a faulted run is reproducible
+from its command line alone. `--broker-reject-every=N` refuses every Nth order and counts each refusal,
+because a refusal emits no report — the same reason the engine carries a reject count for the pipeline to
+watch across a submission. `--broker-partial-every=N` delivers every Nth of the strategy's fills as two
+prints with the fee split the same way, so the position and the fee are what one print would have been and
+only the report count changes: on the 200k slice with `--order-size=10` it split three fills, the run
+reported six trade reports for the same three executions, and the reconciliation stayed `status=ok` with a
+fee difference in the last bits only. `--broker-drop-every=N` withholds every Nth fill from the strategy
+while the venue's statement still records it executed. And `--broker-outage-after=N` with
+`--broker-outage-holds=M` takes the venue away once N orders have been accepted, holds the next M, and
+delivers them in submission order when the order after them arrives; a hold of zero is a venue that never
+comes back. A fault flag without `--paper-broker` is refused rather than ignored, because a fault
+the run cannot show would leave a faulted session looking exactly like a clean one.
+
+`[RECON]` is the check the whole thing exists for. The statement is built from the reports the venue sent and
+the portfolio from the reports the strategy received, so a fill the strategy never heard about is a position
+that disagrees with a statement saying it happened. Only this strategy's own fills are compared, because two
+populations would break on every print that was somebody else's, and cash is deliberately not compared: a
+broker's USD arithmetic would be a second implementation of the portfolio's instrument model, and a copy
+that agrees because it was copied is not a check. The columns are the net position per symbol, the gross
+quantity traded, the fills the strategy was sent against the fills it booked, and the fees. Gross is there
+because a loss on each side leaves the position exactly where it was: on the 200k slice with every fill
+withheld, every position column read zero breaks and the gross column caught both fills —
+
+```text
+[RECON] symbols_checked=1 quantity_breaks=0 max_quantity_break=0 net_quantity_break=0 gross_quantity_break=2 report_count_difference=0 fee_difference=0.004000 fees_match=0 status=break
+```
+
+A fee difference is read with a tolerance, because splitting one fill into two prints adds the parts in a
+different order from the total they came from, and `fees_match` is the verdict on it rather than the number
+being exactly zero.
+
+Two things the broker has to do that are easy to leave out, both of which the faults found by being run
+rather than by being reasoned about. A cancel that arrives for an order still held — one the venue has never
+been given — is answered with a `Cancelled` report, because that order is gone for good and the strategy is
+owed the confirmation; resolving it silently left a strategy that keys on cancel acknowledgements with a
+working order for the rest of the window, and it stopped quoting 51 orders into a 381 order run. And a fill
+is split only when it is more than one unit, since two prints of zero are not a split.
 
 The symbol decides the instrument, through `instrument_spec_of`: `BTC-PERPETUAL`, `BTC-USDT-SWAP`, `SPY` and
 `MESZ6` are the entries today, and a symbol with no entry is an error rather than a default, because a default
@@ -355,6 +415,12 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--record=PREFIX` | Write the delivered stream to `PREFIX_trades.csv` and `PREFIX_depth.csv` in the replay shapes, reported as a `[REC]` line | Off |
 | `--feed-thread` | Read on a second thread and hand each event to the strategy thread over a ring, reported as a `[LATENCY]` line | Off, the feed reads in front of the strategy |
 | `--ring-capacity=N` | Slots in that ring, rounded up to a power of two | 4096 |
+| `--paper-broker` | Put a broker between the strategy and the engine that keeps its own statement of what the venue executed, reported as `[BROKER]` and compared with the portfolio as `[RECON]` | Off, the plain engine |
+| `--broker-reject-every=N` | Refuse every Nth order at the broker, counted | 0, refuse none |
+| `--broker-partial-every=N` | Deliver every Nth of the strategy's fills as two prints, with the fee split the same way | 0, split none |
+| `--broker-drop-every=N` | Withhold every Nth fill from the strategy while the venue's statement records it executed | 0, drop none |
+| `--broker-outage-after=N` | Take the venue away once N orders have been accepted | 0, never down |
+| `--broker-outage-holds=M` | Orders held while it is away, delivered in submission order when it returns | 0, a venue that never comes back |
 
 ### Funding as an input
 

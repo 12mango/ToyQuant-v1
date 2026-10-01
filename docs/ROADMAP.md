@@ -401,6 +401,23 @@ it is one of the two places this chain can stop for reasons outside the reposito
 * operations: one long-lived process, restart recovery that begins by asking what is still working at the
   broker, logs and metrics, alerting, and a written runbook.
 
+**Skeleton, built without an account**: the parts of the four bullets above that a replay can host are in
+`PaperBroker` (`src/exchange/paper_broker.*`), a decorator over the matching engine that refuses orders,
+splits fills, withholds an execution report and takes the venue away for a while, each fault a count of
+orders or fills so a faulted run is reproducible from its command line (`--paper-broker` with
+`--broker-reject-every=N`, `--broker-partial-every=N`, `--broker-drop-every=N`, and
+`--broker-outage-after=N` with `--broker-outage-holds=M`). It keeps its own statement of what the venue
+executed, and `reconcile_positions` (`src/accounting/reconciliation.*`) compares that against the portfolio,
+reported as a `[RECON]` line: net position and gross traded quantity per symbol, the fills the strategy was
+sent against the ones it booked, and fees. Not built, because a paper account is what is missing rather than
+the code: the gateway's own transport, idempotent client order ids with a retry path (nothing in this path
+retries, so there is nothing for them to protect yet), the hard limits and the kill switch, shadow mode, and
+the operational half. Two things the faults found by being run rather than reasoned about: a cancel resolved
+against an order the venue has not been given has to be answered with a `Cancelled` report, or a strategy
+that keys on cancel acknowledgements stops quoting altogether — it stopped 51 orders into a 381 order run;
+and a fill lost on each side leaves the position exactly where it was, so the reconciliation has to compare
+gross traded quantity as well as the net position.
+
 **Passes when** five paper sessions produce no reconciliation break and results inside a tolerance stated
 before the stage starts.
 
