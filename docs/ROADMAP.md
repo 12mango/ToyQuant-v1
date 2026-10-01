@@ -366,7 +366,7 @@ screen's verdict pre-registered.
 | # | Must be true | The cheapest way to kill it | Cost |
 |---|---|---|---|
 | 1 | the half spread at the trades is at least three times the fee per side | `tools/screen_spread.py`, which prices the window before it spends and refuses to download without a stated cap | 5 to 20 USD |
-| 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open | 10 to 20 USD |
+| 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open | 10 to 20 USD, or 40 to 95 for the sixty-odd sessions the expiring credit makes affordable — see the budget section below |
 | 3 | our order really rests where we measured it | pin a destination and re-measure, or record where orders actually land for a week and measure that | free, then 1 to 2 USD |
 | 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
 | 5 | the broker's rate limits and latency carry the pace the strategy needs | its published limits, and the latency the repository already models | free |
@@ -384,6 +384,39 @@ the reflex fix of quoting more slowly measures worse rather than better. The row
 reproduces them is `tools/latency_sweep.sh`. Three gates remain, and one of them now carries the whole line: the
 screen (1) is what decides whether a symbol wide enough to absorb a delay exists at all. The out-of-sample
 campaign (2) and the fee tiers (7) are only worth running on a symbol that screen produces.
+
+### The data budget, and its deadline
+
+One budget fact changes how the three remaining gates should be run rather than whether they can be: the
+Databento account holds a **new user credit of 124.03 USD, applicable to historical data only, that expires on
+2027-03-30**. Credits are consumed earliest-expiry-first and this is the only one, so there is no second balance
+behind it. If the grant was 125 USD, then **about 0.97 USD of it has been spent**: that is the two two-hour
+`mbp-10` windows the F4 results are measured on, and it calibrates the estimates below to their low end rather
+than their high end.
+
+What it buys, at the rates recorded above (0.5 USD a gigabyte of DBN on the micro E-mini, 2 on an equity, and a
+two-hour equity window under a dollar):
+
+| Spend | What it buys | Cost |
+|---|---|---|
+| the screen (gate 1) | top of book only, over a candidate list and a few days | 5 to 20 USD |
+| two to three months of daily sessions for the surviving symbol | the out-of-sample campaign (gate 2) at a strength the roadmap's eight to ten sessions cannot reach, sixty-odd sessions instead | 40 to 95 USD, and the screen's own row counts narrow it before anything is bought |
+| the fee tiers (gate 7) | the same window under a zero commission tier, a rebate and the worst realistic tier | 5 to 10 USD |
+
+**The recommendation is to front-load the evidence.** The other reading of a credit with a date on it is to
+hoard it, and that buys nothing: it is 124 USD of historical data that becomes zero on 2027-03-30, while
+everything above together is less than the balance. So the screen runs first, because it is what decides whether
+any of the rest is worth buying; the out-of-sample campaign then runs as deep as the surviving symbol's own
+volume makes affordable, which is a stronger version of gate 2 for the same money; and whatever is left is
+either spent on more days before the date or written down here as forfeited, **with the amount**, so that the
+loss is a recorded decision rather than a quiet one. Two things do not consume it at all: every replay, sweep
+and gate run after a download, which is free forever, and the live and paper phases, whose data comes from our
+own recorded feed rather than from a vendor.
+
+That also settles the budget rule worth pre-registering: **paid data is only ever bought for the symbol being
+validated, one window before a session and one session before a week**. The recurring review that Stage D asks
+for is a deliberate purchase each time rather than a standing subscription, and the zero-cost alternative —
+recording our own broker's feed — is the default once a live line exists.
 
 ### The execution order, once the seven hold
 
