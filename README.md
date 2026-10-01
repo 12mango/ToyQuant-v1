@@ -145,6 +145,18 @@ instead. `bash tools/verify_l2.sh fast` asserts that the replayed recording repo
   /tmp/session_trades.csv /tmp/session_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1
 ```
 
+**Hand the stream to a second thread**: `--feed-thread` reads on its own thread and passes each event to
+the strategy thread over a bounded ring, so the reader's work runs beside the strategy's instead of in
+front of it. The run reports what that cost as a `[LATENCY]` line, with a p50 and a p99 for the ring
+wait, the processing and the total.
+
+```bash
+./out/build/linux-debug/toy_quant l2_replay \
+  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  BTC-PERPETUAL 0 active_l2 1 --fast-validation --feed-thread
+```
+
 **Analyze legacy generated order and trade records**:
 
 ```bash

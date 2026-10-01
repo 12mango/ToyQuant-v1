@@ -22,6 +22,7 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/logs")
 # ==================== Include Paths and Shared Sources ====================
 set(COMMON_INCLUDE_DIRS
     src
+    src/concurrency
     src/app
     src/market
     src/orderbook
@@ -41,6 +42,7 @@ set(COMMON_SOURCES
     src/market/market_event_recorder.cpp
     src/market/market_data_validator.cpp
     src/market/l2_replay_feed.cpp
+    src/market/threaded_l2_replay.cpp
     src/market/line_reader.cpp
     src/market/replay_feed.cpp
     src/legacy/tick_csv_parser.cpp
@@ -132,6 +134,19 @@ add_executable(market_event_recorder_test tests/market_event_recorder_test.cpp
 target_include_directories(market_event_recorder_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(market_event_recorder_test PRIVATE ZLIB::ZLIB)
 add_test(NAME market_event_recorder_test COMMAND market_event_recorder_test)
+
+add_executable(spsc_ring_test tests/spsc_ring_test.cpp)
+target_include_directories(spsc_ring_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(spsc_ring_test PRIVATE Threads::Threads)
+add_test(NAME spsc_ring_test COMMAND spsc_ring_test)
+
+add_executable(threaded_replay_test tests/threaded_replay_test.cpp
+    src/market/threaded_l2_replay.cpp src/market/market_data_adapter.cpp
+    src/market/market_data_validator.cpp src/market/line_reader.cpp
+    src/market/l2_replay_feed.cpp src/utils/stage_profiler.cpp)
+target_include_directories(threaded_replay_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(threaded_replay_test PRIVATE Threads::Threads ZLIB::ZLIB)
+add_test(NAME threaded_replay_test COMMAND threaded_replay_test)
 
 add_executable(matching_engine_test tests/matching_engine_test.cpp ${COMMON_SOURCES})
 target_include_directories(matching_engine_test PRIVATE ${COMMON_INCLUDE_DIRS})

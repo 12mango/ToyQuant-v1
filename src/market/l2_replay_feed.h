@@ -8,6 +8,7 @@
 
 #include "market/market_data_adapter.h"
 #include "market/market_data_validator.h"
+#include "utils/latency_histogram.h"
 #include "utils/stage_profiler.h"
 
 // How a replay is delivered against the wall clock. Without pacing every event is delivered as fast as the file
@@ -34,9 +35,10 @@ struct PacingSummary
     uint64_t late_events{0};
     int64_t lateness_max_ns{0};
     int64_t lateness_mean_ns{0};
-    // Bucketed by powers of two, so a percentile is reported to within a factor of two rather than to a
-    // microsecond. Exact percentiles would need one sample per event, which is tens of megabytes on a window
-    // this repository replays.
+    // Bucketed by powers of two microseconds, so a percentile is reported to within a factor of two
+    // rather than to a microsecond. Exact percentiles would need one sample per event, which is tens of
+    // megabytes on a window this repository replays. The buckets themselves and the clamping rule live
+    // in LatencyHistogram, which the hand-off report uses too.
     int64_t lateness_p50_ns{0};
     int64_t lateness_p99_ns{0};
     int64_t market_window_ns{0};
@@ -118,11 +120,8 @@ class L2ReplayFeed
     int64_t first_event_ns_{0};
     int64_t start_wall_ns_{0};
     PacingSummary pacing_summary_{};
-    // Powers of two in microseconds: bucket i counts lateness in [2^(i-1), 2^i) microseconds, and the last
-    // bucket collects everything slower than its floor.
-    static constexpr std::size_t kLatenessBuckets = 24;
-    std::array<uint64_t, kLatenessBuckets> lateness_buckets_{};
-    uint64_t lateness_count_{0};
-    int64_t lateness_sum_ns_{0};
+    // Powers of two microseconds, and the upper edge of the bucket a sample fell in, clamped to the
+    // observed maximum: the same rule the hand-off report uses, so it has one implementation.
+    LatencyHistogram lateness_;
 };
 

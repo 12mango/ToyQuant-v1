@@ -18,6 +18,8 @@ namespace
 constexpr std::string_view kProfileStagesPrefix = "--profile-stages=";
 constexpr std::string_view kLivePacingPrefix = "--live-pacing=";
 constexpr std::string_view kRecordPrefix = "--record=";
+constexpr std::string_view kFeedThreadFlag = "--feed-thread";
+constexpr std::string_view kRingCapacityPrefix = "--ring-capacity=";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
@@ -115,6 +117,9 @@ void print_usage(const char* executable)
         std::cerr << "   record: --record=PREFIX (l2_replay) writes PREFIX_trades.csv and "
                      "PREFIX_depth.csv in the replay shapes, so the stream this run was fed can be "
                      "replayed again\n";
+        std::cerr << "   threads: --feed-thread (l2_replay) reads on its own thread and hands each "
+                     "event to the strategy thread over a ring, reporting the hand-off as a "
+                     "[LATENCY] line; --ring-capacity=N sizes that ring (default 4096)\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -244,6 +249,31 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.record_prefix = flag.substr(kRecordPrefix.size());
+            }
+            else if (flag == kFeedThreadFlag)
+            {
+                if (cfg.mode != AppMode::L2Replay)
+                {
+                    error = "--feed-thread is an l2_replay flag: the L1 replay's second stream is a "
+                            "BBO quote, and a quote is not what this hand-off carries";
+                    return false;
+                }
+                cfg.feed_thread = true;
+            }
+            else if (flag.compare(0, kRingCapacityPrefix.size(), kRingCapacityPrefix) == 0)
+            {
+                if (cfg.mode != AppMode::L2Replay)
+                {
+                    error = "--ring-capacity is an l2_replay flag, beside --feed-thread";
+                    return false;
+                }
+                uint64_t capacity = 0;
+                if (!parse_unsigned(flag.substr(kRingCapacityPrefix.size()), capacity) || capacity == 0)
+                {
+                    error = "--ring-capacity must be a positive integer";
+                    return false;
+                }
+                cfg.ring_capacity = static_cast<std::size_t>(capacity);
             }
             else if (flag.compare(0, kProfileStagesPrefix.size(), kProfileStagesPrefix) == 0)
             {

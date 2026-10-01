@@ -450,6 +450,12 @@ is what a live path adds on top.
 Five small deliverables come out of it: a paper session whose recording replays to the same summary; a
 feed-to-order latency table with percentiles; a benchmark of the inter-thread queue; a before and after `perf`
 table for one optimisation; and a page of stated alternatives, in the style the design review already uses.
+Three of the five are now in place for the replay path rather than promised: a recording replays to the same
+summary, a feed thread hands events to the strategy thread over a ring whose own cost is printed as a
+`[LATENCY]` line with percentiles, and the alternatives refused on the way — a dropped event instead of
+backpressure, a condition variable instead of a spin, one profiler shared by two threads — are stated where
+they are refused. The feed is still a file reader, so what is left of the live reader is the transport, and
+the benchmark of the hand-off through the ring is the deliverable still outstanding.
 
 ### What has to be done by hand
 

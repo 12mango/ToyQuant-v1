@@ -78,7 +78,8 @@ The source map is:
 | Shared data | `src/common/types.h`, `src/market/market_event.h` | `Side`, `ExecType`, `MarketEvent` |
 | Instrument rules | `src/common/instrument_spec.h` | `InstrumentSpec`, `btc_usdt_spec` |
 | Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
-| Market replay | `src/market/market_data_adapter.*`, `replay_feed.*`, `market_event_recorder.*` | `IMarketEventReader`, `ReplayFeed::run`, `MarketEventRecorder` |
+| Market replay | `src/market/market_data_adapter.*`, `replay_feed.*`, `market_event_recorder.*`, `threaded_l2_replay.*` | `IMarketEventReader`, `ReplayFeed::run`, `MarketEventRecorder`, `ThreadedReplayFeed` |
+| Hand-off between threads | `src/concurrency/spsc_ring.h` | `SpscRing::try_push`, `SpscRing::try_pop`, `LatencyHistogram` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*`, `tick_ladder.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook`, `TickLadder` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
@@ -251,6 +252,33 @@ changes, or a stream that carries whole-book snapshots and incremental batches a
 own sequence ids for a snapshot and a batch are the one field a recording does not reproduce, because
 no column holds them. `bash tools/verify_l2.sh fast` records the 200k slice, replays the recording,
 and requires the two runs to report the same numbers.
+
+The live path's threading is implemented against the replay first, because the boundary is the same one
+and a file reader is easier to hold still than a socket. `ThreadedReplayFeed`
+(`src/market/threaded_l2_replay.*`) runs the feed on a thread of its own and hands each event to the
+strategy thread over `concurrency::SpscRing` (`src/concurrency/spsc_ring.h`), a bounded
+single-producer/single-consumer ring whose two indices sit on separate cache lines and whose
+publication is a release store paired with an acquire load. The consumer runs on the calling thread, so
+the strategy, the book and the portfolio keep the thread they always had and only the reader moves.
+Three decisions are worth stating because each has a cheaper-looking alternative that this path does
+not take. A full ring is backpressure, not a drop: the feed waits for room and counts the wait, because
+a replay that lost an event would not be the run anybody asked for, and the pacing line is where the
+wait then shows up as a feed that fell behind its schedule. The consumer spins with a pause instruction
+rather than sleeping on a condition variable, because at these rates the wake-up costs more than the
+wait it replaces; the reported occupancy is what would say otherwise. And the two threads do not share
+a `StageProfiler`: it accumulates on whichever thread calls it, so `--feed-thread` with
+`--profile-stages` is refused rather than reported as a race.
+
+What the hand-off costs is measured rather than described. Each event is stamped when the feed hands it
+over, when the strategy thread takes it, and when the consumer returns, and the three differences are
+fed to a `LatencyHistogram` (`src/utils/latency_histogram.h`, the same power-of-two-microsecond
+convention the pacing lateness report uses). `run()` prints them as a `[LATENCY]` line: queue wait,
+processing, and the total, each with a mean, a p50, a p99 and a maximum, plus the deepest the ring got
+and how often the feed waited for room. The processing figure is where the decision and the orders the
+synchronous engine accepted inside it both land, which is why there is no separate order leg here: the
+venue's leg is what `--order-latency-us` models. The threaded path reports the same run as the direct
+one, and tier 1 of `tools/verify_l2.sh` asserts that by comparing every number except the `[LATENCY]`
+line itself.
 
 Levels are held in `TickLadder`, a flat array indexed by price tick. A `std::map` access descends
 about ten pointer levels, and a sorted vector moves several kilobytes per insertion once a book holds

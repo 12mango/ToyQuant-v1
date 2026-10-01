@@ -178,7 +178,7 @@ which makes every PnL a few cents and the inventory logic unreachable.
 ```
 
 The remaining `l2_replay` flags are `--no-output`, `--fast-validation`, `--profile-stages[=N]`,
-`--live-pacing[=SPEED]` and `--record=PREFIX`.
+`--live-pacing[=SPEED]`, `--record=PREFIX`, `--feed-thread` and `--ring-capacity=N`.
 
 `--record=PREFIX` taps the stream a run is fed and writes it back out in the replay's own shapes,
 `PREFIX_trades.csv` and `PREFIX_depth.csv`, so a paced session or a live feed becomes a file the same
@@ -202,6 +202,35 @@ the OKX archive, whose first line is a snapshot and the rest are updates — has
 so recording it is refused. And so is any event the replay formats cannot express, such as a trade
 with no aggressor side, because a file with a hole where an event was reads back as a book that is
 quietly wrong.
+
+`--feed-thread` moves the reading to its own thread and hands each event to the strategy thread over a
+bounded single-producer ring, which is the shape a live path has: the feed's own work — block refill,
+`memchr`, field split, number conversion — then runs beside the strategy's instead of in front of it.
+The run reports what the hand-off cost as a `[LATENCY]` line: the ring wait, the processing (the
+decision plus whatever orders the engine accepted inside it), and the total from the feed handing an
+event over to the strategy finishing with it, each as a mean, a p50, a p99 and a maximum, followed by
+how deep the ring got and how often the feed found it full:
+
+```bash
+./build/toy_quant l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv BTC-PERPETUAL 0 active_l2 1 \
+  --fast-validation --feed-thread --ring-capacity=8192
+```
+
+Read that line with two things in mind. The figures are microseconds, and a mean below one prints as `0`,
+which is what the processing column of a window this size does. And an unpaced replay reads faster than
+the strategy works, so the ring fills and the wait column is backpressure rather than the hand-off:
+`ring_depth_max` one above the ring's capacity says exactly that, `feed_waits` counts how often the feed
+had to wait for room, and the paced case is the one that shows what the hand-off costs when the feed is
+not running ahead.
+
+A full ring is backpressure rather than a lost event: the feed waits for room, the wait is counted, and
+on a paced replay it also shows up in the `[LIVE]` line as a feed that fell behind its own schedule,
+which is what having both lines is for. Two combinations are refused rather than approximated:
+`--feed-thread` with `--profile-stages`, because the profiler accumulates on whichever thread calls it
+and this path calls it from two, and `--feed-thread` on the L1 replay, whose second stream is a BBO
+quote. The threaded path reports the same numbers as the direct one — `bash tools/verify_l2.sh fast`
+asserts exactly that — because the ring is FIFO and the strategy sees the same sequence either way.
 
 The symbol decides the instrument, through `instrument_spec_of`: `BTC-PERPETUAL`, `BTC-USDT-SWAP`, `SPY` and
 `MESZ6` are the entries today, and a symbol with no entry is an error rather than a default, because a default
@@ -324,6 +353,8 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--flatten-band=N` | Reduce a position above N units with a taker order at the touch instead of carrying it | Off |
 | `--live-pacing[=SPEED]` | Deliver the replay against the wall clock at this speed and report how late it ran as `[LIVE]`; the fifth positional argument on this mode means the same at real time | Off, which reads the file as fast as it can |
 | `--record=PREFIX` | Write the delivered stream to `PREFIX_trades.csv` and `PREFIX_depth.csv` in the replay shapes, reported as a `[REC]` line | Off |
+| `--feed-thread` | Read on a second thread and hand each event to the strategy thread over a ring, reported as a `[LATENCY]` line | Off, the feed reads in front of the strategy |
+| `--ring-capacity=N` | Slots in that ring, rounded up to a power of two | 4096 |
 
 ### Funding as an input
 

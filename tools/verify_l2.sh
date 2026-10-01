@@ -7,7 +7,7 @@
 # pass before it is accepted:
 #
 #   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
-#   tier 1  (~3 s, including a 2M-row replay behind one marked block)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, and a record-and-replay round trip
+#   tier 1  (~3 s, including a 2M-row replay behind one marked block)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, and the record-and-replay and direct-versus-threaded round trips
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
@@ -156,6 +156,21 @@ tier1() {
   rec_b=$("$BIN" l2_replay "${rec_prefix}_trades.csv" "${rec_prefix}_depth.csv" BTC-PERPETUAL 0 active_l2 1 \
         prorata --fast-validation 2>&1 | grep -v -e '^\[Mode:' -e '^\[REC\]' -e '^\[LIVE\]')
   [ "$rec_a" = "$rec_b" ] || rec_ok=1
+  # The threading assertion: the same slice through a feed thread and a ring has to report the same
+  # numbers as the direct path, because threading changes when a decision is taken and not what it is.
+  # The [LATENCY] line is allowed to differ, being the measurement rather than the result, and it has
+  # to carry exactly one hand-off per delivered event, which is checked against the run's own event
+  # count instead of a number copied out of this script.
+  local thr_ok=0 thr_raw thr plain
+  thr_raw=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+        --feed-thread 2>&1)
+  plain=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+        2>&1 | grep -v '^\[Mode:')
+  thr=$(printf '%s' "$thr_raw" | grep -v -e '^\[Mode:' -e '^\[LATENCY\]')
+  [ "$thr" = "$plain" ] || thr_ok=1
+  thr_events=$(printf '%s' "$thr_raw" | grep -oE 'events=[0-9]+' | head -1 | sed 's/events=//')
+  thr_handoffs=$(printf '%s' "$thr_raw" | grep -oE '^\[LATENCY\] handoffs=[0-9]+' | sed 's/.*=//')
+  [ -n "$thr_events" ] && [ "$thr_events" = "$thr_handoffs" ] || thr_ok=1
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -168,13 +183,14 @@ tier1() {
   # which is why the tool decodes none.
   local tool_check=0
   python3 tools/fetch_iex_hist.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
-  if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $doc_check -eq 0 ] && [ $fields_check -eq 0 ] &&
-     [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ]; then
+  if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $doc_check -eq 0 ] &&
+     [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ]; then
     echo "tier1 OK"
     return 0
   fi
   echo "tier1 MISMATCH"
   [ $rec_ok -eq 0 ] || echo "  recorder: replaying the recording did not reproduce the run"
+  [ $thr_ok -eq 0 ] || echo "  threads: the threaded run did not match the direct run, or its hand-off count did not"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

@@ -69,18 +69,9 @@ L2ReplayFeed::L2ReplayFeed(std::unique_ptr<IMarketEventReader> trades,
 void L2ReplayFeed::record_lateness(int64_t lateness_ns)
 {
     ++pacing_summary_.late_events;
-    lateness_sum_ns_ += lateness_ns;
-    ++lateness_count_;
-    if (lateness_ns > pacing_summary_.lateness_max_ns) pacing_summary_.lateness_max_ns = lateness_ns;
-    // Powers of two in microseconds, with the first bucket holding everything under a microsecond.
-    std::size_t bucket = 0;
-    int64_t step = 1;
-    while (bucket + 1 < kLatenessBuckets && lateness_ns >= step * 1000)
-    {
-        ++bucket;
-        step *= 2;
-    }
-    ++lateness_buckets_[bucket];
+    // The histogram owns the bucketing and the percentile rule, so a pace that is reported here and a
+    // hand-off that is reported by the threaded path cannot drift apart.
+    lateness_.add(lateness_ns);
 }
 
 void L2ReplayFeed::pace(int64_t event_ns)
@@ -155,32 +146,13 @@ void L2ReplayFeed::run()
         pacing_summary_.speed = pacing_.speed;
         pacing_summary_.market_window_ns = last_event_ns - first_event_ns_;
         pacing_summary_.wall_ns = clock_() - start_wall_ns_;
-        if (lateness_count_ > 0)
-            pacing_summary_.lateness_mean_ns =
-                lateness_sum_ns_ / static_cast<int64_t>(lateness_count_);
-        // The percentile is the upper edge of the bucket the sample fell in, which is why the report says
-        // microseconds rather than claiming a precision the histogram does not have.
-        // The percentile is the upper edge of the bucket the sample fell in, clamped to the observed maximum:
-        // without the clamp a reported p99 can exceed the largest sample, which reads as a broken metric even
-        // though it is the histogram's granularity showing through.
-        const auto percentile = [&](double fraction)
-        {
-            if (lateness_count_ == 0) return int64_t{0};
-            const uint64_t target = std::max<uint64_t>(
-                1, static_cast<uint64_t>(fraction * static_cast<double>(lateness_count_)));
-            uint64_t seen = 0;
-            for (std::size_t bucket = 0; bucket < lateness_buckets_.size(); ++bucket)
-            {
-                seen += lateness_buckets_[bucket];
-                if (seen >= target && lateness_buckets_[bucket] > 0)
-                    return std::min(
-                        static_cast<int64_t>(bucket == 0 ? 1 : (int64_t{1} << bucket)) * 1000,
-                        pacing_summary_.lateness_max_ns);
-            }
-            return pacing_summary_.lateness_max_ns;
-        };
-        pacing_summary_.lateness_p50_ns = percentile(0.50);
-        pacing_summary_.lateness_p99_ns = percentile(0.99);
+        // The lateness rule lives in the histogram: powers of two microseconds, the upper edge of the
+        // bucket a sample fell in, clamped to the observed maximum so a reported p99 cannot exceed the
+        // largest sample. The same rule reports the threaded path's hand-off, so it is written once.
+        pacing_summary_.lateness_mean_ns = lateness_.mean_ns();
+        pacing_summary_.lateness_max_ns = lateness_.max_ns();
+        pacing_summary_.lateness_p50_ns = lateness_.percentile_ns(0.50);
+        pacing_summary_.lateness_p99_ns = lateness_.percentile_ns(0.99);
     }
 
     if (validator_.summary().events == 0)

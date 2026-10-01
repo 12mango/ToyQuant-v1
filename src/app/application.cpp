@@ -20,6 +20,7 @@
 #include "market/funding_rate.h"
 #include "market/l2_replay_feed.h"
 #include "market/market_event_recorder.h"
+#include "market/threaded_l2_replay.h"
 #include "market/replay_feed.h"
 #include "market/udp_feed.h"
 #include "orderbook/orderbook.h"
@@ -299,6 +300,15 @@ void Application::run_l2_replay_mode() const
                                      ? cfg_.profile_sample_interval
                                      : StageProfiler::kDefaultSampleInterval);
     StageProfiler* const profiler = cfg_.profile_sample_interval > 0 ? &stage_profiler : nullptr;
+    // The profiler accumulates samples on whichever thread calls it, and the threaded path calls it
+    // from two: the read and parse stages belong to the feed thread and the strategy stages to the
+    // consumer. Sharing it would make every number in its report a race, so the combination is
+    // refused rather than reported.
+    if (cfg_.feed_thread && profiler != nullptr)
+        throw std::invalid_argument(
+            "--profile-stages and --feed-thread cannot be combined: the profiler accumulates on the "
+            "thread that calls it and this path calls it from two, so its report would be a race "
+            "rather than a measurement");
 
     const std::string source = format + ";trades=" + trades_file + ";depth=" + depth_file +
                                ";symbol=" + cfg_.symbol +
@@ -382,11 +392,10 @@ void Application::run_l2_replay_mode() const
     std::unique_ptr<MarketEventRecorder> recorder;
     if (!cfg_.record_prefix.empty())
         recorder = std::make_unique<MarketEventRecorder>(to_abs_path(cfg_.record_prefix));
-    L2ReplayFeed feed(
-        std::move(trades_reader),
-        std::move(depth_reader),
-        [&](const MarketEvent& event)
-        {
+    // The one consumer both delivery paths use. It runs on the calling thread either way, which is
+    // what makes the threaded path comparable with the direct one rather than merely similar.
+    const auto consume = [&](const MarketEvent& event)
+    {
             // The tap sits before the pipeline, so the file is what the feed delivered rather than
             // what the strategy did with it, and a run that dies inside the strategy still holds
             // everything that arrived before the failure.
@@ -421,11 +430,36 @@ void Application::run_l2_replay_mode() const
                     }
                 },
                 event);
-        },
-        pacing, validation_config);
-    feed.set_profiler(profiler);
-    feed.run();
-    if (pacing.enabled) logger.log("[LIVE] ", feed.pacing_summary().to_log_string());
+    };
+
+    // Either the direct path or the thread-and-ring one, built from the same readers and the same
+    // consumer, so the only thing a reader should be able to tell apart is the [LATENCY] line.
+    std::unique_ptr<L2ReplayFeed> feed;
+    std::unique_ptr<ThreadedReplayFeed> threaded_feed;
+    if (cfg_.feed_thread)
+        threaded_feed = std::make_unique<ThreadedReplayFeed>(
+            std::move(trades_reader), std::move(depth_reader), consume, pacing, validation_config,
+            cfg_.ring_capacity == 0 ? ThreadedReplayFeed::kDefaultRingCapacity : cfg_.ring_capacity);
+    else
+        feed = std::make_unique<L2ReplayFeed>(std::move(trades_reader), std::move(depth_reader),
+                                              consume, pacing, validation_config);
+    if (threaded_feed)
+    {
+        threaded_feed->set_profiler(profiler);
+        threaded_feed->run();
+    }
+    else
+    {
+        feed->set_profiler(profiler);
+        feed->run();
+    }
+    const PacingSummary& pacing_summary =
+        threaded_feed ? threaded_feed->pacing_summary() : feed->pacing_summary();
+    const MarketDataValidationSummary& validation =
+        threaded_feed ? threaded_feed->validation_summary() : feed->validation_summary();
+    if (pacing.enabled) logger.log("[LIVE] ", pacing_summary.to_log_string());
+    if (threaded_feed)
+        logger.log("[LATENCY] ", threaded_feed->latency_summary().to_log_string());
     if (recorder)
     {
         // Flushed before the line is logged, because the line's claim is about the files on disk.
@@ -434,7 +468,6 @@ void Application::run_l2_replay_mode() const
                    " trades_path=", recorder->trades_path(), " depth_path=", recorder->depth_path());
     }
     if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
-    const auto& validation = feed.validation_summary();
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
                " depth_snapshots=", validation.depth_snapshots,
                " incremental_batches=", validation.incremental_batches,

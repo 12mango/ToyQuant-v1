@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -76,6 +77,13 @@ struct AppConfig
     // paced or fed live becomes a file that can be replayed again. Empty, the default, records
     // nothing and leaves every recorded number untouched.
     std::string record_prefix;
+    // Runs the feed on its own thread and hands each event to the strategy thread over a bounded
+    // single-producer ring, which is the shape a live path has and the reason the latency report
+    // below exists. Off, the default, keeps the direct path and its output exactly as it was.
+    bool feed_thread = false;
+    // Ring capacity for the threaded path, 0 for the feed's own default. A capacity the strategy
+    // cannot keep up with shows up as backpressure on the feed rather than as a lost event.
+    std::size_t ring_capacity = 0;
     // A maker fee rate the command line supplies, for the runs that ask what a different fee schedule would
     // have produced. The venues' rates are in the instrument specifications, so this is a sensitivity input
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.
