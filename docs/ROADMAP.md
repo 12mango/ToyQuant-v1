@@ -328,16 +328,25 @@ tick.
 
 **Those captures are the conservative queue model, and on SPY that is a floor rather than the window's answer.**
 The same window under the other three models fills 2,281 to 2,716 times instead of 799 and captures 0.4189 to
-0.4364 ticks instead of 0.267855 — so the model matters for the fill count here, by 3.4x, and the fee is still
-not covered at any point of the model space, because a round turn costs 0.70 ticks and even the ceiling's 0.4364
-covers 62% of it. The measurement behind that, the equity book's churn against its traded volume, and why the
-effect is larger here than the perpetuals' small fill counts could show are in
+0.4364 ticks instead of 0.267855 — so the model decides the fill count by 3.4x, and it decides the sign as well: a
+fill pays one side's commission of 0.35 ticks, so the floor's capture covers 77% of it while the other three cover
+120 to 125%. SPY is therefore the first window measured whose **quoting edge sits on the fee rather than under
+it**, which is what its positive breakeven rate says from the other side, and it changes what the search has to
+find: not a market whose fee is small, but one whose spread is wide enough that a fill's capture clears the fee
+even at the model's lower bound. The measurement behind that, the equity book's churn against its traded volume,
+and why the effect is larger here than the perpetuals' small fill counts could show are in
 [Performance History](PERFORMANCE_HISTORY.md#the-same-measurement-on-an-equity-book).
 
 The screen is therefore **the half spread at the trades, at least three times the fee per side**, measured by
 `tools/screen_spread.py` from top of book before any depth is bought; the tool prices a window before it spends
-and refuses to download without a stated cap. Both symbols above fail it, which is the expected result for a one
-tick market and the reason the search has to leave the most liquid symbol in the world.
+and refuses to download without a stated cap. SPY fails it at **1.43** of the required 3, which is the expected
+result for a one tick market, and the sentence that used to end this paragraph said the search therefore had to
+leave the most liquid symbol in the world. **The run falsified that sentence.** Thirty symbols over the same two
+hours, for **0.52 USD**, and the two that pass both halves of the gate are **AAPL at 4.29 and TSLA at 7.14**,
+which are among the most liquid names in the market rather than away from it: on a single venue their displayed
+books are three to six cents wide where SPY's is two, and 72% of their trades print against those wider quotes.
+The run itself, and what those two symbols then did in the engine, are in
+[Performance History](PERFORMANCE_HISTORY.md#the-screen-run-and-the-first-two-symbols-that-pass-it).
 
 ### The activity floor, pre-registered
 
@@ -369,11 +378,18 @@ failed on spread. It is applied by `tools/screen_spread.py --min-trades-per-seco
 changing the floor means editing this paragraph, and doing that *before* the next screen is what makes that
 screen's verdict pre-registered.
 
+**It has now been applied, and it is what decided the run recorded above.** The three funds whose spreads are
+widest trade far too rarely: JNUG at 43.6 times the fee per side manages 0.016 trade prints a second, NUGT 0.042,
+LABU 0.054, against the floor's 2.8, so the floor removes them and their spread is not what disqualified them,
+which is exactly the case this paragraph exists for. The two symbols the floor kept trade 7.65 and 6.86 times a
+second, about 2.5 times the floor, and SPY comes back at 3.97, which is the number this table derived the floor
+from -- the check that the screen and the floor are counting the same thing.
+
 ### The seven things that must be true before any engineering
 
 | # | Must be true | The cheapest way to kill it | Cost |
 |---|---|---|---|
-| 1 | the half spread at the trades is at least three times the fee per side | `tools/screen_spread.py`, which prices the window before it spends and refuses to download without a stated cap | 5 to 20 USD |
+| 1 | the half spread at the trades is at least three times the fee per side | `tools/screen_spread.py`, which prices the window before it spends and refuses to download without a stated cap — **run: AAPL and TSLA pass, thirty symbols, 0.52 USD** | 5 to 20 USD |
 | 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open | 10 to 20 USD, or 40 to 95 for the sixty-odd sessions the expiring credit makes affordable — see the budget section below |
 | 3 | our order really rests where we measured it | pin a destination and re-measure, or record where orders actually land for a week and measure that | free, then 1 to 2 USD |
 | 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
@@ -389,37 +405,54 @@ result rather than a setback, and it is the reason these seven come before any l
 millisecond each way and gives the price away at five, the tolerance is not a personal account's to control, and
 the reflex fix of quoting more slowly measures worse rather than better. The rows and the mechanism are in
 [Performance History](PERFORMANCE_HISTORY.md#the-latency-that-window-would-have-needed), and the sweep that
-reproduces them is `tools/latency_sweep.sh`. Three gates remain, and one of them now carries the whole line: the
-screen (1) is what decides whether a symbol wide enough to absorb a delay exists at all. The out-of-sample
-campaign (2) and the fee tiers (7) are only worth running on a symbol that screen produces.
+reproduces them is `tools/latency_sweep.sh`. That sweep's own last paragraph says the one cheap test left is a
+symbol whose spread is wide enough to absorb the same delay, and that test is the screen.
+
+**The first gate has now been run too, and it returned a pass.** AAPL and TSLA are the first symbols whose spread
+and activity both clear the pre-registered rule, and the engine says what the screen said: their capture per fill
+is 0.640 and 0.979 ticks at the conservative model against a fee of 0.35, the first markets in this repository
+where the quoting edge covers the commission at every point of the queue model space. **And both windows still lose
+money** -- 3,165.53 USD on AAPL and 1,475.53 on TSLA -- for a reason the fee table cannot see: the loss is the
+position the run carries, 1,096 and 1,098 shares of it, and tightening the inventory limit lowers the loss
+monotonically, because the drift is proportional to the exposure while the capture is not. So the wall moved
+rather than fell, and the gate that carries the line is now the second one: does the capture stay positive, with
+the position's own move separated out, across days a single session cannot speak for. Gates 3, 4 and 5 are free
+and need a channel answer, and the fee tiers (7) are worth 5 to 10 USD now that a symbol exists to run them on.
 
 ### The data budget, and its deadline
 
 One budget fact changes how the three remaining gates should be run rather than whether they can be: the
 Databento account holds a **new user credit of 124.03 USD, applicable to historical data only, that expires on
 2027-03-30**. Credits are consumed earliest-expiry-first and this is the only one, so there is no second balance
-behind it. If the grant was 125 USD, then **about 0.97 USD of it has been spent**: that is the two two-hour
-`mbp-10` windows the F4 results are measured on, and it calibrates the estimates below to their low end rather
-than their high end.
+behind it. If the grant was 125 USD, then **about 1.85 USD of it has been spent**, and the components matter more
+than the total: 0.97 on the two two-hour `mbp-10` windows the F4 results are measured on, 0.52 on the screen's
+thirty symbols of top of book, and 0.36 on the two-hour `mbp-10` pair for the AAPL and TSLA windows -- of which
+0.18 was spent twice, because the first pair was downloaded without `--pretty-px`, which leaves the price column
+as the vendor's 1e-9 scaled integer and kills the run with `std::bad_alloc`. That is the only money this
+repository has spent twice so far, and the flag is now in `tools/f4_windows.sh`'s own comment so the next reader
+does not repeat it. The credit is billed on the DBN the query returns rather than on the CSV written, which is why
+a re-download of the same window costs the same as the first one.
 
 What it buys, at the rates recorded above (0.5 USD a gigabyte of DBN on the micro E-mini, 2 on an equity, and a
 two-hour equity window under a dollar):
 
 | Spend | What it buys | Cost |
 |---|---|---|
-| the screen (gate 1) | top of book only, over a candidate list and a few days | 5 to 20 USD |
-| two to three months of daily sessions for the surviving symbol | the out-of-sample campaign (gate 2) at a strength the roadmap's eight to ten sessions cannot reach, sixty-odd sessions instead | 40 to 95 USD, and the screen's own row counts narrow it before anything is bought |
+| the screen (gate 1) | top of book only, over a candidate list and a few days — **spent: 0.52 USD on thirty symbols, AAPL and TSLA pass** | 5 to 20 USD |
+| two to three months of daily sessions for the surviving symbol | the out-of-sample campaign (gate 2) at a strength the roadmap's eight to ten sessions cannot reach, sixty-odd sessions instead — **the next purchase, on AAPL or TSLA, and the one that now carries the line** | 40 to 95 USD, and the screen's own row counts narrow it before anything is bought |
 | the fee tiers (gate 7) | the same window under a zero commission tier, a rebate and the worst realistic tier | 5 to 10 USD |
 
-**The recommendation is to front-load the evidence.** The other reading of a credit with a date on it is to
-hoard it, and that buys nothing: it is 124 USD of historical data that becomes zero on 2027-03-30, while
-everything above together is less than the balance. So the screen runs first, because it is what decides whether
-any of the rest is worth buying; the out-of-sample campaign then runs as deep as the surviving symbol's own
-volume makes affordable, which is a stronger version of gate 2 for the same money; and whatever is left is
-either spent on more days before the date or written down here as forfeited, **with the amount**, so that the
-loss is a recorded decision rather than a quiet one. Two things do not consume it at all: every replay, sweep
-and gate run after a download, which is free forever, and the live and paper phases, whose data comes from our
-own recorded feed rather than from a vendor.
+**The recommendation is to front-load the evidence, and it has now been followed once.** The other reading of a
+credit with a date on it is to hoard it, and that buys nothing: it is 124 USD of historical data that becomes
+zero on 2027-03-30, while everything above together is less than the balance. So the screen ran first, for 0.52
+USD, because it is what decides whether any of the rest is worth buying, and it produced two symbols. The
+out-of-sample campaign is next and it has a specific question now -- whether the capture stays positive once the
+position's own move is separated out, which is the difference between "the fee is covered" and "the window pays"
+-- so it runs as deep as the surviving symbol's own volume makes affordable, which is a stronger version of gate 2
+for the same money; and whatever is left is either spent on more days before the date or written down here as
+forfeited, **with the amount**, so that the loss is a recorded decision rather than a quiet one. Two things do not
+consume it at all: every replay, sweep and gate run after a download, which is free forever, and the live and paper
+phases, whose data comes from our own recorded feed rather than from a vendor.
 
 That also settles the budget rule worth pre-registering: **paid data is only ever bought for the symbol being
 validated, one window before a session and one session before a week**. The recurring review that Stage D asks

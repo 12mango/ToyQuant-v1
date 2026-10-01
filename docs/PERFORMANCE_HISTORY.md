@@ -997,11 +997,14 @@ readable here:
 | `lumpy` | 2,281 | 88,124 | 0.418853 | 308.43 | 14.93 | 1,092 |
 | `optimistic` | 2,716 | 105,458 | 0.436415 | 369.10 | 155.51 | 1,096 |
 
-The fill count moves by 3.4x across the model space and the capture per fill by only 1.6x, and **the binding
-result does not move at all: at every point the capture is below the round turn's commission of 0.70 ticks**,
-covering 38% of it at the floor and 62% at the ceiling. The equity window therefore fails on the fee under every
-reading of the queue, which is the shape of answer the perpetuals gave as well, and the F4 table's SPY row --
-799 fills and 0.267855 ticks -- is that row's own conservative floor rather than the window's fill count.
+The fill count moves by 3.4x across the model space and the capture per fill by only 1.6x, and **the sign is what
+moves: a fill pays one side's commission of 0.35 ticks, so the floor's 0.267855 ticks cover 77% of what that fill
+pays while the other three models' 0.4189 to 0.4364 cover 120 to 125% of it**. The equity window's quoting edge
+therefore sits *on* the fee rather than under it, which is the opposite of the perpetuals -- their fee was 2.57
+ticks against a capture of 0.088 -- and what decides the sign here is the queue model plus whether the position the
+run carries happens to pay, not the fee. The F4 table's SPY row -- 799 fills and 0.267855 ticks -- is that row's own
+conservative floor rather than the window's fill count, and at that floor the quoting edge alone is 27.40 USD short
+of the commission while the window's net is +262.51, so most of that net is the position and not the quotes.
 
 The spread of `net USD` across the four rows is not the quoting: all four end carrying about 1,100 shares into
 the final mark, which is where 14.93 against 396.14 comes from. Read the capture and the fill count here, the way
@@ -1989,13 +1992,18 @@ US share pays 0.0035 USD against a tick of one cent.
 
 <!-- toyquant:check
 run: l2_replay data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
-then: trade_reports=799 trade_report_quantity=33352 fees_paid=116.732 captured_edge_per_unit_ticks=0.267855 markout_per_unit_ticks=0.0919135 gross_pnl_usd=379.24 closed_pnl_usd=330.519 net_pnl_usd=262.508 net_per_fill_usd=0.328546 breakeven_maker_rate=1.48655e-05
+then: trade_reports=799 trade_report_quantity=33352 fees_paid=116.732 captured_edge_per_unit_ticks=0.267855 markout_per_unit_ticks=0.0919135 gross_pnl_usd=379.24 closed_pnl_usd=330.519 net_pnl_usd=262.508 net_per_fill_usd=0.328546 breakeven_maker_rate=1.48655e-05 max_abs_inventory=1099
+run: l2_replay data/v2/xnas_AAPL_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_AAPL_depth_2026-09-29_1330_1530.csv.gz AAPL 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
+then: trade_reports=2324 trade_report_quantity=60167 fees_paid=210.584 captured_edge_per_unit_ticks=0.640152 markout_per_unit_ticks=0.042515 gross_pnl_usd=-2954.95 closed_pnl_usd=-3103.2 net_pnl_usd=-3165.53 net_per_fill_usd=-1.36211 breakeven_maker_rate=-0.000147613 max_abs_inventory=1096
+run: l2_replay data/v2/xnas_TSLA_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_TSLA_depth_2026-09-29_1330_1530.csv.gz TSLA 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
+then: trade_reports=1894 trade_report_quantity=50753 fees_paid=177.635 captured_edge_per_unit_ticks=0.97942 markout_per_unit_ticks=0.34062 gross_pnl_usd=-1297.89 closed_pnl_usd=-1476.02 net_pnl_usd=-1475.53 net_per_fill_usd=-0.779053 breakeven_maker_rate=-7.22386e-05 max_abs_inventory=1098
 -->
 
-The whole table is re-derived by `tools/f4_windows.sh`, which needs those two converted files and says so rather
-than printing numbers without them. The pinned row is the one claim the per-edit gate keeps true; the other seven
-cost about forty seconds together, which is too much for the loop that runs on every edit, and the script is the
-re-derivation instead.
+The whole table is re-derived by `tools/f4_windows.sh`, which needs the four converted file pairs and says so
+rather than printing numbers without them. The pinned rows are the three claims the per-edit gate keeps true, one
+per market: SPY, which put the fee question in play, and AAPL and TSLA, whose capture is the first to cover the fee
+at every queue model. Each costs about three seconds, which is affordable inside the loop that runs on every edit;
+the other nineteen rows cost about a minute together, which is not, so the script is their re-derivation instead.
 
 Three of the rows are the same finding the perpetuals produced, so they are read the same way. Widening the quote
 multiplies the capture and cuts the fills — on SPY from 799 fills to 263, and on the micro E-mini from 1,675 to 57
@@ -2087,6 +2095,154 @@ modelled at all, so a live result would be worse than the worst row above. What 
 one cheap test the arithmetic leaves open: a symbol whose spread is three or more ticks wide has a larger capture
 per fill to absorb the same delay. That is the screen in gate 1, and it is the last thing to try before the
 quoting line is written down as a research result rather than as a plan.
+
+## The Screen, Run: the First Two Symbols That Pass It
+
+That screen has now been run, and this is the result. The tool is `tools/screen_spread.py`, the rule is the one
+pre-registered in the [Roadmap](ROADMAP.md) -- the half spread where trades print, at least three times the 0.35
+ticks a share pays per side -- the activity floor of 2.8 trade prints a second was written down before the run
+rather than after it, and the cost was **0.52 USD** of the historical credit for thirty symbols of top of book over
+the same two hours:
+
+| symbol | median book spread, ticks | median spread where trades print | half at trades / fee per side, needs 3 | trade prints a second, floor 2.8 | spread | activity |
+|---|---:|---:|---:|---:|---|---|
+| SPY | 2.000 | 1.000 | 1.43 | 3.97 | fail | pass |
+| QQQ | 3.000 | 2.000 | 2.86 | 3.64 | fail | pass |
+| **AAPL** | 4.000 | 3.000 | **4.29** | 7.65 | **pass** | **pass** |
+| **TSLA** | 6.000 | 5.000 | **7.14** | 6.86 | **pass** | **pass** |
+| JNUG | 41.000 | 30.500 | 43.57 | 0.016 | pass | fail |
+| NUGT | 24.000 | 19.000 | 27.14 | 0.042 | pass | fail |
+| LABU | 105.000 | 68.000 | 97.14 | 0.054 | pass | fail |
+| EWW | 4.000 | 2.000 | 2.86 | 0.063 | fail | fail |
+| ARKK | 3.000 | 2.000 | 2.86 | 0.402 | fail | fail |
+| USO | 3.000 | 2.000 | 2.86 | 0.504 | fail | fail |
+| the other twenty, among them GME, AMC, SOFI, BOIL, UNG and the rest of the leveraged funds | 1.000 | 1.000 | 1.43 | under 1.4 | fail | fail |
+
+The lines that produce these are `tools/screen_spread.py --cost --symbols ...` before any spend and then the same
+run with `--download --max-cost-usd=... --min-trades-per-second=2.8`, which prints one `[SCREEN] symbol=...` line
+per name with every field above in it; the downloaded files are cached under `data/v2/screen/`, so
+`--input data/v2/screen/AAPL_2026-09-29T1330_2026-09-29T1530.csv` re-derives a row without buying anything again.
+
+Three things come out of the run, and the third one is the reason this section exists.
+
+**The screen agrees with the two windows already recorded.** SPY comes back at a 2.000 median book spread and a
+1.000 spread where trades print, which is the pair the F4 section above measured from ten levels of depth, and its
+**3.97 trade prints a second is the number the activity floor's own table was derived from**. A screen that
+disagreed with those two would have been the thing to question, and it does not.
+
+**The floor is what removes the widest spreads, and that is the case it was written for.** JNUG's spread is 43.57
+times the fee per side and its quotes are the ones a quoter would want; it trades 0.016 times a second, which is
+one print every sixty seconds, so a resting quote there is not placed in a market. NUGT and LABU are the same
+shape at 0.042 and 0.054. A screen that ranked on spread alone would have put those three first.
+
+**The symbols that pass are among the most liquid in the market, not away from it.** SPY fails at 1.43 and the
+perpetuals the project is built on fail by two orders of magnitude, so the roadmap said the search had to leave
+the most liquid symbol in the world. It does not: **AAPL and TSLA are the ones that pass**, at 4.29 and 7.14 times
+the fee per side, and the mechanism is a property of a single venue's book rather than of the symbol. A probe over
+the same files, which reproduces SPY's 2.000 and 1.000 exactly, says where the width is:
+
+| | AAPL, mean 332.71 | TSLA, mean 354.00 | SPY, mean 764.96 |
+|---|---:|---:|---:|
+| share of book rows at a 1 tick spread | 6.2% | 2.2% | 18.7% |
+| book spread, median | 4 ticks | 6 ticks | 2 ticks |
+| spread where trades print, median | 3 ticks | 5 ticks | 1 tick |
+| trades that print on the venue's own touch | 71.9% | 72.5% | 85.4% |
+| trades that print inside the venue's spread | 28.1% | 27.6% | 14.6% |
+
+So the wide spread is not an artefact of measuring one venue's book: two thirds to three quarters of the trades
+that print on that venue print against the touch of that same wide book. What the table does not say is what
+happens to a quote that rests there, which is the next measurement, and it is the one the fill model exists for.
+
+### What the two symbols do in the engine
+
+Same policy, same two hours, ten levels of depth, one row per queue model, and the fee column is the same 0.35
+ticks a fill this repository has charged since the F4 windows:
+
+| window | fills | units | fee USD | capture, ticks | capture / fee per side | markout, ticks | net USD | peak inventory |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| SPY, one tick, for reference | 799 | 33,352 | 116.73 | 0.268 | 0.77 | +0.092 | +262.51 | 1,099 |
+| AAPL, `conservative` | 2,324 | 60,167 | 210.58 | 0.640 | **1.83** | +0.043 | -3,165.53 | 1,096 |
+| AAPL, `prorata` | 4,673 | 110,143 | 385.50 | 1.060 | 3.03 | -0.297 | -2,229.35 | 1,099 |
+| AAPL, `lumpy` | 4,412 | 109,002 | 381.51 | 1.045 | 2.99 | -0.293 | -2,143.97 | 1,086 |
+| AAPL, `optimistic` | 4,919 | 123,319 | 431.62 | 1.102 | 3.15 | -0.347 | -2,403.80 | 1,096 |
+| TSLA, `conservative` | 1,894 | 50,753 | 177.64 | 0.979 | **2.80** | +0.341 | -1,475.53 | 1,098 |
+| TSLA, `prorata` | 3,918 | 100,908 | 353.18 | 1.623 | 4.64 | -0.112 | -2,311.61 | 1,098 |
+| TSLA, `lumpy` | 3,731 | 99,158 | 347.05 | 1.611 | 4.60 | -0.112 | -2,221.04 | 1,082 |
+| TSLA, `optimistic` | 4,082 | 107,260 | 375.41 | 1.682 | 4.80 | -0.166 | -2,343.31 | 1,083 |
+
+**This is the first market in the repository where the quoting edge covers the commission, and it covers it at
+every point of the model space.** Where SPY's conservative floor covers 0.77 of the fee, AAPL's covers 1.83 and
+TSLA's 2.80, and neither is a margin the model can erase: the floor is the lower bound of the four, and it is above
+one. The screen predicted the direction of this -- a half spread of 1.5 and 2.5 ticks at the trades -- and the
+engine's realised capture is 0.64 and 0.98, which is the halving the tool's own closing paragraph warns about and
+the same factor (0.54) the F4 section recorded between SPY's half spread and what a fill captured.
+
+**And both windows still lose money, for a reason the fee table cannot see.** At the conservative model AAPL's
+capture is worth **+385.16 USD** against 210.58 of commission, so the quotes paid for themselves and 174.58 USD
+over; the window's gross is **-2,954.95**, which leaves about **3,340 USD** of adverse price on the position the run
+was carrying. TSLA is the same shape at a different size: capture +497.09 against 177.64 of commission, gross
+-1,297.89, so about 1,795 USD of drift. The drift is not adverse selection -- AAPL's measured markout is *positive*
+(+0.043 ticks), so the fills were not picked off -- it is the mark on 1,096 and 1,098 shares of inventory,
+0.36 and 0.39 million USD of notional, over two hours in which the price moved against it by a few tenths of a
+percent. At that size a 0.9% move is 3,300 USD and the whole quoting edge is 385.
+
+**The exposure is what moves the answer, and the run controls it.** Tightening the inventory limit lowers the loss
+monotonically on both symbols, because the drift term is proportional to the exposure while the capture is
+proportional to the traded volume:
+
+| window, same policy | fills | units | capture, ticks | fee USD | net USD | peak inventory |
+|---|---:|---:|---:|---:|---:|---:|
+| AAPL, inventory limit 1,000 shares | 2,324 | 60,167 | 0.640 | 210.58 | -3,165.53 | 1,096 |
+| AAPL, limit 1,000, flattening above 300 | 2,844 | 71,952 | 0.297 | 251.83 | -1,881.13 | 400 |
+| AAPL, limit 200 shares | 2,240 | 57,813 | 0.642 | 202.35 | -1,454.75 | 299 |
+| AAPL, limit derived from the instrument (one share, one 100 share order) | 1,837 | 46,356 | 0.398 | 162.25 | **-870.88** | 100 |
+| TSLA, inventory limit 1,000 shares | 1,894 | 50,753 | 0.979 | 177.64 | -1,475.53 | 1,098 |
+| TSLA, limit 1,000, flattening above 300 | 2,306 | 60,143 | 0.562 | 210.50 | -1,360.77 | 400 |
+| TSLA, limit 200 shares | 1,783 | 47,402 | 0.973 | 165.91 | -1,246.20 | 297 |
+| TSLA, limit derived from the instrument | 1,239 | 31,851 | 0.873 | 111.48 | **-844.22** | 100 |
+
+Cutting the peak position from 1,096 shares to 100 takes AAPL's loss from 3,165.53 to 870.88, which is a quarter
+of it, and TSLA's from 1,475.53 to 844.22. The flatten band does the same thing less cheaply at 1,000 shares of
+limit, which is the second row of each block: it realises the position at the touch instead of carrying it, so it
+pays the spread and the fee on every flatten, and AAPL's capture falls from 0.640 to 0.297 because of it. The
+distinction matters for reading the SPY rows above, where flattening *lowered* the result from 262.51 to 161.42:
+there the drift was in the position's favour and here it is against it, so the same control has opposite signs on
+the two. What is stable across both is the size of the term, not its sign.
+
+The derived limit is worth one sentence because it is the harness's own default: `strategy_factory.cpp` sizes it as
+the instrument's quantity scale divided by ten, which for a US share -- one unit per share -- is **one share**, so a
+run that passes no limit holds at most one unfilled order of 100 shares and the peak inventory is 100. Every row in
+the F4 table above was measured with an explicit limit of 1,000 shares, which is the setting that made the exposure
+term large enough to dominate; the same measurement at the harness's default would have shown a smaller number for
+SPY as well, and a different sign on it.
+
+### What this changes
+
+The wall moved rather than fell. On these two symbols the fee is no longer the binding constraint -- the capture
+clears it at the lower bound of the queue model, which is exactly what the screen was for -- and what is left is a
+**position sizing and drift** question of the same shape the perpetuals had from the other side.
+
+**The next measurement is across days, and it now has a specific question.** The capture, the fee and the fill
+count are stable across the model space on both symbols; what is not stable is the sign of the drift, and one
+two-hour window cannot separate a strategy from a lucky direction. That is gate 2, and the budget section's
+sixty-odd sessions are what answer it: capture per fill and realised net on every session, with the closing position
+marked and the exposure held to the smallest limit that still produces fills.
+
+**None of this says the strategy pays, and the numbers that do not are large.** Both symbols lose money in the
+session measured, and at the 1,000 share limit the losses are 8.2 times AAPL's quoting edge and 3.0 times TSLA's;
+the one number that would say otherwise -- a positive net at a controlled exposure across several sessions with
+different price directions -- does not exist yet. The honest summary of this section is one sentence: **the fee
+stopped being the reason these two symbols fail, and something else has to be measured before they stop failing.**
+
+The caveats the F4 section records apply to every row above, and there is one more. The book is **Nasdaq's alone**,
+so the queue ahead of a quote is one venue's displayed size out of a consolidated market and the fill population is
+optimistic where it matters; it is **two hours of one session**, taken from the part of the day with the most mean
+reversion; the commission is a large retail broker's tiered rate and **the tier a Hong Kong account receives is
+unverified**; and the venue's own maker rebate, of the same order as the commission, is not in the model. The extra
+one is the harness's: the runs start with **1,000 USD of cash and carry up to 0.39 million USD of notional**, so the
+PnL is measured on exposure the account is not funding, and `exposure_over_collateral_fills` counts every fill that
+made that worse. A real account would hold that position against more capital or a smaller position against that
+capital, and the row whose peak inventory is 100 shares is what the second of those looks like.
 
 
 

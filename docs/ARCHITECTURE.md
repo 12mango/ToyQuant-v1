@@ -183,7 +183,10 @@ that: half a cent a share is 0.5 basis points on a hundred dollar share and 5 ba
 dollar one, so the cost of a fill depends on the share price in a way a fraction of notional cannot
 represent. `us_equity_spec` therefore states a one cent tick, one quantity unit per share, and a
 commission per share, and it leaves the maker and taker rates at zero, because that is how an equity
-fill is billed. `fee_on_fill` adds both terms rather than choosing between them, so an instrument can
+fill is billed. It is registered for the three symbols this repository has measured on a US venue --
+SPY, and the screen's AAPL and TSLA -- **by name rather than by rule**, because registering a symbol is
+a claim that its numbers are re-derivable and three named symbols keep that claim small. `fee_on_fill`
+adds both terms rather than choosing between them, so an instrument can
 carry a rate, a commission, both or neither, and every schedule that existed before the equity entry
 leaves the new field at zero and is arithmetically unchanged.
 

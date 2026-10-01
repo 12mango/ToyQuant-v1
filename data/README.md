@@ -239,7 +239,9 @@ visible rather than quietly thinner.
 The raw instrument, before conversion, is one contract of a micro E-mini S&P 500 future: a quarter point tick
 worth 1.25 USD because the contract multiplier is 5, and a commission charged per contract. The same tool takes
 an equity: SPY on the Nasdaq book, one cent tick, sizes in shares, 2.18 million depth rows and 28,592 trade rows
-in two hours. `tools/f4_windows.sh` re-runs both, and `docs/ROADMAP.md` records what the runs found.
+in two hours, and the same two hours again for **AAPL (786,111 depth rows and 39,254 trade rows) and TSLA
+(425,234 and 35,466)**, the two symbols the screen below passed. `tools/f4_windows.sh` re-runs all four pairs, and
+`docs/ROADMAP.md` records what the runs found.
 
 ## Screening a Symbol Before Buying Its Depth
 
@@ -258,15 +260,19 @@ python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_15
 ```
 
 The last form runs on a file already on disk, which is how the tool is tested without spending anything, and it
-accepts a ten-level file because that schema carries the top of book columns as well. What it reports, and why it
-reports two distributions:
+accepts a ten-level file because that schema carries the top of book columns as well. Downloads are cached under
+`data/v2/screen/`, named by symbol and window, so a symbol that has been screened once can be re-measured for
+nothing. What it reports, and why it reports two distributions:
 
 * **the median book spread next to the median spread at the trades.** They are not the same number, and the second
   is the one that matters: SPY's book has a median of 2.000 ticks over its recorded two hours while the rows where
   a trade prints have a median of 1.000. A fill happens where a trade happens, so a rule written against the book
   would rank a symbol by a spread nobody trades at.
 * **the ratio of the half spread at the trades to the fee per side**, which is the pre-registered rule: three or
-  more passes. The two symbols measured so far both fail, at 1.429 for SPY and 1.008 for the micro E-mini.
+  more passes. It has now been run on thirty symbols for 0.52 USD: **AAPL passes at 4.286 and TSLA at 7.143**, the
+  first two symbols to pass either half of the gate, while SPY fails at 1.429 and the micro E-mini at 1.008. The
+  funds whose spreads are widest fail the activity floor instead -- JNUG at 43.571 with 0.016 trade prints a second
+  against the floor's 2.8 -- and the screen's own table is in `docs/PERFORMANCE_HISTORY.md`.
 * **the trade count, the trades per second and the rows per second.** The activity floor is recorded in
   `docs/ROADMAP.md` and derived there from the fill counts of the first two screened symbols, and the screen
   applies it when it is given `--min-trades-per-second`: a run that way prints `trades_per_second` and its own

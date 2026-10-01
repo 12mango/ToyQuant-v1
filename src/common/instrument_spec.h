@@ -199,6 +199,15 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
         out = us_equity_spec(symbol);
         return true;
     }
+    // The two symbols the pre-registered screen in docs/ROADMAP.md passed, given the specification an ETF gets:
+    // one cent tick, one share per unit, a retail commission per share. They are registered by name rather than
+    // by rule because a registered symbol is a claim that its numbers are re-derivable, and two named symbols
+    // keep that claim small.
+    if (symbol == "AAPL" || symbol == "TSLA")
+    {
+        out = us_equity_spec(symbol);
+        return true;
+    }
     if (symbol == "MESZ6")
     {
         out = micro_es_spec(symbol);
