@@ -16,6 +16,7 @@
 namespace
 {
 constexpr std::string_view kProfileStagesPrefix = "--profile-stages=";
+constexpr std::string_view kLivePacingPrefix = "--live-pacing=";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
@@ -87,7 +88,7 @@ void print_usage(const char* executable)
         std::cerr << "   or: " << executable
                       << " l2_replay <trades_csv[.gz]> <depth_or_incremental_csv> <symbol> "
                          "[ms_delay] [strategy] [quantity_scale] [queue_model] [--no-output] "
-                         "[--fast-validation] [--profile-stages[=interval]]\n";
+                         "[--fast-validation] [--profile-stages[=interval]] [--live-pacing[=speed]]\n";
         std::cerr << "   or: " << executable
                       << " carry <leg_a_funding_csv> <leg_b_funding_csv> --symbol-a=SYM --symbol-b=SYM "
                          "[--notional-usd=N] [--long=b]\n";
@@ -197,6 +198,30 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.fast_validation = true;
             else if (flag == "--profile-stages")
                 cfg.profile_sample_interval = StageProfiler::kDefaultSampleInterval;
+            else if (flag == "--live-pacing")
+            {
+                cfg.live_pacing = true;
+                cfg.live_pacing_speed = 1.0;
+            }
+            else if (flag.compare(0, kLivePacingPrefix.size(), kLivePacingPrefix) == 0)
+            {
+                const std::string value = flag.substr(kLivePacingPrefix.size());
+                try
+                {
+                    cfg.live_pacing_speed = std::stod(value);
+                }
+                catch (const std::exception&)
+                {
+                    error = "--live-pacing speed must be a number";
+                    return false;
+                }
+                if (!(cfg.live_pacing_speed > 0.0))
+                {
+                    error = "--live-pacing speed must be positive";
+                    return false;
+                }
+                cfg.live_pacing = true;
+            }
             else if (flag.compare(0, kProfileStagesPrefix.size(), kProfileStagesPrefix) == 0)
             {
                 if (!parse_unsigned(flag.substr(kProfileStagesPrefix.size()),
@@ -355,7 +380,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
-                        "--profile-stages[=interval], --order-size=N, --inventory-limit=N, "
+                        "--profile-stages[=interval], --live-pacing[=speed], --order-size=N, --inventory-limit=N, "
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
                         "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
@@ -371,6 +396,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (cfg.profile_sample_interval > 0 && cfg.mode != AppMode::L2Replay)
         {
             error = "--profile-stages is only supported by l2_replay";
+            return false;
+        }
+        if (cfg.live_pacing && cfg.mode != AppMode::L2Replay)
+        {
+            error = "--live-pacing is only supported by l2_replay";
             return false;
         }
         if (cfg.markout_cover && cfg.mode != AppMode::L2Replay)

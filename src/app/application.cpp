@@ -369,6 +369,12 @@ void Application::run_l2_replay_mode() const
     auto depth_reader = okx ? make_okx_book_reader(depth_file, instrument.symbol, instrument.contract_size,
                                                    instrument.quantity_scale)
                             : make_deribit_depth_reader(depth_file);
+    // The fifth positional argument of l2_replay has always been a delay in milliseconds, applied as a fixed
+    // sleep after every event. That neither reproduces the file's own timing nor scales, so a non-zero value now
+    // means "pace this replay" and the speed stays at real time, while --live-pacing is the explicit form and
+    // accepts a speed. Zero, which every recorded run passes, still reads the file as fast as it can.
+    const ReplayPacing pacing{.enabled = cfg_.live_pacing || cfg_.delay > 0,
+                              .speed = cfg_.live_pacing ? cfg_.live_pacing_speed : 1.0};
     L2ReplayFeed feed(
         std::move(trades_reader),
         std::move(depth_reader),
@@ -405,9 +411,10 @@ void Application::run_l2_replay_mode() const
                 },
                 event);
         },
-        cfg_.delay, validation_config);
+        pacing, validation_config);
     feed.set_profiler(profiler);
     feed.run();
+    if (pacing.enabled) logger.log("[LIVE] ", feed.pacing_summary().to_log_string());
     if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     const auto& validation = feed.validation_summary();
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,

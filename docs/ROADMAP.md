@@ -355,6 +355,11 @@ book, and `src/market/` holds one reader per input format, so a live feed is ano
 * the gate gains an assertion that a recorded file replays to the summary the live run printed, so the live path
   is covered by the same four tiers as everything else.
 
+The delivery half of that has landed first, because it needs no account and no data purchase: a replay can now be
+delivered at the file's own speed, at a multiple of it, and it reports how late each delivery ran against the
+schedule the timestamps define, which is the number a live session has to watch. The recorder is still the
+missing piece, and it is the one that makes the model and the live session comparable on identical input.
+
 **Passes when** several hours are recorded without a drop and the recorded file reproduces the live summary.
 **Ends it when** the depth a retail account may legally subscribe to and read programmatically costs more than
 the strategy's gross, or cannot be subscribed at all. That is a licensing question rather than a code one, and

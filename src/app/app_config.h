@@ -64,6 +64,13 @@ struct AppConfig
 
     // The order whose queue the run should trace, 0 for none. Reports as [QUEUE_TRACE] lines.
     uint64_t trace_order = 0;
+    // Deliver the replay against the wall clock instead of as fast as the file reads, at this speed. A rehearsal
+    // is the point: a strategy that watches its own quote age or cancels on a timer only behaves like itself when
+    // the market arrives at its real speed, and the delivery's lateness against the schedule is the feed-side
+    // number a live session has to watch. Off, which is the default, leaves every recorded number untouched,
+    // because pacing changes no decision, only when the decision is made.
+    bool live_pacing = false;
+    double live_pacing_speed = 1.0;
     // A maker fee rate the command line supplies, for the runs that ask what a different fee schedule would
     // have produced. The venues' rates are in the instrument specifications, so this is a sensitivity input
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.

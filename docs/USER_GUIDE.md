@@ -177,7 +177,8 @@ which makes every PnL a few cents and the inventory logic unreachable.
   BTC-PERPETUAL 0 active_l2 1 conservative --order-size=10 --inventory-limit=100
 ```
 
-The remaining `l2_replay` flags are `--no-output`, `--fast-validation` and `--profile-stages[=N]`.
+The remaining `l2_replay` flags are `--no-output`, `--fast-validation`, `--profile-stages[=N]` and
+`--live-pacing[=SPEED]`.
 
 The symbol decides the instrument, through `instrument_spec_of`: `BTC-PERPETUAL`, `BTC-USDT-SWAP`, `SPY` and
 `MESZ6` are the entries today, and a symbol with no entry is an error rather than a default, because a default
@@ -192,6 +193,23 @@ worth 1.25 USD rather than 0.25, so a commission of about sixty cents a contract
 
 The collateral fields stay a cash-only figure, which is the documented model and not a description of a margined
 future: such a run reports exposure over collateral and should be read for its capture, fee and markout columns.
+
+`--live-pacing[=SPEED]` delivers the replay against the wall clock instead of as fast as the file reads, which is
+what turns a measurement into a rehearsal: a strategy that watches its own quote age, or cancels on a timer, only
+behaves like itself when the market arrives at its real speed. The fifth positional delay still works and now
+means "pace this run at real time", because a fixed sleep after every event neither reproduced the file's timing
+nor scaled. Pacing changes no decision — only when the decision is taken — so a paced run reports the same
+`[PNL]` fields as the unpaced one, and the line it adds is the feed's own report card:
+
+```text
+[LIVE] paced_events=3582893 late_events=3551778 lateness_mean_us=6827 lateness_p50_us=1024
+       lateness_p99_us=65536 lateness_max_us=79282 market_window_s=7199 wall_s=11 speed=600
+```
+
+`lateness_*` is how late each delivery was against the schedule the file's own timestamps define, so it is the
+sum of everything between the schedule and the delivery, and it is the one number here that a live session would
+watch: at 600 times real time the process above is at its limit and says so, and at real time the same window is
+six hundred times less work than that.
 
 When the benchmark is given an incremental file, the tool reconstructs a compact top-five timeline
 from the grouped updates and reports the same output fields. Python `markout_5/20` means the
@@ -281,6 +299,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--maker-fee-rate=R` | Replace the venue's maker rate, for the fee question; the run echoes it in its `[Mode]` line and may be negative for a rebate | Off, the venue's own rate |
 | `--markout-cover` | Quote only where the capture also covers what passive fills at that distance have cost, measured from our own resolved fills | Off |
 | `--flatten-band=N` | Reduce a position above N units with a taker order at the touch instead of carrying it | Off |
+| `--live-pacing[=SPEED]` | Deliver the replay against the wall clock at this speed and report how late it ran as `[LIVE]`; the fifth positional argument on this mode means the same at real time | Off, which reads the file as fast as it can |
 
 ### Funding as an input
 

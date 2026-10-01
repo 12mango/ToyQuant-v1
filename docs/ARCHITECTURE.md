@@ -216,6 +216,15 @@ snapshot atomically, validates ordering and sequence, and derives an `L2MarketVi
 path passes that view explicitly to the selected strategy after venue and instrument validation;
 raw vendor rows never enter strategy code, and Binance L1 data is not combined with Deribit L2.
 
+A replay is delivered as fast as the file reads unless the run asks for pacing. `ReplayPacing` maps the file's
+timestamps onto the wall clock, optionally at a speed, and `L2ReplayFeed` reports how late each delivery was
+against that schedule: this process being busy, the reader being slow and the operating system not waking the
+thread are all inside that number, which is why it is the feed-side figure a live session watches. The clock and
+the sleep are injectable, so the schedule is asserted exactly in a test instead of waited for, and one real-time
+case proves the default sleep is wired. Pacing changes no decision, only when the decision is taken, so the
+`[PNL]` fields of a paced run are the same as the unpaced one and a non-zero fifth positional argument, which was
+a fixed sleep per event, now means the same thing at real time.
+
 The incremental L2 path uses `IncrementalBookBatch` events. The reader groups rows sharing a
 `local_timestamp`, skips buffered updates before the first snapshot, and preserves snapshot-batch
 reset boundaries. Each update sets an absolute level amount; amount zero removes the level. After
