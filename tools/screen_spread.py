@@ -13,10 +13,11 @@ schema, top of book only, before any ten-level depth is bought, and it prints th
 before it spends anything.
 
 What it will not do is choose the activity floor. A wide spread with no trades is not a market, and how many
-trades a strategy needs is only known from the fill counts of the first screened symbols, so the floor is
-deliberately not pre-registered here: `trades` is reported, the decision about a floor is recorded in the
-documents, and the second screen is run against the recorded floor rather than against one chosen after seeing
-this answer.
+trades a strategy needs is only known from the fill counts of the first screened symbols, so the floor is not
+chosen here: it is recorded in `docs/ROADMAP.md`, and this script applies it when `--min-trades-per-second`
+is given, printing `trades_per_second` and a verdict of its own next to the spread verdict. A screen run with
+that flag is the second screen the floor paragraph promises, measured against a number that was written down
+before the answer was in.
 
 The endpoint set takes its parameters in the query string, as `tools/fetch_databento.py` records at length, and
 prices come back as decimals when pretty_px is asked for.
@@ -189,30 +190,39 @@ def measure(path, symbol, tick, multiplier, fee_per_share):
         "fee_ticks": fee_ticks,
         "ratio": (median_trade / 2.0) / fee_ticks,
         "rows_per_second": rows / seconds if seconds > 0 else 0.0,
+        "trades_per_second": trades / seconds if seconds > 0 else 0.0,
     }
 
 
 def report(args, results):
     print()
-    print("| symbol | median book spread | median trade spread | half at trades | fee/side | ratio | >=3 ticks | rows/s | trades | verdict |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    floor = args.min_trades_per_second
+    print("| symbol | median book spread | median trade spread | half at trades | fee/side | ratio | "
+          ">=3 ticks | rows/s | trades | trades/s | spread | activity |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
     for row in results:
         threshold = args.min_ratio * 2.0 * row["fee_ticks"]
         verdict = "pass" if row["median_trade_ticks"] >= threshold else "fail"
+        activity = "-" if floor <= 0 else ("pass" if row["trades_per_second"] >= floor else "fail")
         print(f"| {row['symbol']} | {row['median_ticks']:.3f} | {row['median_trade_ticks']:.3f} | "
               f"{row['trade_half_spread_ticks']:.3f} | {row['fee_ticks']:.3f} | {row['ratio']:.3f} | "
-              f"{row['at_three_or_more']:.3f} | {row['rows_per_second']:.1f} | {row['trades']} | {verdict} |")
+              f"{row['at_three_or_more']:.3f} | {row['rows_per_second']:.1f} | {row['trades']} | "
+              f"{row['trades_per_second']:.2f} | {verdict} | {activity} |")
         print(f"[SCREEN] symbol={row['symbol']} median_book_ticks={row['median_ticks']:.3f} "
               f"median_trade_ticks={row['median_trade_ticks']:.3f} fee_ticks={row['fee_ticks']:.3f} "
-              f"ratio={row['ratio']:.3f} rows={row['rows']} trades={row['trades']} verdict={verdict}")
+              f"ratio={row['ratio']:.3f} rows={row['rows']} trades={row['trades']} verdict={verdict} "
+              f"trades_per_second={row['trades_per_second']:.3f} activity_floor={floor:.3f} "
+              f"activity_verdict={activity}")
     print()
     print(f"[SCREEN] the rule is the pre-registered one: half spread >= {args.min_ratio:.1f} x the fee per side, "
           f"which is a median spread of {args.min_ratio * 2.0 * (FEE_PER_SHARE / TICK):.3f} ticks at the default "
           "commission. The rule is applied to the spread at the trades rather than to the median of the book, "
           "because fills happen where trades print, and the recorded SPY window shows a further haircut of about "
           "half between the touch half spread and the capture a fill actually realised: this is a ranking device "
-          "whose absolute verdict is revisited after the first replay. The activity floor is not decided here on "
-          "purpose, so that it can be recorded before the next screen rather than chosen after seeing this one.")
+          "whose absolute verdict is revisited after the first replay. The activity floor is the second "
+          "pre-registered number, recorded in docs/ROADMAP.md from the fill counts of the first two screened "
+          "symbols; it is applied only when --min-trades-per-second is given, because a floor named in a command "
+          "line is a number that was written down before the answer was in.")
 
 
 def main():
@@ -234,10 +244,16 @@ def main():
                         help="USD per price unit per unit, 5 for a micro E-mini, 1 for a share")
     parser.add_argument("--fee-per-share", type=float, default=FEE_PER_SHARE)
     parser.add_argument("--min-ratio", type=float, default=3.0)
+    parser.add_argument("--min-trades-per-second", type=float, default=0.0,
+                        help="the activity floor recorded in docs/ROADMAP.md; 0, the default, reports "
+                             "trades_per_second without a verdict")
     parser.add_argument("--max-cost-usd", type=float, default=0.0,
                         help="0, the default, refuses to download at all")
     parser.add_argument("--cache-dir", default="data/v2/screen")
     args = parser.parse_args()
+
+    if args.min_trades_per_second < 0.0:
+        raise SystemExit("--min-trades-per-second cannot be negative")
 
     if args.input:
         if not args.symbol:

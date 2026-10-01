@@ -52,7 +52,8 @@ def main():
     for flag in sorted({m for m in DOCUMENTED_FLAG.findall(text)} - declared):
         # Flags of the Python tools and of the strategies are documented and are not this parser's, and
         # --help is the one flag every binary has without saying so.
-        if flag not in {"--order-size", "--inventory-limit", "--queue-model", "--help"}:
+        if flag not in {"--order-size", "--inventory-limit", "--queue-model", "--min-trades-per-second",
+                        "--help"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

@@ -243,6 +243,8 @@ python3 tools/screen_spread.py --cost --symbols SPY,QQQ,IWM --start 2026-09-29T1
 python3 tools/screen_spread.py --download --max-cost-usd=5 --symbols SPY,QQQ,IWM \
   --start 2026-09-29T13:30 --end 2026-09-29T15:30
 python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
+python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \
+  --min-trades-per-second=2.8
 ```
 
 The last form runs on a file already on disk, which is how the tool is tested without spending anything, and it
@@ -255,9 +257,11 @@ reports two distributions:
   would rank a symbol by a spread nobody trades at.
 * **the ratio of the half spread at the trades to the fee per side**, which is the pre-registered rule: three or
   more passes. The two symbols measured so far both fail, at 1.429 for SPY and 1.008 for the micro E-mini.
-* **the trade count and the rows per second**, reported rather than thresholded, because the activity floor a
-  strategy needs can only be set from the fill counts of the first screened symbols, and it has to be recorded
-  before the next screen rather than chosen after seeing that one.
+* **the trade count, the trades per second and the rows per second.** The activity floor is recorded in
+  `docs/ROADMAP.md` and derived there from the fill counts of the first two screened symbols, and the screen
+  applies it when it is given `--min-trades-per-second`: a run that way prints `trades_per_second` and its own
+  verdict beside the spread verdict, so the number a symbol is judged against was written down before that
+  symbol's answer was in. The tool does not carry the floor, so it cannot quietly become a different one.
 
 ## OKX Trades, and What the Public Route Cannot Do
 

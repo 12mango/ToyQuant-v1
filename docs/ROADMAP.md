@@ -331,6 +331,36 @@ The screen is therefore **the half spread at the trades, at least three times th
 and refuses to download without a stated cap. Both symbols above fail it, which is the expected result for a one
 tick market and the reason the search has to leave the most liquid symbol in the world.
 
+### The activity floor, pre-registered
+
+A wide spread with no trades is not a market, and the screen deliberately does not choose this number, so it is
+recorded here **before the next screen runs** rather than picked after seeing one. What it is a floor on is the
+predicted fill count, because that is what a conclusion needs and the screen cannot measure fills from top of
+book. What it can measure is the trade prints, so the question is what a trade print is worth in fills, and the
+two windows measured so far answer that:
+
+| Window, 2026-09-29 13:30-15:30 | trade rows | rows the screen read | fills, synchronous | trade rows per fill |
+|---|---:|---:|---:|---:|
+| SPY | 28,592 | 2,205,840 | 799 | 35.8 |
+| micro E-mini | 119,842 | 3,843,413 | 1,675 | 71.5 |
+
+**The floor is 2.8 trade prints a second**, which is 20,000 in a two-hour session. The arithmetic, with each
+input named: this repository does not draw a conclusion from fewer than thirty fills
+([Design Review](DESIGN_REVIEW.md)); the worse of the two measured yields is one fill per 71.5 trade rows; and
+the margin is tenfold, which is the one judgment in the number. The judgment is sized from the F4 sweep's own
+result that a quote one tick further from the touch fills about three times less (799 to 263 to none as SPY's
+quote widened), taken at two ticks of unknown difference between a candidate's book and these two. Thirty fills
+at 71.5 rows per fill is 2,145 trade rows and the margin makes it 21,450, which is written down as 20,000 so
+that the floor is a number a reader can hold in their head: 20,000 trade prints in a two-hour session is 2.8 a
+second.
+
+Both symbols measured so far pass the floor, at 3.97 and 16.6 trade prints a second, which is the right shape
+for it: it is aimed at a market too quiet to measure, not at the two liquid markets this line has already
+failed on spread. It is applied by `tools/screen_spread.py --min-trades-per-second=2.8`, which prints
+`trades_per_second` and its own verdict beside the spread verdict; the tool does not carry the number, so
+changing the floor means editing this paragraph, and doing that *before* the next screen is what makes that
+screen's verdict pre-registered.
+
 ### The seven things that must be true before any engineering
 
 | # | Must be true | The cheapest way to kill it | Cost |
