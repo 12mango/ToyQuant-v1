@@ -24,7 +24,7 @@ reader, and paper trading is the existing book and matching engine against that 
 | **0 — packaging** | one branch, the `v1.0-demo` tag, the documents in the published navigation, a code CI | a reader sees a maintained repository with a history rather than two unfinished ones | done |
 | **1 — evidence** | the headline conclusions re-run on a second day, which the repository already holds, and the queue-model bounds experiment recorded | closes the two questions the documents could not answer: does it generalize, and how much does the queue model matter. Both are now recorded, and the second day's numbers are behind a marked block in the gate | done |
 | **2 — the live paper milestone** | a websocket book feed, a paper-trading mode reusing the book and the matching engine, and a recorder that writes the live feed in the replay format | the strongest statement available here: one strategy drives a replay and a live session, and a live session becomes replayable | one to two weeks |
-| **2b — from a positive window to a running system** | the plan below: the offline campaign that either kills or confirms the one positive window, then live data, a recorder, an order gateway, risk limits and reconciliation, then minimum size against a real account | a system that is measured rather than asserted, with a stated pass and fail condition at every step | see the stage table below |
+| **2b — from a positive window to a running system** | the plan below, derived backwards from what a live path can be: the deployment filter, the instrument arithmetic, the seven things that must be true before any plumbing, and only then live data, a recorder, an order gateway, risk limits and reconciliation, then minimum size against a real account | a system that is measured rather than asserted, with a stated pass and fail condition at every step | see the stage table below |
 | **2a — a second venue** | a reader for the OKX historical format, added to `src/market/` beside the existing ones, plus a reconciliation check that the rebuilt book matches an independent recomputation of the top of book | consecutive-day free data with discrete levels, which is what a multi-day test needs; the existing pinned lineage is untouched because a new venue is an additional workload | done: the readers exist, `market_data_format_of` routes a depth file to the right one, and a paired replay of one hour of the 2026-01-07 archive completes with the summed order book, the exchange's fee schedule and the contract size of 0.01 BTC |
 | **3 — system only** | persistence and recovery, the pre-trade gate enabled by default, with a check that the limit exceeds one order, a real venue adapter at small size, multi-instrument accounting | none of it is checkable by a reader, so it waits until the demo is finished | later |
 
@@ -250,53 +250,84 @@ fees of a few hundredths of a cent a share on the other.
 
 ## From a Positive Window to a Running System
 
-The section above ends at a measurement. This one is the plan that turns it into a system, ordered by the
-evidence that has to arrive rather than by the code that is easiest to write. Every stage states what passes,
-what would end it, what it costs and what it leaves behind, so a stage that fails is a result rather than a
-setback — which is the only way a chain that ends in real money is allowed to be run.
+The section above ends at a measurement. This one runs **backwards from the deployment** rather than forwards
+from the code, because what a live path can actually be decides the shape of everything else: which markets a
+Hong Kong personal account may trade, how many legs that leaves, and whether the fee survives the arithmetic at
+the scale a quote really earns it. Each step still states what has to be true, what would kill it, what it costs
+and what it leaves behind, so a step that fails is a result rather than a setback.
 
-Two numbers frame the chain, and both come from the recorded row rather than from an estimate. About **40% of
-the positive window's closed profit was the two legs of the spread** and about **60% was the mid drifting in
-our favour while the position was held**: 0.267855 ticks of capture per share per fill is about 0.54 ticks on
-both legs of a round trip, against 1.34 ticks per share actually realised. Drift is not a skill, so the first
-stage exists to find out how much survives without it. And the peak inventory of that same run was
-**1099 shares, about 841164 USD of exposure**, against a commission of 0.35 of a tick a share: the edge, if it
-is one, is thin enough that the size it holds at is part of the claim.
+Two numbers from the recorded row frame the whole chain. About **40% of the positive window's closed profit was
+the two legs of the spread** and about **60% was the mid drifting in our favour while the position was held**:
+0.267855 ticks of capture per share per fill is about 0.54 ticks on both legs of a round trip, against 1.34
+ticks per share realised. And that same run's peak inventory was **1099 shares, about 841164 USD of exposure**.
+Drift is not a skill, and the exposure is why size belongs in the claim rather than in a footnote.
 
-### S0 — the kill or confirm campaign (offline, one to two days, under twenty dollars)
+### The deployment filter, applied first
 
-Nothing downstream is worth building until the single positive window stops being single. Five tests, each
-cheap enough to run on a whim, each stating its condition before its result is seen:
-
-| Test | How | Passes when |
+| Market | Live for a Hong Kong personal account | What it is left as |
 |---|---|---|
-| Latency | the two latency flags the repository already has | positive at a five millisecond round trip and not collapsed at fifty; a maker who needs colocation is not a personal account |
-| Out of sample | eight to ten more sessions, the same two hours, about seventy cents a session | the mean daily net is positive and at least seven of the ten sessions are |
-| Out of window | the afternoon and the quiet middle of the day, about thirty-five cents a window | at least two windows outside the open are positive |
-| Multi venue | the same symbol and window from the other US books, merged, one to two dollars | still positive after the merged book takes away whatever fill population it takes. This is the test that measures how much of the result is one venue's book rather than the market's |
-| Fee side | a zero commission tier, a maker rebate, and the worst realistic commission tier | the sign survives, and the fee level at which it flips is recorded |
+| Offshore crypto perpetuals | **no**, not licensed here | the measurement bench, and nothing else |
+| Locally licensed crypto venues | spot only; derivatives generally for professional investors | not on the critical path |
+| HKEX index futures | yes, but a round turn costs about 0.8 to 1.2 of a tick against a one tick spread | a hold or multi-leg candidate, not a quoting one |
+| US stocks and ETFs | yes | **a single leg candidate** |
+| CME micro futures | yes | **a single leg candidate** |
 
-**Ends the maker line if** the selection tests fail: the window is then recorded as drift plus single-venue
-optimism, the maker line drops to a research entry, and the resource moves to the slow line, where a personal
-account has a structural rather than a speed advantage.
+The two survivors are one instrument with two-sided quotes, which is what single leg means here: one symbol, one
+venue, a bid and an ask resting together, and inventory as the only directional exposure. The account rules then
+separate the two, and they separate them in favour of futures:
 
-### S1 — which market, not whether to trade (offline, two to three days, twenty to fifty dollars)
+| Constraint | US shares | CME micro futures |
+|---|---|---|
+| Day trading minimum equity | applies in a margin account | does not apply |
+| Short side | borrow, locate and the short sale price rule | native, no borrow |
+| Settlement | T+1, with turnover limits in a cash account | none |
+| Margin | Reg T or portfolio margin | a lower intraday requirement |
 
-Screening runs on the cheap schema first, top of book and trades, and only the survivors are replayed on ten
-levels. One arithmetic fact drives it: with a one cent tick, a commission of 0.0035 USD a share is **fixed at
-0.35 of a tick on every US share**, whatever the price. Candidates therefore do not differ in their fee ratio;
-they differ in **how many ticks wide their spread actually is** and **how much of it the fills give back**, and
-SPY, the most crowded symbol there is, is unlikely to be the best of them.
+Everything that table removes is removed from the critical path on purpose: crypto stays a bench, the local index
+future stays a hold candidate, the two-legged carry stays a documented capability, and the engineering goes to
+one instrument rather than to a portfolio of them.
 
-Alongside it, the same offline pipeline is pointed at the line the repository already measures — funding, basis
-and dividends through the carry mode — because that line scales with patience and capital rather than with
-microseconds. The carry acceptance number, funding of 17.5849 against fees of 18 over 728 hours on ten thousand
-dollars a leg, puts it close enough to be worth more days of evidence.
+### The arithmetic that picks the instrument
 
-**Leaves behind** three to five candidates with at least five sessions of offline evidence each, one of them on
-the slow line.
+A fee below one tick is necessary and not sufficient, because what a quote earns is the **half spread it captures
+per side**. The comparison that decides a market is therefore capture against fee at the same scale:
 
-### S2 — live data and a recorder (one to two weeks)
+| Market | Capture of a one tick quote | Fee per side | Fee / capture |
+|---|---|---|---|
+| SPY, one cent spread | 0.5 tick | 0.35 tick | 0.70 |
+| micro E-mini, one tick spread | 0.5 tick | 0.496 tick | 0.99 |
+| HSI futures, one tick spread | 0.5 tick | about 0.4 to 0.6 tick | 0.8 to 1.2 |
+
+Every market that passed the fee filter has a ratio between 0.7 and 1.0, which is no margin at all before
+adverse selection — and the same arithmetic is why the recorded SPY window earned sixty percent of its profit
+from drift rather than from the spread. The screen is therefore not "the fee is under one tick" but **the half
+spread that can be captured is at least three times the fee per side**, which points away from the most liquid
+symbol in the world and towards single names and contracts whose spread is three or more ticks wide. Fills are
+rarer there, and that is the trade the screen makes deliberately.
+
+### The seven things that must be true before any engineering
+
+| # | Must be true | The cheapest way to kill it | Cost |
+|---|---|---|---|
+| 1 | the captured half spread is at least three times the fee per side | a top of book scan across candidate symbols, before any depth is bought | 5 to 20 USD |
+| 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open | 10 to 20 USD |
+| 3 | our order really rests where we measured it | pin a destination and re-measure, or record where orders actually land for a week and measure that | free, then 1 to 2 USD |
+| 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
+| 5 | the broker's rate limits and latency carry the pace the strategy needs | its published limits, and the latency the repository already models | free |
+| 6 | the strategy survives a realistic round trip | the two latency flags the repository already has, at five and at fifty milliseconds | free |
+| 7 | the sign survives the fee tiers | a zero commission tier, a maker rebate, and the worst realistic tier, with the rate at which it flips recorded | 5 to 10 USD |
+
+**A failure on any of the seven sends the quoting line back to a research entry**, and the repository returns to
+what it is best at, which is auditing the execution and the fee of a strategy developed elsewhere. That is a
+result rather than a setback, and it is the reason these seven come before any live plumbing.
+
+### The execution order, once the seven hold
+
+The stages below are the ones a forward reading produces as well, because the shape of a live chain does not
+depend on the direction it was derived from; what the filter above changes is which market they run on, and what
+it removes from the critical path.
+
+### Stage A — live data and a recorder (one to two weeks)
 
 The repository already says where a live feed fits: the pipeline knows `Strategy`, the engine interface and the
 book, and `src/market/` holds one reader per input format, so a live feed is another reader. Concretely:
@@ -313,7 +344,7 @@ book, and `src/market/` holds one reader per input format, so a live feed is ano
 the strategy's gross, or cannot be subscribed at all. That is a licensing question rather than a code one, and
 it is one of the two places this chain can stop for reasons outside the repository.
 
-### S3 — orders, risk and reconciliation (one to two weeks, needs a paper account)
+### Stage B — orders, risk and reconciliation (one to two weeks, needs a paper account)
 
 * an order gateway behind the same engine interface, so no strategy code changes: asynchronous submit and
   cancel, partial fills, rejects, timeouts, and idempotent client order ids so a retry cannot double a position;
@@ -329,7 +360,7 @@ it is one of the two places this chain can stop for reasons outside the reposito
 **Passes when** five paper sessions produce no reconciliation break and results inside a tolerance stated
 before the stage starts.
 
-### S4 — minimum size, against real money (two to four weeks)
+### Stage C — minimum size, against real money (two to four weeks)
 
 One share or one contract a side, with a daily table that is the entire point of the stage: live fills, fees,
 capture, markout, slippage, reject rate and latency percentiles against what the model predicts for the same
@@ -344,7 +375,7 @@ answered case by case.
 
 **Passes when** ten sessions are net positive with live fees and capture inside the model's tolerance.
 
-### S5 — a measured definition of stable, then scale (months)
+### Stage D — a measured definition of stable, then scale (months)
 
 Stable is a number or it is a feeling. Over a rolling twenty-session window, all five: net positive with at
 least fifteen positive sessions; live fees and capture inside the model tolerance; drawdown under a stated
@@ -356,11 +387,50 @@ parameter change needs out-of-sample evidence before it ships. Only then does si
 another symbol, then another market. The micro E-mini stays a candidate rather than the plan, because what
 failed there was the capture and not the fee.
 
+### The same code, second purpose: the demo and the interview
+
+Everything below is live-path work or a measurement of it, so the demo and the deployment share one codebase
+rather than paying for two. The repository's existing strengths are already interview material — integer prices,
+one parse per row, a jump table over columns, four updates inline before any allocation, four queue models with
+a calibration behind them, and a four-tier gate whose reference hash has to be justified when it moves. The list
+is what a live path adds on top.
+
+| Iteration | C++ and low-latency surface | What it demonstrates |
+|---|---|---|
+| the live reader and the recorder | epoll or a busy poll socket, `std::span`, zero copy parsing, and the same parser the replay path uses | one strategy driving a replay and a live session, with the live session replayable |
+| handing events between threads | a single producer lock free queue, `std::atomic` memory ordering, `alignas` against false sharing, batched wakeups | the classic low-latency question, and a live requirement rather than a decoration |
+| latency reporting | `std::chrono::steady_clock`, histograms, percentiles per stage from feed to decision to order | low latency as a number rather than an adjective |
+| optimisation evidence | `perf stat` instruction and cache counters, the existing libc call counter, and the documented rejection of `std::pmr` | a choice with a stated alternative beats a feature list |
+| the gate itself | four tiers, a re-derived reference hash, a prose lint, and sanitizers | a repository where a documented number cannot drift |
+
+Five small deliverables come out of it: a paper session whose recording replays to the same summary; a
+feed-to-order latency table with percentiles; a benchmark of the inter-thread queue; a before and after `perf`
+table for one optimisation; and a page of stated alternatives, in the style the design review already uses.
+
+### What has to be done by hand
+
+Everything here is outside a repository: an account, a licence acceptance, a download behind a login, or a
+decision about money. It is written down so that code work never waits on a question nobody asked.
+
+* **Channel answers**, before any live plumbing: whether the broker will pin an order to a named destination;
+  what a depth subscription costs and at how many levels, remembering that a Level 2 service does not include
+  Level 1; whether the account is subject to day trading minimum equity; borrow availability for the short side;
+  and the tax treatment of frequent trading.
+* **The choice between futures and shares**, which follows from those answers rather than from preference, and
+  which decides the symbol screen that everything else is measured on.
+* **Downloads behind a login**: one IEX HIST day, if the free replica is wanted at all, which needs a sign in
+  and an acceptance of the terms of use. The Databento side is already scripted and needs only the key in the
+  environment.
+* **Money and a paper account**: a funded account for the minimum size stage and a paper account for the
+  reconciliation stage.
+* **The two decisions only the owner can make**: how much capital, and whether the offshore venues stay a
+  measurement bench or are dropped entirely.
+
 ### What would stop the chain, in the order it is likely to
 
 | Breakpoint | Why it sits where it does |
 |---|---|
-| **One venue's book is not the market** | S0 measures it, and it is the largest single unknown in the positive row |
+| **One venue's book is not the market** | gate 3 measures it, and it is the largest single unknown in the positive row |
 | **Retail latency** | Already measured on a perpetual: twenty milliseconds of cancel latency turned 0.095 ticks of capture into -0.44. If a US book behaves the same way, the quoting line is not a personal account's game |
 | **Account rules** | Day-trading minimums, settlement and borrow decide whether the strategy may be run at all, before any engineering |
 | **Depth data licensing** | Decides whether the live path can exist, and the repository cannot answer it |
@@ -375,12 +445,12 @@ stage has tried to kill its reason for existing.
 
 | Stage | Calendar | Cost | Prior of passing |
 |---|---|---|---|
-| S0 kill or confirm | one to two days | under 20 USD | the quoting line survives at roughly a quarter to two fifths |
-| S1 instrument set | two to three days | 20 to 50 USD | a technically workable candidate is found about three times in five |
-| S2 live data and recorder | one to two weeks | 0 to 30 USD a month | engineering succeeds about nine times in ten; the licensing question is the risk |
-| S3 orders, risk, reconciliation | one to two weeks | a paper account | engineering succeeds about four times in five |
-| S4 minimum size | two to four weeks | capital, and the account rules decide how much | live reproduces the offline result roughly a third to a half of the time |
-| S5 stable, then scale | three to six months | ongoing | the quoting line reaching stable positive: about one in six; the slow line, which does not depend on speed, is the better bet |
+| the instrument screen, offline | two to three days | 20 to 50 USD | a symbol whose half spread is three times its fee is found about three times in five |
+| the seven gates, offline | one to two days | under 40 USD of data, plus a few channel answers | the quoting line survives at roughly a quarter to two fifths |
+| Stage A, live data and recorder | one to two weeks | 0 to 30 USD a month | engineering succeeds about nine times in ten; the licensing question is the risk |
+| Stage B, orders, risk and reconciliation | one to two weeks | a paper account | engineering succeeds about four times in five |
+| Stage C, minimum size | two to four weeks | capital, and the account rules decide how much | live reproduces the offline result roughly a third to a half of the time |
+| Stage D, stable then scale | three to six months | ongoing | the quoting line reaching stable positive: about one in six; the slow line, which does not depend on speed, is the better bet |
 
 
 ## Deliberately not planned
