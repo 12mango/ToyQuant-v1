@@ -246,7 +246,10 @@ day with the most mean reversion. The commission is the tiered rate of a large r
 Hong Kong account actually gets is unverified**, and a zero commission tier would add 116.73 to the result. The
 model does not include the **venue's own maker rebate**, which on this market is of the same order as the
 commission, so the number understates the economics on that side — and it also does not include the regulatory
-fees of a few hundredths of a cent a share on the other.
+fees of a few hundredths of a cent a share on the other. **And the window does not survive latency**: one
+millisecond of one-way delay takes it from +262.51 to +1.89 and five milliseconds ends the run holding a position
+marked at -1143.75, which is the sixth gate of phase 2b failing and is recorded in
+[Performance History](PERFORMANCE_HISTORY.md#the-latency-that-window-would-have-needed).
 
 ## From a Positive Window to a Running System
 
@@ -314,12 +317,20 @@ rarer there, and that is the trade the screen makes deliberately.
 | 3 | our order really rests where we measured it | pin a destination and re-measure, or record where orders actually land for a week and measure that | free, then 1 to 2 USD |
 | 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
 | 5 | the broker's rate limits and latency carry the pace the strategy needs | its published limits, and the latency the repository already models | free |
-| 6 | the strategy survives a realistic round trip | the two latency flags the repository already has, at five and at fifty milliseconds | free |
+| 6 | the strategy survives a realistic round trip | the two latency flags the repository already has, at five and at fifty milliseconds — **run, and it failed** | free |
 | 7 | the sign survives the fee tiers | a zero commission tier, a maker rebate, and the worst realistic tier, with the rate at which it flips recorded | 5 to 10 USD |
 
 **A failure on any of the seven sends the quoting line back to a research entry**, and the repository returns to
 what it is best at, which is auditing the execution and the fee of a strategy developed elsewhere. That is a
 result rather than a setback, and it is the reason these seven come before any live plumbing.
+
+**The sixth gate has now been run, and it returned a failure.** The positive window goes to zero at one
+millisecond each way and gives the price away at five, the tolerance is not a personal account's to control, and
+the reflex fix of quoting more slowly measures worse rather than better. The rows and the mechanism are in
+[Performance History](PERFORMANCE_HISTORY.md#the-latency-that-window-would-have-needed), and the sweep that
+reproduces them is `tools/latency_sweep.sh`. Three gates remain, and one of them now carries the whole line: the
+screen (1) is what decides whether a symbol wide enough to absorb a delay exists at all. The out-of-sample
+campaign (2) and the fee tiers (7) are only worth running on a symbol that screen produces.
 
 ### The execution order, once the seven hold
 
@@ -446,7 +457,7 @@ stage has tried to kill its reason for existing.
 | Stage | Calendar | Cost | Prior of passing |
 |---|---|---|---|
 | the instrument screen, offline | two to three days | 20 to 50 USD | a symbol whose half spread is three times its fee is found about three times in five |
-| the seven gates, offline | one to two days | under 40 USD of data, plus a few channel answers | the quoting line survives at roughly a quarter to two fifths |
+| the seven gates, offline | one to two days | under 40 USD of data, plus a few channel answers | gate 6 has already failed on the window it was aimed at, so the rest now decide whether anything is left of the line |
 | Stage A, live data and recorder | one to two weeks | 0 to 30 USD a month | engineering succeeds about nine times in ten; the licensing question is the risk |
 | Stage B, orders, risk and reconciliation | one to two weeks | a paper account | engineering succeeds about four times in five |
 | Stage C, minimum size | two to four weeks | capital, and the account rules decide how much | live reproduces the offline result roughly a third to a half of the time |

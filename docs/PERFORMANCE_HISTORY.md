@@ -1981,3 +1981,73 @@ as that commission, is not in the model. The claim this section makes is only th
 could never satisfy **is satisfiable**, and that the row which satisfies it says so in a field the gate
 re-derives.
 
+### The Latency That Window Would Have Needed
+
+The row above was measured with a synchronous engine, which is the one assumption a personal account cannot
+make: the strategy decides and the exchange has the order in the same instant. `tools/latency_sweep.sh` varies
+the two latencies the engine models, order and cancel, on the same window and the same policy, and then on a
+slower policy as a control, because a quote that lives longer ought to be less exposed to delay if delay is the
+problem.
+
+| Window | order/cancel | fills | shares | cancels | capture ticks | gross USD | net USD | net/fill USD | breakeven rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SPY fast, synchronous | 0/0 | 799 | 33352 | 51903 | 0.267855 | 379.24 | 262.508 | 0.328546 | 1.48655e-05 |
+| SPY fast, 1 ms each way | 1000/1000 | 921 | 38487 | 52262 | 0.213825 | 136.59 | 1.8855 | 0.00204723 | 4.6397e-06 |
+| SPY fast, 5 ms each way | 5000/5000 | 9 | 500 | 113 | -0.08 | -1142 | -1143.75 | -127.083 | -0.00297873 |
+| SPY fast, 20 ms each way | 20000/20000 | 13 | 600 | 77 | -0.166667 | -753 | -755.1 | -58.0846 | -0.00163672 |
+| SPY fast, 50 ms each way | 50000/50000 | 23 | 918 | 51 | -0.533769 | -1040.86 | -1044.07 | -45.3945 | -0.00147879 |
+| SPY fast, 20 ms order only | 20000/0 | 12 | 500 | 78 | -0.6 | -371 | -372.75 | -31.0625 | -0.000967678 |
+| SPY fast, 20 ms cancel only | 0/20000 | 928 | 39588 | 51632 | 0.213082 | 232.92 | 94.362 | 0.101683 | 7.69175e-06 |
+| SPY slow refresh 8, synchronous | 0/0 | 1720 | 66409 | 16599 | -0.354929 | 5.22 | -227.212 | -0.1321 | 1.02766e-07 |
+| SPY slow refresh 8, 5 ms each way | 5000/5000 | 1510 | 58240 | 12899 | -0.445167 | -567.25 | -771.09 | -0.510656 | -1.27345e-05 |
+| SPY slow refresh 16, synchronous | 0/0 | 1710 | 65571 | 16630 | -0.40553 | 106.01 | -123.489 | -0.0722155 | 2.11372e-06 |
+| SPY slow refresh 8, two ticks wide, 5 ms each way | 5000/5000 | 890 | 35043 | 13986 | -0.253874 | 333.69 | 211.04 | 0.237123 | 1.24485e-05 |
+| MES fast, synchronous | 0/0 | 1675 | 3934 | 23823 | 0.013091 | -387.5 | -2826.58 | -1.68751 | -2.54567e-06 |
+| MES fast, 5 ms each way | 5000/5000 | 1671 | 3941 | 23639 | 0.0185232 | -610.625 | -3054.04 | -1.82768 | -4.00432e-06 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=1000 --cancel-latency-us=1000
+then: trade_reports=921 trade_report_quantity=38487 cancel_requests=52262 captured_edge_per_unit_ticks=0.213825 gross_pnl_usd=136.59 net_pnl_usd=1.8855 net_per_fill_usd=0.00204723 breakeven_maker_rate=4.6397e-06
+run: l2_replay data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=5000 --cancel-latency-us=5000
+then: trade_reports=9 trade_report_quantity=500 cancel_requests=113 captured_edge_per_unit_ticks=-0.08 gross_pnl_usd=-1142 net_pnl_usd=-1143.75 net_per_fill_usd=-127.083 breakeven_maker_rate=-0.00297873
+-->
+
+Re-deriving all thirteen rows costs about a minute and a half, so only the crossing and the collapse are pinned
+and the script prints the rest.
+
+**One millisecond each way is where the positive row goes to zero**, and the mechanism is not that latency stops
+you trading: fills *rise*, from 799 to 921, while the capture per fill falls from 0.267855 to 0.213825 ticks, so
+the delay changes which fills you get rather than how many. The margin the window had was 0.328546 USD a fill,
+and the delay cost is of the same order, which is what a margin of a third of a cent a share means against a one
+cent tick.
+
+**Five milliseconds gives the price away.** Fills collapse from 799 to 9, because a quote that arrives late
+arrives while the market is already somewhere else, and the run ends holding 500 shares marked at -1142, which is
+where its -1143.75 comes from: the position again rather than the quoting.
+
+**The two latencies are not symmetric, and order latency is the damaging one.** Twenty milliseconds on orders
+alone is as bad as both at once, at 12 fills and -372.75, because an order that becomes live late becomes live at
+the wrong price. Twenty milliseconds on cancels alone is far milder, at 928 fills and +94.36: stale quotes get
+filled more often and each of them slightly worse, which is a cost rather than a cliff.
+
+**Slowing the quotes down does not rescue it, and this is the result worth keeping.** A policy that re-quotes
+only after eight or sixteen ticks of fair-price movement, at zero latency, earns -227.212 and -123.489 with a
+capture of -0.354929 and -0.40553 ticks: the frequent cancelling was itself doing the fill selection, and a quote
+that waits longer is a quote that gets adversely filled. The reflex answer to latency, which is to trade more
+slowly, is measured here and it is wrong.
+
+**One cell of the table is positive and it is not evidence.** At two ticks wide, with a slow refresh, at five
+milliseconds each way, the run makes +211.04 — and its capture is still negative at -0.253874 with a closing
+position of -237 shares, so the gross came from the position carried into a favourable mark, which is the shape
+of the row the flatten-band section above ends on. Picking that cell after seeing the others is exactly the
+window selection this repository refuses to do.
+
+**Verdict: the sixth gate fails.** The tolerance of this policy on this window is about one millisecond one way,
+which is not a personal account's to control, and the feed latency a real deployment adds on top of it is not
+modelled at all, so a live result would be worse than the worst row above. What this does not yet close is the
+one cheap test the arithmetic leaves open: a symbol whose spread is three or more ticks wide has a larger capture
+per fill to absorb the same delay. That is the screen in gate 1, and it is the last thing to try before the
+quoting line is written down as a research result rather than as a plan.
+
+
+
