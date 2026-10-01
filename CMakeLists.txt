@@ -33,13 +33,22 @@ set(COMMON_INCLUDE_DIRS
 )
 
 # Sources shared by application targets.
+# The market data readers: one file per feed family, plus the router that picks between them. A new venue is
+# a new file and a line here rather than another thousand line file, and every target that parses market data
+# takes the whole set.
+set(MARKET_READER_SOURCES
+    src/market/market_data_adapter.cpp
+    src/market/binance_readers.cpp
+    src/market/deribit_readers.cpp
+    src/market/okx_readers.cpp)
+
 set(COMMON_SOURCES
     src/accounting/portfolio.cpp
     src/accounting/carry_ledger.cpp
     src/accounting/reconciliation.cpp
     src/market/csv_feed.cpp
     src/market/funding_rate.cpp
-    src/market/market_data_adapter.cpp
+    ${MARKET_READER_SOURCES}
     src/market/market_event_recorder.cpp
     src/market/market_data_validator.cpp
     src/market/l2_replay_feed.cpp
@@ -131,7 +140,7 @@ target_include_directories(l2_strategy_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME l2_strategy_test COMMAND l2_strategy_test)
 
 add_executable(l2_replay_test tests/l2_replay_test.cpp
-    src/market/market_data_adapter.cpp src/market/market_data_validator.cpp
+    ${MARKET_READER_SOURCES} src/market/market_data_validator.cpp
     src/market/line_reader.cpp src/market/l2_replay_feed.cpp
     src/utils/stage_profiler.cpp)
 target_include_directories(l2_replay_test PRIVATE ${COMMON_INCLUDE_DIRS})
@@ -139,7 +148,7 @@ target_link_libraries(l2_replay_test PRIVATE ZLIB::ZLIB)
 add_test(NAME l2_replay_test COMMAND l2_replay_test)
 
 add_executable(market_event_recorder_test tests/market_event_recorder_test.cpp
-    src/market/market_event_recorder.cpp src/market/market_data_adapter.cpp
+    src/market/market_event_recorder.cpp ${MARKET_READER_SOURCES}
     src/market/market_data_validator.cpp src/market/line_reader.cpp
     src/market/l2_replay_feed.cpp src/utils/stage_profiler.cpp)
 target_include_directories(market_event_recorder_test PRIVATE ${COMMON_INCLUDE_DIRS})
@@ -152,7 +161,7 @@ target_link_libraries(spsc_ring_test PRIVATE Threads::Threads)
 add_test(NAME spsc_ring_test COMMAND spsc_ring_test)
 
 add_executable(threaded_replay_test tests/threaded_replay_test.cpp
-    src/market/threaded_l2_replay.cpp src/market/market_data_adapter.cpp
+    src/market/threaded_l2_replay.cpp ${MARKET_READER_SOURCES}
     src/market/market_data_validator.cpp src/market/line_reader.cpp
     src/market/l2_replay_feed.cpp src/utils/stage_profiler.cpp)
 target_include_directories(threaded_replay_test PRIVATE ${COMMON_INCLUDE_DIRS})
@@ -184,7 +193,7 @@ target_include_directories(stage_profiler_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME stage_profiler_test COMMAND stage_profiler_test)
 
 add_executable(market_data_adapter_test tests/market_data_adapter_test.cpp
-    src/market/market_data_adapter.cpp src/market/market_data_validator.cpp
+    ${MARKET_READER_SOURCES} src/market/market_data_validator.cpp
     src/market/line_reader.cpp src/market/replay_feed.cpp)
 target_include_directories(market_data_adapter_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(market_data_adapter_test PRIVATE ZLIB::ZLIB)
