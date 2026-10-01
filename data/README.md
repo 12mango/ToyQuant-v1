@@ -231,6 +231,34 @@ worth 1.25 USD because the contract multiplier is 5, and a commission charged pe
 an equity: SPY on the Nasdaq book, one cent tick, sizes in shares, 2.18 million depth rows and 28,592 trade rows
 in two hours. `tools/f4_windows.sh` re-runs both, and `docs/ROADMAP.md` records what the runs found.
 
+## Screening a Symbol Before Buying Its Depth
+
+`tools/screen_spread.py` is the cheap half of the phase 2b instrument screen: it prices a Databento window
+before it spends anything, and it refuses to download without a cap, so a screen cannot surprise anyone. It reads
+the top of book only, which is why it runs on the cheap schema:
+
+```bash
+export DATABENTO_API_KEY=db-...
+python3 tools/screen_spread.py --cost --symbols SPY,QQQ,IWM --start 2026-09-29T13:30 --end 2026-09-29T15:30
+python3 tools/screen_spread.py --download --max-cost-usd=5 --symbols SPY,QQQ,IWM \
+  --start 2026-09-29T13:30 --end 2026-09-29T15:30
+python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
+```
+
+The last form runs on a file already on disk, which is how the tool is tested without spending anything, and it
+accepts a ten-level file because that schema carries the top of book columns as well. What it reports, and why it
+reports two distributions:
+
+* **the median book spread next to the median spread at the trades.** They are not the same number, and the second
+  is the one that matters: SPY's book has a median of 2.000 ticks over its recorded two hours while the rows where
+  a trade prints have a median of 1.000. A fill happens where a trade happens, so a rule written against the book
+  would rank a symbol by a spread nobody trades at.
+* **the ratio of the half spread at the trades to the fee per side**, which is the pre-registered rule: three or
+  more passes. The two symbols measured so far both fail, at 1.429 for SPY and 1.008 for the micro E-mini.
+* **the trade count and the rows per second**, reported rather than thresholded, because the activity floor a
+  strategy needs can only be set from the fill counts of the first screened symbols, and it has to be recorded
+  before the next screen rather than chosen after seeing that one.
+
 ## OKX Trades, and What the Public Route Cannot Do
 
 The public history endpoint answers without a key, and `tools/fetch_okx_trades.py` turns it into one CSV per

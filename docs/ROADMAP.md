@@ -292,27 +292,32 @@ one instrument rather than to a portfolio of them.
 
 ### The arithmetic that picks the instrument
 
-A fee below one tick is necessary and not sufficient, because what a quote earns is the **half spread it captures
-per side**. The comparison that decides a market is therefore capture against fee at the same scale:
+A fee below one tick is necessary and not sufficient. What decides a market is the capture a fill actually
+realises against the fee it pays, and both markets that passed the fee filter have now been measured:
 
-| Market | Capture of a one tick quote | Fee per side | Fee / capture |
-|---|---|---|---|
-| SPY, one cent spread | 0.5 tick | 0.35 tick | 0.70 |
-| micro E-mini, one tick spread | 0.5 tick | 0.496 tick | 0.99 |
-| HSI futures, one tick spread | 0.5 tick | about 0.4 to 0.6 tick | 0.8 to 1.2 |
+| Market | spread where the trades print | half of it | captured per fill, measured | fee per side | fee / capture |
+|---|---:|---:|---:|---:|---:|
+| SPY, 2026-09-29 window | 1.000 tick | 0.500 | **0.267855** | 0.350 | **1.31** |
+| micro E-mini, same window | 1.000 tick | 0.500 | **0.013091** | 0.496 | **37.9** |
 
-Every market that passed the fee filter has a ratio between 0.7 and 1.0, which is no margin at all before
-adverse selection — and the same arithmetic is why the recorded SPY window earned sixty percent of its profit
-from drift rather than from the spread. The screen is therefore not "the fee is under one tick" but **the half
-spread that can be captured is at least three times the fee per side**, which points away from the most liquid
-symbol in the world and towards single names and contracts whose spread is three or more ticks wide. Fills are
-rarer there, and that is the trade the screen makes deliberately.
+Two things come out of that, and the first one corrected this plan while it was being written. **The spread a
+market shows in its book is not the spread its fills happen at**: SPY's median book spread is 2.000 ticks while
+the rows where trades print have a median of 1.000, so a screen written against the book would rank symbols by a
+number nobody trades at. The second is the gap between the half spread at the trades and what a fill actually
+captured — a factor of 0.54 on SPY and 0.026 on the micro E-mini — which is the adverse selection and the timing
+inside the fill itself, and which is why neither market pays for its fee even though that fee is a fraction of a
+tick.
+
+The screen is therefore **the half spread at the trades, at least three times the fee per side**, measured by
+`tools/screen_spread.py` from top of book before any depth is bought; the tool prices a window before it spends
+and refuses to download without a stated cap. Both symbols above fail it, which is the expected result for a one
+tick market and the reason the search has to leave the most liquid symbol in the world.
 
 ### The seven things that must be true before any engineering
 
 | # | Must be true | The cheapest way to kill it | Cost |
 |---|---|---|---|
-| 1 | the captured half spread is at least three times the fee per side | a top of book scan across candidate symbols, before any depth is bought | 5 to 20 USD |
+| 1 | the half spread at the trades is at least three times the fee per side | `tools/screen_spread.py`, which prices the window before it spends and refuses to download without a stated cap | 5 to 20 USD |
 | 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open | 10 to 20 USD |
 | 3 | our order really rests where we measured it | pin a destination and re-measure, or record where orders actually land for a week and measure that | free, then 1 to 2 USD |
 | 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
