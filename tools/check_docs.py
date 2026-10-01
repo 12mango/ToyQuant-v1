@@ -14,6 +14,19 @@ which wraps them in a comment block carrying the exact command and the values it
 This runs each `run:` and fails when any `then:` value has moved. Only marked blocks are checked, so
 historical prose is left alone and a table is checked exactly when someone decided it should be.
 
+A block may also name the binary it runs, which is how a benchmark that is not the main binary is checked
+at all:
+
+    <!-- toyquant:check
+    binary: ring_bench
+    run: 200000 1
+    then: messages=200000 checksum=15483742669132917760
+    -->
+
+The name is resolved relative to the binary the gate passes in, so it follows `--binary` and the preset
+that binary came from. A block whose command exits non-zero fails, because a binary that crashed printed
+none of the values the block is about.
+
 Usage:
     python3 tools/check_docs.py docs/PERFORMANCE_HISTORY.md [more.md ...]
 """
@@ -53,20 +66,27 @@ def check_blocks(text):
 
 
 def parse_block(body):
-    """Pairs of (command, {field: value}) in the order the block lists them."""
+    """Triples of (command, {field: value}, binary) in the order the block lists them.
+
+    `binary:` is sticky for the runs that follow it, because a block describes one thing: a benchmark
+    named once at the top rather than repeated on every line of it.
+    """
     runs = []
     command = None
+    binary = None
     for raw_line in body:
         line = raw_line.strip()
-        if line.startswith("run:"):
+        if line.startswith("binary:"):
+            binary = line[len("binary:") :].strip()
+        elif line.startswith("run:"):
             if command is not None:
-                runs.append((command, {}))
+                runs.append((command, {}, binary))
             command = line[len("run:") :].strip()
         elif line.startswith("then:") and command is not None:
-            runs.append((command, dict_of(line[len("then:") :])))
+            runs.append((command, dict_of(line[len("then:") :]), binary))
             command = None
     if command is not None:
-        runs.append((command, {}))
+        runs.append((command, {}, binary))
     return runs
 
 
@@ -86,14 +106,29 @@ def main():
 
     checked = 0
     failures = []
+    main_binary = Path(args.binary)
     for document in args.documents:
         text = document.read_text()
         for line_number, runs in check_blocks(text):
-            for command, expected in runs:
+            for command, expected, binary in runs:
                 checked += 1
+                # A block that names a binary gets the one beside the binary the gate passed in, so the
+                # benchmark follows the preset the run is checking rather than a path written into a doc.
+                executable = main_binary if binary is None else main_binary.parent / binary
+                if not executable.exists():
+                    failures.append(
+                        f"{document}:{line_number}: {executable} is not built, so the block cannot be run"
+                    )
+                    continue
                 completed = subprocess.run(
-                    [args.binary] + shlex.split(command), capture_output=True, text=True
+                    [str(executable)] + shlex.split(command), capture_output=True, text=True
                 )
+                if completed.returncode != 0:
+                    failures.append(
+                        f"{document}:{line_number}: {executable} {command} exited "
+                        f"{completed.returncode}: {completed.stderr.strip()[:200]}"
+                    )
+                    continue
                 observed = dict_of(completed.stdout + completed.stderr)
                 for field, want in expected.items():
                     have = observed.get(field)

@@ -263,12 +263,15 @@ into ten. Comparisons are therefore emitted by `tools/compare_runs.sh --markdown
 table and a `toyquant:check` block carrying the exact command and the values it produced.
 
 ```
-python3 tools/check_docs.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md
+python3 tools/check_docs.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/DESIGN_REVIEW.md docs/PERFORMANCE.md
 ```
 
 That re-runs each recorded command and fails when a quoted number has moved. Only marked blocks are
 checked, so prose that records history under conditions which no longer exist is left as it was, and
-a table is checked exactly when someone decided it should be.
+a table is checked exactly when someone decided it should be. A block may also name the binary it runs,
+`binary: ring_bench`, which is resolved beside the binary the gate passes in: that is how a benchmark that
+is not the main binary is checked at all (§3.9 is the one such block), and a block whose command exits
+non-zero fails, because a binary that crashed printed none of the values the block is about.
 
 Two more things keep the loop short:
 
@@ -316,6 +319,81 @@ should produce, and 279 `read` calls for a 154 MB input is one per megabyte.
 With `/usr/bin/time -v` reporting 3.4% system time, zero major page faults and 8 MB peak RSS, this is
 what closed the search for a hidden cost in the reader.
 
+### 3.9 The hand-off between two threads
+
+The live path runs the feed on one thread and the strategy on another, joined by `concurrency::SpscRing`.
+What that hand-off costs is a mechanism question the replay's `[LATENCY]` line cannot answer, because a
+replay reports the feed's parsing and the strategy's decisions in the same window. `ring_bench` is the
+isolation bench for it: one producer thread, one consumer thread, both running the same loop N times, so
+the per-message number is the pair's sustained pace rather than one call's latency.
+
+```bash
+cmake --build --preset linux-relwithdebinfo --target ring_bench
+python3 tools/ring_bench_table.py     # three sessions of `ring_bench 2000000 5`, medians
+```
+
+The table below is that tool's output on this host. The case labels are the benchmark's own rows; the
+payload rows carry a prebuilt value unless the label says it is built per message.
+
+| case | ns/op | session spread | M ops/s |
+|---|---:|---:|---:|
+| empty round trip, 1 thread, uint64 | 2.26 | 2.1-3.2 | 442.5 |
+| full ring, refused push | 0.45 | 0.4-0.7 | 2222.2 |
+| stream uint64, 2 threads, ring 4096 | 18.29 | 17.0-29.0 | 54.7 |
+| stream 16 byte POD, prebuilt | 19.28 | 16.9-32.6 | 51.9 |
+| stream 128 byte POD, prebuilt | 30.85 | 26.1-64.3 | 32.4 |
+| stream POD the event's size, prebuilt | 50.37 | 47.9-78.5 | 19.9 |
+| stream trade event, prebuilt | 142.90 | 137.0-158.2 | 7.0 |
+| stream trade event, built per message | 169.92 | 169.4-214.2 | 5.9 |
+| stream book batch, built per message | 239.38 | 237.2-240.8 | 4.2 |
+| stream uint64, 2 threads, ring 8 | 59.08 | 59.0-60.4 | 16.9 |
+| stream trade event, mutex + condvar | 301.35 | 297.9-310.1 | 3.3 |
+| stream trade event, mutex, consumer spins | 320.52 | 303.4-326.6 | 3.1 |
+
+Two invocations of that tool are enough to see the limit of the table: across two sets of three sessions
+the event-sized POD row read 50.4 and then 57.8 ns, and the trade event built per message read 169.9 and
+then 175.5, while the ratios between the rows barely moved. Everything below is therefore about ratios, and
+the absolute figures are this host's on the day the tool was run.
+
+Three findings, and the second is the one that was not expected.
+**The mechanism is not the cost.** A push and a pop on one thread round trip in 2.26 ns and a refused push
+against a full ring costs 0.45 ns, so the publication -- one release store paired with an acquire load, the
+two lines of code the ring's whole contract rests on -- is a couple of nanoseconds of a two digit number.
+Whatever the two-thread rows are paying for, it is not the atomics.
+
+**The payload is the cost, and its type matters more than its size.** A trivially copyable payload of
+exactly the event's size -- 296 bytes, pinned to `sizeof(MarketEvent)` by a `static_assert` in the
+benchmark -- hands over in 50.37 ns, while the real `MarketEvent`, a `std::variant` whose active member
+carries two `std::string`s, takes 142.90 ns. **The event's non-trivial move and destructor cost about 93 ns,
+which is more than the 296 bytes they move**: every message runs a variant move into a slot and a variant
+destructor out of it. Building the event per message adds 27 ns for a trade and 96 ns for a two-update book
+batch on top of that. This is the lead the numbers leave: a trivially copyable event of the same size would
+be handed over at 2.8x the rate, which is a change to the event type rather than to the ring.
+
+**A lock costs more than a wake-up.** Against the pattern most code reaches for -- a `std::deque` behind a
+mutex, with a condition variable waking the consumer per message -- the ring is 1.8x faster for this payload
+(169.92 against 301.35 ns/message). The same queue with the consumer spinning on the lock instead of sleeping
+costs 320.52 ns, so the wake-up is not the price of the lock: the mutual exclusion is. A 1.8x margin is
+smaller than "lock-free" sounds, and it is the honest one for the event this path actually carries. The
+ring's capacity shows up in the same table: the uint64 stream through an 8 slot ring costs 59.08 ns against
+18.29 through 4096, because a ring too small for the burst makes the producer wait for room.
+
+Read all of it as a property of this host. Nothing is pinned to a core, the machine is a hybrid eight-core
+laptop under WSL2, and the two-thread rows moved by up to 1.5x between sessions -- which is why the table
+carries the session spread rather than one figure, and why no gate asserts a nanosecond. What the gate does
+re-derive is the one thing about the benchmark that a broken ring would change:
+
+<!-- toyquant:check
+binary: ring_bench
+run: 200000 1
+then: messages=200000 checksum=15483742669132917760 payload_bytes=296
+-->
+
+That is a 200,000-message run: it has to report the message count it was given, the payload size it is
+measuring, and the checksum every one of those values produced while crossing. A ring that dropped a value,
+reordered two, or handed over a slot that was still being written would change the checksum and fail the
+gate, whatever it did to the clock.
+
 ## 4. Current stage breakdown
 
 Median of three `--profile-stages` runs on the 2,000,000-row slice: 20,361 samples over 1,303,131
@@ -360,6 +438,10 @@ noted otherwise. The mechanism behind each accepted row is explained in
 | **Integer-plus-scale price parse** | parse the price with integer arithmetic instead of the out-of-line `std::from_chars<double>` in libstdc++ | `read+parse` p50 **-65.5 ns (-11.3%)**, 5/5 pairs, t=-5.9, reproduced at -71 ns in a second session; end-to-end wall clock **-7.6%**, t=-2.83; output byte-identical over 11,403,032 batches | kept |
 | Fixed-point price parsing | integer-only price path in the reader | rejected on an isolation comparison (17 ns vs 10 ns) whose in-context cost is about 48 ns per call | **superseded** by the row above |
 | Removing the book mutex | drop the lock from `L2OrderBook` | 4.2 ns of a ~1200 ns event (0.7%) | **rejected**, lock kept |
+| **SPSC ring for the feed hand-off** | bounded single-producer ring: one release store paired with an acquire load, indices on separate cache lines, values placement-newed into slots | isolation bench ([§3.9](#39-the-hand-off-between-two-threads)), **not** a paired run: 2.26 ns for a push+pop round trip, 18.29 ns/message for a two-thread uint64 stream, and 1.8x the mutex + condition variable hand-off for the event it carries (169.92 against 301.35 ns/message) | kept |
+| Hand-off through a mutex + condition variable | `std::deque` behind a mutex, one wake-up per message | 301.35 ns/message for the same payload and the same per-message construction, 1.8x the ring | **rejected** |
+| Hand-off through a mutex with the consumer spinning | the same queue with no sleeping, to separate the wake-up from the mutual exclusion | 320.52 ns/message: the exclusion is the cost, not the wake-up | **rejected** |
+| An 8 slot ring to bound the burst earlier | capacity small enough that the producer usually finds the ring full | 59.08 ns/message against 18.29 at 4096 slots, so 4096 is not an oversized default | **rejected** |
 
 ### Resolution
 
@@ -402,6 +484,10 @@ five of them were wrong:
 Cost intuition on this codebase is systematically off by 3-10x, always in the same direction. That is
 the most reusable finding in this document, and it is why the ledger exists as a table of attempts
 rather than a list of wins.
+
+The last four rows are a different kind of entry from the ones above them: they are isolation bench
+measurements of a two-thread hand-off, so they have no stage share and no end-to-end effect to report, and
+the counts in the paragraph above describe the paired rows only.
 
 ## 6. Where the remaining time is
 

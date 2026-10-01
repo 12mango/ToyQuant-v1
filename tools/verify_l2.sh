@@ -132,8 +132,8 @@ tier1() {
   # source: flags, queue models and tool paths.
   local prose_check=0
   python3 tools/lint_prose.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
-      docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md docs/index.md \
-      > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+      docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md docs/LATENCY_DESIGN.md docs/index.md \
+      docs/ROADMAP.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   l2=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 conservative \
         --fast-validation 2>&1 | grep -oE 'incremental_batches=117288|submitted_orders=406|trade_reports=1|queue_ahead_consumed=55460|realized_pnl=-0.002|equity=1000' | tokens)
   l1=$("$BIN" replay "$L1_TRADES" "$L1_BBO" BTCUSDT 0 optimized 1000000 2>&1 |
@@ -199,7 +199,7 @@ tier1() {
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
   local doc_check=0
   python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
-    docs/DESIGN_REVIEW.md > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
+    docs/DESIGN_REVIEW.md docs/PERFORMANCE.md > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
   # The IEX HIST reader walks the pcap, IP, UDP and IEX-TP framing that a decoder sits on top of. The file it
   # walks in this test is built by the tool rather than downloaded, because the archive is behind an account,
   # so the container walk is the part that can be checked on every edit. It says nothing about DEEP messages,

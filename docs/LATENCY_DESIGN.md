@@ -663,7 +663,91 @@ confined to the reader has to look like. And the two results triangulate with th
 motivated them: gprof charged `parse_uint64` 16% of application time, the isolation bench showed the
 two-digit loop about 47% faster, and the end-to-end effect came out at 6%.
 
-## 6. Designs that were measured and rejected
+## 6. The hand-off between two threads: `SpscRing`
+
+### Problem
+
+A live path reads the market on one thread and decides on another, and whatever joins them sits on the path
+of every event. Two properties are wanted at once, and they pull in opposite directions. The buffer has to
+be bounded, because the alternative -- an unbounded queue -- moves the problem into memory: a consumer that
+falls behind then grows a queue until the process dies, which is a failure mode a replay must not have and a
+live session must not have either. And it has to be lock free, because a mutex is a shared cache line by
+construction: every operation reads and writes the line the other side is using, so the cost is paid per
+message rather than only under contention.
+
+### Design
+
+`concurrency::SpscRing` (`src/concurrency/spsc_ring.h`) is the smallest structure that has both properties.
+One thread calls `try_push`, one calls `try_pop`, and each side owns a counter that only it writes:
+
+```cpp
+if (write - read_.load(std::memory_order_acquire) == capacity_) return false;  // producer: full
+new (slot_at(write).bytes) T(std::forward<U>(value));
+write_.store(write + 1, std::memory_order_release);
+```
+
+Four decisions carry the mechanism, and each has a cheaper-looking alternative that is wrong:
+
+- **The ordering is two lines, and they are the contract.** The producer constructs the value and *then*
+  stores the index with release; the consumer loads the index with acquire and *then* reads the slot. That
+  pair is what makes the value visible instead of raced; anything weaker is a data race on the value rather
+  than a lost update. The consumer destroys the moved-from object and publishes the new read index with
+  release before the producer may reuse the slot, which is what makes the producer's next `placement new`
+  provably land on dead storage.
+- **Each index is duplicated.** `write_local_` and `read_local_` are private to their own thread and never
+  contended; `write_` and `read_` are the published copies. Both threads loading one shared atomic would
+  invalidate the line the other is loading on every operation -- the failure this layout exists to avoid.
+- **The producer's fields and the consumer's fields sit on separate cache lines** (`alignas(64)`). Without
+  that, a ring's own fields measure the coherence protocol rather than the hand-off, which is exactly what
+  the benchmark would have reported as the ring's cost.
+- **Slots are raw storage, not values.** `T` may be non-trivial: the producer placement-news into a slot and
+  the consumer moves out and destroys it. A ring of bytes would need a separate encoding to carry a
+  `MarketEvent`, and the encoding is where the second copy would come from.
+
+A full ring is **backpressure, not a drop**: `try_push` returns false and leaves the value untouched, so the
+caller retries the same value. That is the property the replay's threading relies on, and it is why the feed
+counts its waits and the pacing line reports the feed falling behind rather than an event disappearing.
+
+### Why it is faster
+
+Not because of the atomics. The isolation bench ([PERFORMANCE.md §3.9](PERFORMANCE.md#39-the-hand-off-between-two-threads))
+measures a push and a pop round trip at 2.26 ns and a refused push at 0.45 ns, so the publication is a
+couple of nanoseconds of a two digit number, and the same table shows what the rest of it is: **the
+payload**. A trivially copyable structure of exactly the event's size (296 bytes, pinned by a
+`static_assert`) crosses in 50.4 ns; the real `MarketEvent`, a `std::variant` whose member carries two
+`std::string`s, takes 142.9 ns, because every message runs a variant move into a slot and a variant
+destructor out of it. That gap -- about 93 ns, more than the bytes themselves cost -- is the one open lead
+this work leaves: a trivially copyable event of the same size would be handed over at 2.8x the rate, and
+that is a change to the event type rather than to the ring.
+
+Against the alternative most code reaches for, the margin is smaller than "lock free" sounds and the ledger
+records it as such: `std::deque` behind a mutex with a condition variable waking the consumer per message
+costs 301 ns/message against the ring's 170 for the same payload and the same per-message construction,
+about 1.8x. Replacing the sleeping with spinning measured 320 ns, which isolates the reason: the price of
+the lock is the mutual exclusion, not the wake-up. A second rejected variant is capacity: an 8 slot ring
+costs 59 ns/message against 18 at 4096, because a ring too small for the burst turns the producer's spin
+into the common case.
+
+### Verification
+
+- `spsc_ring_test` crosses 100,000 values between two real threads and requires them in order; it also
+  covers capacity rounding to a power of two, wrap-around, a full ring refusing rather than dropping, and
+  the destructor running over the slots that are still occupied.
+- Tier 1 of `tools/verify_l2.sh` asserts the end-to-end property rather than the primitive: a threaded
+  replay reports every number the direct run reports (only `[LATENCY]` may differ) and its hand-off count
+  equals the run's own event count.
+- The benchmark's deterministic fields are re-derived by the gate: the marked block in
+  [PERFORMANCE.md §3.9](PERFORMANCE.md#39-the-hand-off-between-two-threads) requires the message count, the
+  payload size and a checksum over everything that crossed, so a ring that dropped, reordered or raced a
+  value fails a build even though no nanosecond is asserted.
+
+### Result
+
+Ledger rows in [section 5 of the performance reference](PERFORMANCE.md#5-optimization-ledger): the ring is
+kept at 18.3 ns/message for a trivial payload and 169.9 for the event the replay carries, 1.8x the mutex
+hand-off, with the payload's own move and destructor as the dominant term.
+
+## 7. Designs that were measured and rejected
 
 These matter as much as the accepted ones, because each was expected to win. Keeping them written down
 is what stops the same idea being tried twice.
@@ -744,6 +828,26 @@ wrapper type to restore it later.
 
 Lesson: an uncontended lock is not "a lock". Price it before designing around it.
 
+### A mutex between the two threads
+
+The hand-off was argued for as "no lock", so the lock was measured rather than assumed. A `std::deque`
+behind a mutex, with a condition variable waking the consumer for every message, is the pattern most code
+reaches for and the one this path was compared against: **301 ns/message** for the same `MarketEvent` and
+the same per-message construction, against the ring's 170, about 1.8x rather than the order of magnitude the
+phrase "lock free" suggests.
+
+The informative variant is the third. Replacing the sleeping with a spin on the lock -- the consumer
+re-checking `empty()` under the mutex -- measured **320 ns**, so the wake-up is not what the lock costs.
+Mutual exclusion is: both sides take a line the other just wrote, and every operation on the queue
+serialises against the other thread's operation. A lock-free ring does not remove that transfer -- the value
+still crosses -- it removes the serialisation around it, and that is why the two designs land within a factor
+of two on this payload.
+
+Lesson: measure the lock you are removing, and be ready for the margin to be small. Here it was 1.8x, so the
+ring has to be justified by something other than speed as well: it is bounded (a mutex queue is unbounded
+unless somebody adds a bound), a full ring refuses rather than drops the value, and neither side ever blocks
+on the other's lock.
+
 ### Reader micro-optimizations
 
 The inline four-slot update buffer, the column-role jump table and the `parse_boolean` first-character
@@ -758,7 +862,7 @@ micro-structure is not where the remaining 61% lives.
 Lesson: "this removes work" and "this is measurable" are different claims. The second one needs a
 number, and a null result is a result.
 
-## 7. The transferable lessons
+## 8. The transferable lessons
 
 Ordered by how much they changed decisions here, not by how general they are.
 

@@ -35,4 +35,4 @@ jobs:
           python3 tools/lint_prose.py \
             docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
             docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md \
-            docs/index.md docs/ROADMAP.md
+            docs/LATENCY_DESIGN.md docs/index.md docs/ROADMAP.md

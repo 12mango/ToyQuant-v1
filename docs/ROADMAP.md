@@ -467,12 +467,20 @@ is what a live path adds on top.
 Five small deliverables come out of it: a paper session whose recording replays to the same summary; a
 feed-to-order latency table with percentiles; a benchmark of the inter-thread queue; a before and after `perf`
 table for one optimisation; and a page of stated alternatives, in the style the design review already uses.
-Three of the five are now in place for the replay path rather than promised: a recording replays to the same
-summary, a feed thread hands events to the strategy thread over a ring whose own cost is printed as a
-`[LATENCY]` line with percentiles, and the alternatives refused on the way — a dropped event instead of
-backpressure, a condition variable instead of a spin, one profiler shared by two threads — are stated where
-they are refused. The feed is still a file reader, so what is left of the live reader is the transport, and
-the benchmark of the hand-off through the ring is the deliverable still outstanding.
+Four of the five are now in place for the replay path rather than promised: a recording replays to the same
+summary; a feed thread hands events to the strategy thread over a ring whose own cost is printed as a
+`[LATENCY]` line with percentiles; that hand-off is benchmarked in isolation by
+`src/bench/ring_bench_main.cpp`; and the alternatives refused on the way — a dropped event instead of
+backpressure, a condition variable instead of a spin, one profiler shared by two threads, an 8 slot ring
+instead of 4096 — are stated where they are refused.
+
+The benchmark measured the hand-off at 18.3 ns/message for a trivial payload and 169.9 for the event this path
+carries, 1.8x the mutex and condition variable alternative, with the event's own move and destructor as the
+dominant term. The table is in
+[the performance reference](PERFORMANCE.md#39-the-hand-off-between-two-threads), and the part of it no gate
+asserts is exactly the part that cannot be: a time. The feed is still a file reader, so what is left of the
+live reader is the transport, and the deliverable still outstanding is the before and after `perf` table for
+one optimisation.
 
 ### What has to be done by hand
 

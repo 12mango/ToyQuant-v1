@@ -260,6 +260,11 @@ strategy thread over `concurrency::SpscRing` (`src/concurrency/spsc_ring.h`), a 
 single-producer/single-consumer ring whose two indices sit on separate cache lines and whose
 publication is a release store paired with an acquire load. The consumer runs on the calling thread, so
 the strategy, the book and the portfolio keep the thread they always had and only the reader moves.
+[Low-Latency Design section 6](LATENCY_DESIGN.md#6-the-hand-off-between-two-threads-spscring) prices the
+primitive against the alternatives and
+[the performance reference](PERFORMANCE.md#39-the-hand-off-between-two-threads) carries the table, measured
+by `ring_bench` (`src/bench/ring_bench_main.cpp`) rather than asserted: the hand-off is a couple of
+nanoseconds of mechanism and the event's own move dominates it.
 Three decisions are worth stating because each has a cheaper-looking alternative that this path does
 not take. A full ring is backpressure, not a drop: the feed waits for room and counts the wait, because
 a replay that lost an event would not be the run anybody asked for, and the pacing line is where the
@@ -781,7 +786,8 @@ The verification gate is `tools/verify_l2.sh`, and it has four tiers because the
 catch different mistakes. Tier zero runs the unit tests, because a failing test once shipped in a commit that the
 older gate could not see. Tier one replays a two hundred thousand record slice and compares the event counts,
 orders, fills, realized PnL and consumed queue position against the values the documents quote, re-derives every
-`toyquant:check` block, and lints the prose for a flag the code accepts that no document mentions. Tier two replays
+`toyquant:check` block, including the ones a benchmark binary carries rather than the main one, and lints the prose
+for a flag the code accepts that no document mentions. Tier two replays
 1.5 GB and compares the hash of the whole output, which is what makes a claim about timing defensible. Tier three
 builds with the address and undefined behaviour sanitizers and runs the tests and a slice through them, because a
 leak in the block reader or an out-of-range slot in the ladder is invisible in a normal build. A tier that skips

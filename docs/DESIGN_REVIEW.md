@@ -359,7 +359,8 @@ tier1()  {
   python3 tools/lint_prose.py docs/*.md   # every flag, queue model and tools/ path exists
   python3 tools/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
-  python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/DESIGN_REVIEW.md
+  python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
+      docs/DESIGN_REVIEW.md docs/PERFORMANCE.md
 }
 ```
 
@@ -373,6 +374,10 @@ run: l2_replay <the full command, one line>
 then: submitted_orders=182 trade_reports=21 fill_rate=0.115385 captured_edge_per_unit_ticks=0.0952381
 -->
 ```
+
+A block whose command is not the main binary names it on a `binary:` line, resolved beside the binary the
+gate passes in, which is how the ring hand-off benchmark's message count and checksum are re-derived without
+a nanosecond being asserted.
 
 `check_docs.py` re-runs the command and fails the build if any value has moved. A documented number is a
 claim about the code, so it is treated as one. `lint_prose.py` covers the other half: it reads the flag

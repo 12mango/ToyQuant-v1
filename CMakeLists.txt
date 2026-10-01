@@ -96,6 +96,15 @@ target_link_libraries(strategy_benchmark PRIVATE Threads::Threads)
 target_link_libraries(strategy_benchmark PRIVATE ZLIB::ZLIB)
 set_target_properties(strategy_benchmark PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# ==================== Ring hand-off benchmark ====================
+# What one message through the ring costs, against the two alternatives a reader would otherwise reach
+# for. Built by the normal presets so it cannot rot, and deliberately not registered with ctest: a timing
+# number is not an assertion. The gate reads its deterministic `messages` and `checksum` fields instead.
+add_executable(ring_bench src/bench/ring_bench_main.cpp)
+target_include_directories(ring_bench PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(ring_bench PRIVATE Threads::Threads)
+set_target_properties(ring_bench PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # ==================== Tests ====================
 enable_testing()
 add_executable(strategy_state_test tests/strategy_state_test.cpp
