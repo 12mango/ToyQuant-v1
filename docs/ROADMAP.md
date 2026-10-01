@@ -15,7 +15,7 @@ reader, and paper trading is the existing book and matching engine against that 
 | Delivered | the queue model, the fee model, the two latency legs, the order trace and the queue distribution, four sweeps of the strategy levers, and a four-tier gate |
 | The binding result | at a one-tick spread the fee is 2.57 ticks against 0.088 captured, and no lever moves that ratio |
 | Frozen | the pre-queue-model line is tagged `v1.0-demo` |
-| Open | the conclusions rest on one day, and nothing has been run against a live feed; phase 2b is the plan from the first positive window to a running system |
+| Open | the conclusions rest on one day, and nothing has been run against a live feed; the paced replay and the recorder half of Stage A are in place and a live feed reader is what remains; phase 2b is the plan from the first positive window to a running system |
 
 ## The phases
 
@@ -107,6 +107,24 @@ Still to verify before anything is planned around it: **whether a Hong Kong resi
 is on the per-share Pro schedule** (the advertised tier is a product fact, not an entitlement), the current list
 of SFC licensed virtual asset venues, and the exact HKEX futures exchange fee and levy per contract, since the
 contract specification pages this repository tried did not answer.
+
+Read on 2026-10-01, from the broker's own published pages rather than from the account, because three questions
+that were being treated as account questions are public:
+**whether an order can be pinned to a named venue** — yes, and it is a priced routing choice rather than a
+switch, because the commission schedule lists "Fixed - Direct Routing" beside "Fixed - IB SmartRouting", so a
+directed order is a different schedule on the account that has it;
+**depth data** — the market data pricing page sells depth of book per venue, states that a depth service does not
+include a top-of-book quote (which has to be subscribed beside it), and waives the monthly fee only above a
+stated commission threshold, so a quiet month pays full price;
+**the account rules** — the order-status list answers half of the borrow question: an order can come back
+`Inactive` because it is a short sale waiting for shares to be located. What the API itself imposes is public
+too: a hundred simultaneous top-of-book market data lines by default, market data subscribed per username and
+billed the full month rather than pro-rated, and a historical-request pacing that counts fifty simultaneous
+requests, sixty requests in ten minutes, six requests for one contract in two seconds, or an identical request
+within fifteen seconds as a violation.
+**Not confirmed by any page reached from here, and therefore not relied on**: a fifty messages per second client
+limit, a forced daily restart of the gateway, and whether a Hong Kong resident is offered the Lite schedule at
+all. Those need the account, and none of them changes what can be built next.
 
 **The conclusion is narrower than the question.** Only one market in this table has all three columns at once:
 a US ETF, priced in cents, with a commission that is a fraction of one, and a free daily depth archive to test
@@ -355,10 +373,15 @@ book, and `src/market/` holds one reader per input format, so a live feed is ano
 * the gate gains an assertion that a recorded file replays to the summary the live run printed, so the live path
   is covered by the same four tiers as everything else.
 
-The delivery half of that has landed first, because it needs no account and no data purchase: a replay can now be
-delivered at the file's own speed, at a multiple of it, and it reports how late each delivery ran against the
-schedule the timestamps define, which is the number a live session has to watch. The recorder is still the
-missing piece, and it is the one that makes the model and the live session comparable on identical input.
+Two of the three have landed first, because neither needs an account or a data purchase. The delivery half: a
+replay can be delivered at the file's own speed or at a multiple of it, and it reports how late each delivery ran
+against the schedule the timestamps define, which is the number a live session has to watch. The recorder:
+`--record=PREFIX` taps the delivery callback and writes `PREFIX_trades.csv` and `PREFIX_depth.csv` in the shapes
+the replay already reads, refusing anything those formats cannot express — a trade with no aggressor side, a batch
+whose updates disagree about their local timestamp, a snapshot whose level count changes, or a stream that is both
+snapshots and batches at once, which is why the OKX archive cannot be recorded. The gate asserts the claim rather
+than describing it: tier 1 of `tools/verify_l2.sh` records the 200k slice, replays the recording, and requires both
+runs to report the same numbers. What is left of Stage A is the live reader itself.
 
 **Passes when** several hours are recorded without a drop and the recorded file reproduces the live summary.
 **Ends it when** the depth a retail account may legally subscribe to and read programmatically costs more than

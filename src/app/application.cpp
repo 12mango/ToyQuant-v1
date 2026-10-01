@@ -19,6 +19,7 @@
 #include "market/csv_feed.h"
 #include "market/funding_rate.h"
 #include "market/l2_replay_feed.h"
+#include "market/market_event_recorder.h"
 #include "market/replay_feed.h"
 #include "market/udp_feed.h"
 #include "orderbook/orderbook.h"
@@ -375,11 +376,21 @@ void Application::run_l2_replay_mode() const
     // accepts a speed. Zero, which every recorded run passes, still reads the file as fast as it can.
     const ReplayPacing pacing{.enabled = cfg_.live_pacing || cfg_.delay > 0,
                               .speed = cfg_.live_pacing ? cfg_.live_pacing_speed : 1.0};
+    // A recording of the delivered stream, when the run asked for one. It is owned here rather than
+    // by the callback because its lifetime is the run's: the two files are opened once, and what
+    // they hold is what the feed delivered.
+    std::unique_ptr<MarketEventRecorder> recorder;
+    if (!cfg_.record_prefix.empty())
+        recorder = std::make_unique<MarketEventRecorder>(to_abs_path(cfg_.record_prefix));
     L2ReplayFeed feed(
         std::move(trades_reader),
         std::move(depth_reader),
         [&](const MarketEvent& event)
         {
+            // The tap sits before the pipeline, so the file is what the feed delivered rather than
+            // what the strategy did with it, and a run that dies inside the strategy still holds
+            // everything that arrived before the failure.
+            if (recorder) recorder->record(event);
             std::visit(
                 [&](const auto& value)
                 {
@@ -415,6 +426,13 @@ void Application::run_l2_replay_mode() const
     feed.set_profiler(profiler);
     feed.run();
     if (pacing.enabled) logger.log("[LIVE] ", feed.pacing_summary().to_log_string());
+    if (recorder)
+    {
+        // Flushed before the line is logged, because the line's claim is about the files on disk.
+        recorder->flush();
+        logger.log("[REC] ", recorder->summary().to_log_string(),
+                   " trades_path=", recorder->trades_path(), " depth_path=", recorder->depth_path());
+    }
     if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     const auto& validation = feed.validation_summary();
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,

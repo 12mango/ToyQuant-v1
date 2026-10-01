@@ -78,7 +78,7 @@ The source map is:
 | Shared data | `src/common/types.h`, `src/market/market_event.h` | `Side`, `ExecType`, `MarketEvent` |
 | Instrument rules | `src/common/instrument_spec.h` | `InstrumentSpec`, `btc_usdt_spec` |
 | Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
-| Market replay | `src/market/market_data_adapter.*`, `replay_feed.*` | `IMarketEventReader`, `ReplayFeed::run` |
+| Market replay | `src/market/market_data_adapter.*`, `replay_feed.*`, `market_event_recorder.*` | `IMarketEventReader`, `ReplayFeed::run`, `MarketEventRecorder` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*`, `tick_ladder.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook`, `TickLadder` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
@@ -112,7 +112,7 @@ The legacy CSV and UDP paths retain this contract. Trades+BBO replay and L2 snap
 richer boundary:
 
 ```cpp
-using MarketEvent = std::variant<MarketTrade, BboQuote, MarketDepthSnapshot>;
+using MarketEvent = std::variant<MarketTrade, BboQuote, MarketDepthSnapshot, IncrementalBookBatch>;
 ```
 
 `IMarketEventReader` isolates vendor schemas from replay. The Binance readers map aggregate trades
@@ -238,6 +238,19 @@ incremental replay that removes one allocation and one free from nearly every ba
 as they did when the storage was a plain vector. The same reader resolves each CSV column position to
 a role once at construction, so the per-row loop switches on a jump table rather than comparing
 against eight member indices per field.
+
+`MarketEventRecorder` (`src/market/market_event_recorder.h`) reads the same boundary backwards: it
+taps the delivery callback and writes every event into the two replay shapes, so a paced replay or a
+live feed becomes a file the same binary reads again. A price is written as the shortest decimal that
+parses back to the same double and a quantity as an integer, a batch's rows carry the batch's own two
+timestamps, which is the field the reader regroups on, and the interleaving of the two streams is
+re-derived from the timestamps by the rule the replay used the first time. What the formats cannot
+express is refused rather than approximated: a trade with no aggressor side, a field holding the
+separator, a batch whose updates disagree about their local timestamp, a snapshot whose level count
+changes, or a stream that carries whole-book snapshots and incremental batches at once. The readers'
+own sequence ids for a snapshot and a batch are the one field a recording does not reproduce, because
+no column holds them. `bash tools/verify_l2.sh fast` records the 200k slice, replays the recording,
+and requires the two runs to report the same numbers.
 
 Levels are held in `TickLadder`, a flat array indexed by price tick. A `std::map` access descends
 about ten pointer levels, and a sorted vector moves several kilobytes per insertion once a book holds

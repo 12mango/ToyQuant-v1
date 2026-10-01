@@ -7,7 +7,7 @@
 # pass before it is accepted:
 #
 #   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
-#   tier 1  (~3 s, including a 2M-row replay behind one marked block)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead
+#   tier 1  (~3 s, including a 2M-row replay behind one marked block)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, and a record-and-replay round trip
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
@@ -140,6 +140,22 @@ tier1() {
         grep -oE 'submitted_orders=13734|trade_reports=2277|fill_rate=0.175872|realized_pnl=-33.7861|equity=966.196' | tokens)
   [ "$l2" = "$L2_WANT" ] || rc=1
   [ "$l1" = "$L1_WANT" ] || rc=1
+  # The recorder's assertion, which is what the recorder half of Stage A claims: the stream a replay
+  # delivered, written back out in the replay shape and replayed again, is the same run. The
+  # comparison drops the two kinds of line that have to differ, the input paths in the [Mode] line
+  # and the [REC] line that only the recording run prints, and requires every other number to match
+  # exactly: event counts, orders, fills, the queue that was consumed, PnL and the final equity.
+  local rec_ok=0 rec_prefix=out/lat/rec_gate
+  mkdir -p out/lat
+  # The recording run is paced at 200x, so the assertion covers the claim as Stage A words it — a
+  # paced session becomes a replayable file — while the schedule stays a fraction of a second of wall
+  # clock and the tier never waits out the window. The replay of the recording is unpaced, because
+  # what is being compared is the decisions, not the sleeps.
+  rec_a=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+        --live-pacing=200 --record="$rec_prefix" 2>&1 | grep -v -e '^\[Mode:' -e '^\[REC\]' -e '^\[LIVE\]')
+  rec_b=$("$BIN" l2_replay "${rec_prefix}_trades.csv" "${rec_prefix}_depth.csv" BTC-PERPETUAL 0 active_l2 1 \
+        prorata --fast-validation 2>&1 | grep -v -e '^\[Mode:' -e '^\[REC\]' -e '^\[LIVE\]')
+  [ "$rec_a" = "$rec_b" ] || rec_ok=1
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -152,12 +168,13 @@ tier1() {
   # which is why the tool decodes none.
   local tool_check=0
   python3 tools/fetch_iex_hist.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
-  if [ $rc -eq 0 ] && [ $doc_check -eq 0 ] && [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] &&
-     [ $tool_check -eq 0 ]; then
+  if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $doc_check -eq 0 ] && [ $fields_check -eq 0 ] &&
+     [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ]; then
     echo "tier1 OK"
     return 0
   fi
   echo "tier1 MISMATCH"
+  [ $rec_ok -eq 0 ] || echo "  recorder: replaying the recording did not reproduce the run"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

@@ -38,6 +38,7 @@ set(COMMON_SOURCES
     src/market/csv_feed.cpp
     src/market/funding_rate.cpp
     src/market/market_data_adapter.cpp
+    src/market/market_event_recorder.cpp
     src/market/market_data_validator.cpp
     src/market/l2_replay_feed.cpp
     src/market/line_reader.cpp
@@ -123,6 +124,14 @@ add_executable(l2_replay_test tests/l2_replay_test.cpp
 target_include_directories(l2_replay_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(l2_replay_test PRIVATE ZLIB::ZLIB)
 add_test(NAME l2_replay_test COMMAND l2_replay_test)
+
+add_executable(market_event_recorder_test tests/market_event_recorder_test.cpp
+    src/market/market_event_recorder.cpp src/market/market_data_adapter.cpp
+    src/market/market_data_validator.cpp src/market/line_reader.cpp
+    src/market/l2_replay_feed.cpp src/utils/stage_profiler.cpp)
+target_include_directories(market_event_recorder_test PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(market_event_recorder_test PRIVATE ZLIB::ZLIB)
+add_test(NAME market_event_recorder_test COMMAND market_event_recorder_test)
 
 add_executable(matching_engine_test tests/matching_engine_test.cpp ${COMMON_SOURCES})
 target_include_directories(matching_engine_test PRIVATE ${COMMON_INCLUDE_DIRS})

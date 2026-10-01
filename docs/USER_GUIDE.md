@@ -177,8 +177,31 @@ which makes every PnL a few cents and the inventory logic unreachable.
   BTC-PERPETUAL 0 active_l2 1 conservative --order-size=10 --inventory-limit=100
 ```
 
-The remaining `l2_replay` flags are `--no-output`, `--fast-validation`, `--profile-stages[=N]` and
-`--live-pacing[=SPEED]`.
+The remaining `l2_replay` flags are `--no-output`, `--fast-validation`, `--profile-stages[=N]`,
+`--live-pacing[=SPEED]` and `--record=PREFIX`.
+
+`--record=PREFIX` taps the stream a run is fed and writes it back out in the replay's own shapes,
+`PREFIX_trades.csv` and `PREFIX_depth.csv`, so a paced session or a live feed becomes a file the same
+binary replays:
+
+```bash
+./build/toy_quant l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv BTC-PERPETUAL 0 active_l2 1 \
+  --fast-validation --record=out/lat/recording
+./build/toy_quant l2_replay out/lat/recording_trades.csv out/lat/recording_depth.csv \
+  BTC-PERPETUAL 0 active_l2 1 --fast-validation
+```
+
+The second command is the first one with a different input, because the recorder's claim is that the
+events came back unchanged, and `bash tools/verify_l2.sh fast` asserts exactly that: it records the
+200k slice, replays the recording, and requires every reported number to match. Three limits are
+worth knowing before pointing it at a new feed. A price and a quantity are written so they read back
+as the values that arrived, but the readers' own running ids for a snapshot and a batch are not,
+because the replay formats have no column for them. A stream that is both a snapshot and a batch —
+the OKX archive, whose first line is a snapshot and the rest are updates — has no single replay file,
+so recording it is refused. And so is any event the replay formats cannot express, such as a trade
+with no aggressor side, because a file with a hole where an event was reads back as a book that is
+quietly wrong.
 
 The symbol decides the instrument, through `instrument_spec_of`: `BTC-PERPETUAL`, `BTC-USDT-SWAP`, `SPY` and
 `MESZ6` are the entries today, and a symbol with no entry is an error rather than a default, because a default
@@ -300,6 +323,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--markout-cover` | Quote only where the capture also covers what passive fills at that distance have cost, measured from our own resolved fills | Off |
 | `--flatten-band=N` | Reduce a position above N units with a taker order at the touch instead of carrying it | Off |
 | `--live-pacing[=SPEED]` | Deliver the replay against the wall clock at this speed and report how late it ran as `[LIVE]`; the fifth positional argument on this mode means the same at real time | Off, which reads the file as fast as it can |
+| `--record=PREFIX` | Write the delivered stream to `PREFIX_trades.csv` and `PREFIX_depth.csv` in the replay shapes, reported as a `[REC]` line | Off |
 
 ### Funding as an input
 

@@ -17,6 +17,7 @@ namespace
 {
 constexpr std::string_view kProfileStagesPrefix = "--profile-stages=";
 constexpr std::string_view kLivePacingPrefix = "--live-pacing=";
+constexpr std::string_view kRecordPrefix = "--record=";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
@@ -111,6 +112,9 @@ void print_usage(const char* executable)
                      "prints, and reports [GATE]\n";
         std::cerr << "   band: --flatten-band=N (l2_replay) reduces a position above N units with a taker "
                      "order at the touch instead of carrying it into the final mark\n";
+        std::cerr << "   record: --record=PREFIX (l2_replay) writes PREFIX_trades.csv and "
+                     "PREFIX_depth.csv in the replay shapes, so the stream this run was fed can be "
+                     "replayed again\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
@@ -221,6 +225,25 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.live_pacing = true;
+            }
+            else if (flag.compare(0, kRecordPrefix.size(), kRecordPrefix) == 0)
+            {
+                // The recorder writes the two streams the L2 replay reads: a trade file and a depth
+                // file. The L1 replay's second stream is a BBO quote, and no replay CSV in this
+                // project holds one as rows, so asking to record there is refused rather than
+                // silently ignored.
+                if (cfg.mode != AppMode::L2Replay)
+                {
+                    error = "--record is an l2_replay flag: the L1 replay's second stream is a BBO "
+                            "quote, which the replay CSV formats cannot carry as rows";
+                    return false;
+                }
+                if (flag.size() == kRecordPrefix.size())
+                {
+                    error = "--record needs a file prefix";
+                    return false;
+                }
+                cfg.record_prefix = flag.substr(kRecordPrefix.size());
             }
             else if (flag.compare(0, kProfileStagesPrefix.size(), kProfileStagesPrefix) == 0)
             {

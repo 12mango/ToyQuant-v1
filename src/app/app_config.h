@@ -71,6 +71,11 @@ struct AppConfig
     // because pacing changes no decision, only when the decision is made.
     bool live_pacing = false;
     double live_pacing_speed = 1.0;
+    // Records the delivered stream instead of only measuring it: --record=PREFIX writes
+    // PREFIX_trades.csv and PREFIX_depth.csv in the shapes the replay reads, so a run that was
+    // paced or fed live becomes a file that can be replayed again. Empty, the default, records
+    // nothing and leaves every recorded number untouched.
+    std::string record_prefix;
     // A maker fee rate the command line supplies, for the runs that ask what a different fee schedule would
     // have produced. The venues' rates are in the instrument specifications, so this is a sensitivity input
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.

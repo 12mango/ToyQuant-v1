@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 STRUCTS = ("ExecutionQualityMetrics", "StrategyMetrics", "PortfolioMetrics", "FundingSummary",
-           "CarrySummary", "PnlSummary", "MarkoutEstimate", "GateSummary", "PacingSummary", "RunSummary")
+           "CarrySummary", "PnlSummary", "MarkoutEstimate", "GateSummary", "PacingSummary",
+           "RecordingSummary", "RunSummary")
 FIELD = re.compile(
     r"^\s+(?:const\s+)?(?:std::string|std::size_t|double|float|int64_t|uint64_t|int|bool|size_t)\s+(\w+)\{",
     re.M,

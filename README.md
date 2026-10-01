@@ -133,6 +133,18 @@ python3 tools/slice_l2_snapshot.py \
   /tmp/deribit_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1
 ```
 
+**Record a session and replay it again**: `--record=PREFIX` writes the stream the run was fed back out in
+the replay shapes, `PREFIX_trades.csv` and `PREFIX_depth.csv`, so the same binary can be given those files
+instead. `bash tools/verify_l2.sh fast` asserts that the replayed recording reports the same numbers.
+
+```bash
+./out/build/linux-debug/toy_quant l2_replay \
+  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  /tmp/deribit_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1 --record=/tmp/session
+./out/build/linux-debug/toy_quant l2_replay \
+  /tmp/session_trades.csv /tmp/session_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1
+```
+
 **Analyze legacy generated order and trade records**:
 
 ```bash
