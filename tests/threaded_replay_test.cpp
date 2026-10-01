@@ -132,11 +132,17 @@ int main()
     assert(latency.total_mean_ns >= latency.queue_mean_ns + latency.processing_mean_ns);
     assert(latency.queue_p99_ns >= latency.queue_p50_ns);
     assert(latency.total_p99_ns >= latency.total_p50_ns);
-    // Eight slots make backpressure the normal case here, which is the branch this test exists to
-    // cover: a ring that is too small waits rather than dropping.
-    assert(latency.feed_waits > 0);
-    assert(latency.feed_wait_max_ns >=
-           latency.feed_wait_total_ns / static_cast<int64_t>(latency.feed_waits));
+    // Whether an eight slot ring ever fills while four hundred events cross it is a scheduling outcome, not a
+    // contract: the feed is the faster side on this workload, but on a loaded machine or under a sanitizer the
+    // consumer can keep up and no push is ever refused. Asserting that a wait happened made this test fail once
+    // in tier 3 for exactly that reason, and the division below it was then a division by zero in the same run.
+    // What is a contract is that a full ring waits rather than dropping an event, and it is asserted here two
+    // ways that do not depend on a clock: `direct == threaded` above requires all four hundred events to have
+    // arrived in order through the eight slots, and `spsc_ring_test` covers the refusal itself, where a full
+    // ring returns false and leaves the value untouched so the same value is retried rather than lost.
+    if (latency.feed_waits > 0)
+        assert(latency.feed_wait_max_ns >=
+               latency.feed_wait_total_ns / static_cast<int64_t>(latency.feed_waits));
 
     const std::string line = latency.to_log_string();
     assert(line.find("handoffs=400") != std::string::npos);
