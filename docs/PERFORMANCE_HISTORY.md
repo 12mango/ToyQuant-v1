@@ -968,6 +968,45 @@ does (`optimistic`). The measurement narrowed the range rather than closing it, 
 table above shows what is still at stake in it: three fills against seven on one window, and one
 profitable cell out of six.
 
+#### The same measurement on an equity book
+
+The calibration above is one instrument's, so it was repeated on the equity window the F4 results are measured
+on: the converted SPY depth and trades pair for 2026-09-29 13:30 to 15:30, which is 2,593,706 depth rows and
+24,298 trades.
+
+| Quantity | Deribit BTC-PERPETUAL, 898 s | SPY, two hours |
+|---|---:|---:|
+| level decreases observed | 98,922 | 1,298,796 |
+| total size removed from levels | 5,162,246,010 | 207,950,416 |
+| explained by trades at the same price | 0.04% | **0.5%** |
+| therefore cancelled or amended | 99.96% | **99.5%** |
+| decrease events at least 99% cancellation | 99.3% | 98.7% |
+| traded volume in the window | 2,146,690 | 1,544,421 |
+| **book churn against traded volume** | **~2,400x** | **~135x** |
+
+The same qualitative answer, with one substantive difference. Cancels still explain almost all of the size that
+leaves a level, so a queue model that moves only when a trade prints is still a floor rather than a neutral
+reading. But the equity book churns 135 times its traded volume against the perpetual's 2,400, so a quote's
+queue is refreshed eighteen times less hard per share that trades, and that is what makes the queue model
+readable here:
+
+| Queue model | fills | filled shares | capture per fill, ticks | fees USD | net USD | peak inventory |
+|---|---:|---:|---:|---:|---:|---:|
+| `conservative` | 799 | 33,352 | 0.267855 | 116.73 | 262.51 | 1,099 |
+| `prorata` | 2,528 | 90,286 | 0.419556 | 316.00 | 396.14 | 1,095 |
+| `lumpy` | 2,281 | 88,124 | 0.418853 | 308.43 | 14.93 | 1,092 |
+| `optimistic` | 2,716 | 105,458 | 0.436415 | 369.10 | 155.51 | 1,096 |
+
+The fill count moves by 3.4x across the model space and the capture per fill by only 1.6x, and **the binding
+result does not move at all: at every point the capture is below the round turn's commission of 0.70 ticks**,
+covering 38% of it at the floor and 62% at the ceiling. The equity window therefore fails on the fee under every
+reading of the queue, which is the shape of answer the perpetuals gave as well, and the F4 table's SPY row --
+799 fills and 0.267855 ticks -- is that row's own conservative floor rather than the window's fill count.
+
+The spread of `net USD` across the four rows is not the quoting: all four end carrying about 1,100 shares into
+the final mark, which is where 14.93 against 396.14 comes from. Read the capture and the fill count here, the way
+the flatten-band section says to read a row that ends holding a position.
+
 ### Strategy execution correctness pass
 
 Three defects in this area were one class of mistake: a number or a decision that two components each

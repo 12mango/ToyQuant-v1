@@ -326,6 +326,14 @@ captured — a factor of 0.54 on SPY and 0.026 on the micro E-mini — which is 
 inside the fill itself, and which is why neither market pays for its fee even though that fee is a fraction of a
 tick.
 
+**Those captures are the conservative queue model, and on SPY that is a floor rather than the window's answer.**
+The same window under the other three models fills 2,281 to 2,716 times instead of 799 and captures 0.4189 to
+0.4364 ticks instead of 0.267855 — so the model matters for the fill count here, by 3.4x, and the fee is still
+not covered at any point of the model space, because a round turn costs 0.70 ticks and even the ceiling's 0.4364
+covers 62% of it. The measurement behind that, the equity book's churn against its traded volume, and why the
+effect is larger here than the perpetuals' small fill counts could show are in
+[Performance History](PERFORMANCE_HISTORY.md#the-same-measurement-on-an-equity-book).
+
 The screen is therefore **the half spread at the trades, at least three times the fee per side**, measured by
 `tools/screen_spread.py` from top of book before any depth is bought; the tool prices a window before it spends
 and refuses to download without a stated cap. Both symbols above fail it, which is the expected result for a one
