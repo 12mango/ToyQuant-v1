@@ -138,6 +138,15 @@ interpreting a partial file as a short day.
 
 ## IEX HIST: US Equity Depth, and Where It Stops
 
+**The route is dropped, and the reasons are the useful part.** DEEP is an order-level feed — order adds,
+executions, deletes and cancels, each carrying an order reference — rather than the aggregated price levels this
+model consumes, so using it would mean a decoder written against a specification that has to be obtained, and
+then a second layer aggregating order events into the ladder the book and the queue model are built on: a new
+lineage rather than an extension of one. It is also IEX's own book, so it cannot be made into a national best
+bid, and it is not a venue an account opened from Hong Kong can rest on, which means its depth can neither rank a
+symbol (the screen measures the venue we would trade) nor validate a fill. The equity depth this repository does
+use came from the paid Databento route above, at about two dollars a session.
+
 The equity market is the first venue here where the fee can be smaller than a tick, so it is the market the fee
 question needs an answer from, and its free depth is a daily archive rather than an endpoint.
 `tools/fetch_iex_hist.py` prints that route and then verifies whatever the operator downloaded:
@@ -166,9 +175,10 @@ a test.
 
 **What the tool will not do is decode a DEEP message.** The published specification no longer answers at the URL
 this repository knew, and a decoder written from memory would produce a book that looks right and is not, so the
-type bytes and lengths above are the anatomy half and the decoder is the next half. Until that decoder exists and
-a real day of DEEP has been checked against it, this repository has no equity depth to replay and no equity run
-to report, which is what the venue table in `docs/ROADMAP.md` records.
+type bytes and lengths above are the anatomy half and the decoder is the next half. A decoder is not planned: the
+route is dropped for the reasons at the top of this section, and the equity depth this repository measures on is
+the paid ten-level one above. The tool is kept because the container walk is real work whose self-test tier 1 of
+the gate runs, and because it is the first half of any decoder a future route would need.
 
 The instrument half is in place already: `us_equity_spec` states the one cent tick, the share scale and the
 commission per share, `docs/ARCHITECTURE.md` explains why a per-share commission is a field of its own rather

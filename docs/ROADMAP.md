@@ -36,7 +36,7 @@ Checked once, at the time of writing, so re-verify before paying for anything.
 |---|---|---|
 | **Tardis.dev free samples** | the first day of each month, in the format this repository already parses | **used**: the multi-day evidence grows one free day at a time, with no new code, which is why the two days already here are the first of their months |
 | **OKX official historical data** | trade history from 2021-09, funding rates from 2022-03, and high-resolution L2 order book from 2023-03, free and daily | **planned** (phase 2a): the second venue, for consecutive-day tests |
-| **IEX HIST, US equity depth** | free DEEP price level and TOPS archives, one pcap per day, T+1, behind a login and the IEX terms of use, and it is IEX's own book only rather than a consolidated one | **planned** (F4): the one market in the table below where a retail commission is smaller than a tick, whose archive needs a DEEP decoder that the published specification has to be obtained for |
+| **IEX HIST, US equity depth** | free DEEP and TOPS archives, one pcap per day, T+1, behind a login and the IEX terms of use. DEEP is an **order-level** feed — order adds, executions, deletes and cancels, each carrying an order reference — rather than aggregated price levels, and it is IEX's own book rather than a consolidated one | **rejected**: it is not a venue an account opened from Hong Kong can rest on, so its book can neither rank a symbol (the screen measures where we would trade) nor validate a fill; and turning order-level messages into the price-level ladder this model consumes is new code and a new lineage, against a paid route at about two dollars a session |
 | **Databento `mbp-10`** | ten price levels a side with the whole book on every row, so the trades are the `action=T` rows of the same file, billed on the compressed size at half a dollar a gigabyte on the micro E-mini and two on an equity | **used** (F4): the paid route to a tradable market's depth, converted to the CSV pair the existing readers take, with the conversion checked against the vendor's own levels row by row |
 | Binance Vision, USD-M futures | free daily aggTrades, trades, book ticker (best bid and offer) updates, premium index klines and open-interest metrics | **used for research outside this repository**: funding and basis work, which needs no price ladder |
 | Binance Vision `bookDepth` | percentage bands around the mid, not discrete levels | **rejected**: a tick ladder cannot be rebuilt from it |
@@ -89,7 +89,7 @@ there continuous free depth to test the answer on.
 
 | Market | Tradable by a Hong Kong individual | Fee in ticks | Free continuous depth |
 |---|---|---|---|
-| US stocks and ETFs | yes, through a broker with US market access | a share commission is a fraction of a cent on a hundred dollar share whose tick is one cent, so about a third to a half of a tick a side, and a zero commission tier makes the fee not the wall at all | **yes: IEX HIST**, DEEP and TOPS, one pcap per day, T+1, free after a login and the terms of use, but it is IEX's own book only, so no national best bid can be built from it |
+| US stocks and ETFs | yes, through a broker with US market access | a share commission is a fraction of a cent on a hundred dollar share whose tick is one cent, so about a third to a half of a tick a side, and a zero commission tier makes the fee not the wall at all | **no usable free depth**: IEX HIST is IEX's own book, so no national best bid can be built from it, and it is an order-level feed for a venue this account cannot rest on. The depth route that is used is paid and cheap: ten levels plus the trades for about two dollars a session |
 | HKEX index futures | yes, through local brokers | no stamp duty on futures; the exchange and levy per contract are a fraction of the HK$50 HSI tick and a broker commission is of the same order, so about a tick a side, which is close to the width of a one tick quote | **no**: realtime and historical depth are licensed subscription products, so the only route is to record a broker's own realtime feed into the replay format |
 | HK cash equities | yes | a stamp duty of 0.1% a side is about ten basis points, an order of magnitude over any spread measured in this repository, plus levies and commission | no |
 | A-shares through northbound | yes | a sell side stamp duty of 0.05% plus commission, and settlement is T+1 | no |
@@ -523,9 +523,8 @@ decision about money. It is written down so that code work never waits on a ques
   and the tax treatment of frequent trading.
 * **The choice between futures and shares**, which follows from those answers rather than from preference, and
   which decides the symbol screen that everything else is measured on.
-* **Downloads behind a login**: one IEX HIST day, if the free replica is wanted at all, which needs a sign in
-  and an acceptance of the terms of use. The Databento side is already scripted and needs only the key in the
-  environment.
+* **Downloads behind a login**: none, now that the IEX route is rejected for the reasons in the data table above;
+  the Databento side is already scripted and needs only the key in the environment and a cap.
 * **Money and a paper account**: a funded account for the minimum size stage and a paper account for the
   reconciliation stage.
 * **The two decisions only the owner can make**: how much capital, and whether the offshore venues stay a

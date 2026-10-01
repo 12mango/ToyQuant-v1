@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Work with IEX HIST, the only free continuous depth feed this repository found that a Hong Kong individual can
-reach and that a retail commission can be smaller than a tick on.
+download. **The route is rejected** -- see `data/README.md` and the data table in `docs/ROADMAP.md` -- and this
+tool is kept because the container walk below is real work with a self-test tier 1 of the gate runs, and because
+it is the first half of any decoder a future route would need.
 
 What the route can and cannot do, which is the anatomy step every source in this repository went through:
 
 * IEX HIST publishes one gzipped pcap per day per feed, named `<YYYYMMDD>_IEXTP1_DEEP1.0.pcap.gz` and
-  `<YYYYMMDD>_IEXTP1_TOPS1.6.pcap.gz`, for the previous session, and it is free. DEEP carries price level
-  updates, which is the depth this repository's l2_replay consumes; TOPS carries the top of book only.
+  `<YYYYMMDD>_IEXTP1_TOPS1.6.pcap.gz`, for the previous session, and it is free. DEEP is an **order-level** feed:
+  order adds, executions, deletes and cancels, each carrying an order reference, rather than the aggregated price
+  levels `l2_replay` consumes, so using it would mean a decoder plus an aggregation layer. TOPS carries the top
+  of book only.
 * **It is behind an account.** The archive is a download from IEX after a login and an acceptance of the IEX
   Historical Data Terms of Use, so no script can fetch it unattended and this one does not pretend to: it
   prints the procedure, and then reads whatever the operator downloaded.
