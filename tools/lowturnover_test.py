@@ -23,12 +23,15 @@ Usage:
     python3 tools/lowturnover_test.py            # every file under data/v2/screen/
 """
 
+import argparse
 import csv
 import glob
+import gzip
 import statistics
 import sys
 
 TICK = 0.01
+NANOS_PER_MINUTE = 60_000_000_000
 BAND_TICKS = 2.0
 GRID_SECONDS = 60
 SMA_MINUTES = 30
@@ -41,17 +44,38 @@ REGULATORY = 0.0000206
 
 
 def minutes_of(path):
-    """The last touch seen in each minute."""
+    """The last touch seen in each minute, from either shape: a consolidated file, or a depth file to rebuild from."""
     buckets = {}
-    with open(path, newline="") as handle:
-        for row in csv.DictReader(handle):
+    opener = gzip.open(path, "rt", newline="") if path.endswith(".gz") else open(path, newline="")
+    with opener as handle:
+        reader = csv.DictReader(handle)
+        names = set(reader.fieldnames or [])
+        if {"bid_px_00", "ask_px_00"} <= names:
+            for row in reader:
+                try:
+                    bid, ask = float(row["bid_px_00"]), float(row["ask_px_00"])
+                    when = int(row["ts_event"]) // NANOS_PER_MINUTE
+                except (TypeError, ValueError, KeyError):
+                    continue
+                if bid > 0 and ask > bid:
+                    buckets[when] = (bid, ask)
+            return [(k, buckets[k][0], buckets[k][1]) for k in sorted(buckets)]
+        bids, asks = {}, {}
+        for row in reader:
             try:
-                bid, ask = float(row["bid_px_00"]), float(row["ask_px_00"])
-                when = int(row["ts_event"]) // (GRID_SECONDS * 1_000_000_000)
+                side, price, amount = row["side"], float(row["price"]), float(row["amount"])
+                when = int(row["timestamp"]) // NANOS_PER_MINUTE
             except (TypeError, ValueError, KeyError):
                 continue
-            if bid > 0 and ask > bid:
-                buckets[when] = (bid, ask)
+            book = bids if side == "bid" else asks
+            if amount == 0.0:
+                book.pop(price, None)
+            else:
+                book[price] = amount
+            if bids and asks:
+                best_bid, best_ask = max(bids), min(asks)
+                if best_ask > best_bid:
+                    buckets[when] = (best_bid, best_ask)
     return [(k, buckets[k][0], buckets[k][1]) for k in sorted(buckets)]
 
 
@@ -83,9 +107,14 @@ def run(minutes):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--glob", default="data/v2/screen/*.csv",
+                        help="data/v2/screen/*.csv for top of book, or a symbol's depth files for its several windows")
+    args = parser.parse_args()
     rows = []
-    for path in sorted(glob.glob("data/v2/screen/*.csv")):
-        symbol = path.split("/")[-1].split("_")[0]
+    for path in sorted(glob.glob(args.glob)):
+        stem = path.split("/")[-1].split(".")[0]
+        symbol = stem.split("_")[1] if "_depth" in stem else stem.split("_")[0]
         minutes = minutes_of(path)
         if len(minutes) < SMA_MINUTES + 5:
             continue

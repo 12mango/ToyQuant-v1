@@ -954,9 +954,28 @@ symbols are the *same* two hours, so they are 57 independent draws of a statisti
 run from +102 cents a share to -147; 25 positives out of 57 is below half, and with three to eleven round trips a
 symbol each figure is dominated by whichever single move its window happened to contain. **A rule like this needs many
 windows per symbol, and the only instrument here with more than one is MU**, at eight, and MU is one of the largest
-losers in the table. So the line is recorded as **unproven rather than closed**, with the replication it needs named:
-the same rule over MU's eight windows, which requires a reader for the ten level depth shape rather than the top of
-book shape, costs nothing to run, and is the next thing to do rather than a further search.
+losers in the table. So the line was left unproven pending the replication it named, and that replication has now been run in the same file
+by reading the depth shape instead: the same rule over MU's eight windows.
+
+| MU window | round trips | mean hold | gross a share | net a share | window net at 100 shares |
+|---|---:|---:|---:|---:|---:|
+| 1 | 7 | 12 min | +152.71 c | +149.76 c | +1048.35 USD |
+| 2 | 7 | 9 min | +43.29 c | +40.38 c | +282.65 USD |
+| 3 | 11 | 7 min | +38.64 c | +35.67 c | +392.35 USD |
+| 4 | 6 | 11 min | +35.50 c | +32.52 c | +195.14 USD |
+| 5 | 4 | 14 min | -76.25 c | -79.21 c | -316.85 USD |
+| 6 | 4 | 18 min | -129.00 c | -131.88 c | -527.51 USD |
+| 7 | 4 | 20 min | -261.00 c | -263.95 c | -1055.81 USD |
+| 8 | 2 | 40 min | -977.50 c | -980.38 c | -1960.77 USD |
+
+**Four windows are positive and four are negative, so the sign does not replicate**, and the median net is -23.34 cents
+a share against a median gross of -20.38. The shape of the failure is worth more than the number: the best window
+earned 149.76 cents a share and the worst lost 980.38, so **the rule wins small and loses big**, which is what a
+reversion rule does in a market that chops and then trends, because the exit is the crossing back or sixty minutes and
+a trend is therefore held for as long as the rule allows. **Line eight is closed**, and unlike the seven before it, it
+is closed by payoff asymmetry rather than by a cost, which is why the fix would be a trend filter and why that is a
+different claim than the one that was tested.
+
 
 ### The bar every next step has to clear
 
