@@ -165,6 +165,16 @@ recorded before anything can be said about it.
 
 ## The carry line: financing flows before carry strategies
 
+**The line is closed and it is kept on purpose, for two reasons.** The recorded run in
+[Performance History](PERFORMANCE_HISTORY.md) is a checked block, so the gate re-runs it and compares every value on
+every full run: deleting the code would either break that gate or turn the sharpest measurement in this project into a
+copied number, and **claims being re-derivable is the property this repository sells**. And it is the only mechanism
+here whose income accrues with **time** rather than per action -- an interval flow, a rate series, a two-leg ledger that
+reports gross and net notional separately, and a payback measured in hours -- which is what the one variant of this
+trade a Hong Kong account can reach and a 50 ms latency cannot touch would need: the **futures basis** on a CME micro,
+where the edge is term structure convergence over weeks rather than a venue differential over hours. That variant is
+unmeasured, and the existing machinery is what makes measuring it cheap.
+
 ### The carry gates executed: the three conditions the owner set, and the answer on nine months
 
 The line's own measurement needed 745 hours to pay for its fees against 728 hours held, and it charged the fee once.
