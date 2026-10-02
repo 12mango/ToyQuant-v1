@@ -692,7 +692,7 @@ opposite directions inside a single expiry.
 **So the rule returns a fail, and on two axes that do not overlap.** The cost clause needs a spread of about 3.5 cents
 to clear three times 0.585 USD a contract, and it is met only by series printing four to twenty times too little. The
 series with the flow has a 2.56 cent spread, which misses the three times test by about 1.4. The busiest series in the
-whole slab manages 1,147 prints, which at seventy-one prints a fill is nineteen fills where the target is thirty, and
+whole slab manages 1,147 prints, which at seventy-one prints a fill is sixteen fills where the target is thirty, and
 **not one series in the slab reaches the restated floor of about 2,130 prints in the window.**
 
 **What is not ruled out, stated before it is needed.** One expiry, one session, one product family. The series screened
