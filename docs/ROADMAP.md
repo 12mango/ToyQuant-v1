@@ -807,6 +807,40 @@ hundred and six windows to separate them at any size this account can run; the f
 percent of order instances; and no swept parameter moves the ratio by more than twenty percent. Nothing further will
 be bought to widen that sample, and the line is closed as a decision rather than left open as a hope.
 
+### Q1 and Q2 executed: the long dated options, and the verdict they return
+
+Two questions were run for nothing, on the trades already on disk, and they close the options line rather than extend
+it. The first is the critical fill ratio: with F contracts filled before the quote is replaced, the instance costs
+`max(1.00, 0.65 F) + 0.02 F`, so the sign of a fill depends on the spread alone and the size of the window against the
+position's own sigma depends on how many prints it takes to get one. That gives one number per series,
+
+    R_max = prints x (half spread - cost a contract) / sigma
+
+the largest number of prints per fill that still covers one window's own standard deviation, and it is comparable to
+the 71 prints a fill the equity screen's fill model used.
+
+**The long dated half, which is the only half the restriction allows.** 27 series at or above fifteen days have a
+measurable spread and sigma, and **all 27 clear the per contract cost on their spread alone** -- margins from 0.48 to
+121.48 USD a contract -- which is the first time in this project that a venue has passed the fee axis. **They then all
+fail the other axis**: the largest R_max is **43**, on an AAPL 315 put with 70 prints, and the median is in the single
+digits, against a reference of 71. The reason is visible in the print count: these series trade 5 to 264 times in two
+hours.
+
+**The line that decides it falls exactly on the expiry the owner excluded.** Across every expiry measured, the series
+whose R_max clears 71 are the one and three day ones -- 254, 203, 113, 111, 104 prints per fill allowed -- and every
+series at fifteen days or more sits below 43. So the options business that survives the tail risk restriction is
+precisely the business that fails the fill ratio, and the business that passes the fill ratio is the one ruled out as
+payment for insurance. The equity line's disease is unchanged and it has simply moved: **the fee is no longer what
+binds, the number of prints a window contains is.**
+
+**Two caveats, both recorded before the engine could be pointed at a rescue.** The sigma here is sampled at print
+times, which understates the risk of holding a position continuously, so the failure is conservative in one direction;
+and the bar assumes the position is held across the window, so an inventory path that mean reverts would raise R_max
+in proportion. One measurement could still change it and it is the only one left: the engine's fill ratio on a single
+long dated series, which would have to come in better than 43 prints a fill where the equity reference is 71. Until
+that is run, the line is closed as a recorded decision with its numbers, which is what the owner asked for rather than
+another round of tuning.
+
 ### The bar every next step has to clear
 
 The direction from the owner is that each iteration answer one question, prove basic profitability first, and only then
