@@ -929,6 +929,35 @@ twenty to forty five days and the best R_max in any of them is **56** against th
 -- **but the number of times a monthly series trades**, which is a few times a minute at best, against its own price
 moving tens of dollars a contract over the same two hours. Spend on this venue to date: **1.27 USD**.
 
+### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
+
+The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one
+minute mid from each file's top of book, a thirty minute simple moving average of it, an entry two ticks from the
+average, an exit on the crossing back or after sixty minutes, fills at the touch both ways, and the whole schedule
+charged a share on both sides. `tools/lowturnover_test.py` is the test.
+
+**It fails on the median, and the reason is the same arithmetic as the other seven lines rather than a new one.** 57
+symbols produced 25 whose net a share a round trip is positive, against a **median net of -0.36 cents a share and a
+median gross of +0.40**: the signal is worth about four tenths of a cent a share and the round trip costs about eight.
+
+| | symbol | round trips | mean hold | gross a share | net a share | window net at 100 shares |
+|---|---|---:|---:|---:|---:|---:|
+| best | AMD | 9 | 8 min | +103.78 c | +101.77 c | +915.89 USD |
+| | QQQ | 7 | 7 min | +37.14 c | +34.88 c | +244.16 USD |
+| | SPY | 11 | 4 min | +21.36 c | +19.05 c | +209.51 USD |
+| worst | LABU | 5 | 14 min | -145.60 c | -146.86 c | -734.30 USD |
+| | MU | 4 | 14 min | -92.25 c | -95.21 c | -380.85 USD |
+| | MSTR | 3 | 14 min | -28.67 c | -29.73 c | -89.19 USD |
+
+**What this run does not do is settle the rule, and the limitation is the sample rather than the arithmetic.** All 57
+symbols are the *same* two hours, so they are 57 independent draws of a statistic whose median is zero and whose values
+run from +102 cents a share to -147; 25 positives out of 57 is below half, and with three to eleven round trips a
+symbol each figure is dominated by whichever single move its window happened to contain. **A rule like this needs many
+windows per symbol, and the only instrument here with more than one is MU**, at eight, and MU is one of the largest
+losers in the table. So the line is recorded as **unproven rather than closed**, with the replication it needs named:
+the same rule over MU's eight windows, which requires a reader for the ten level depth shape rather than the top of
+book shape, costs nothing to run, and is the next thing to do rather than a further search.
+
 ### The bar every next step has to clear
 
 The direction from the owner is that each iteration answer one question, prove basic profitability first, and only then

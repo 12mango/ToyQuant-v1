@@ -79,3 +79,26 @@ is documented in `data/README.md` or `docs/USER_GUIDE.md`. What was actually red
 stale `site/` build of these documents and the working logs under `out/`, both of which stay out of the repository by
 construction. Deleting a referenced strategy would break the gates that make every number above re-derivable, which
 is the asset this phase produced.
+
+## The eight lines, and what is left when they are all closed
+
+The project set out to find a market where a personal account's quote pays for itself. It now has eight answers, each
+one a number rather than an opinion.
+
+| line | the number that closed it |
+|---|---|
+| crypto perpetuals, the micro E-mini, SPY | a fee that is a multiple of the spread the venue offers, so a quote cannot pay for itself at any width |
+| US large cap equities (MU, MSTR, AMD) | the quoting margin was positive in 16 of 16 windows and the position term was 10,588 USD against 941, which is 506 windows to separate; and the fee floor binds on 79 percent of order instances |
+| options at one day to expiry | the spread is payment for tail risk rather than a quoting edge, and the premium can be smaller than the fee floor |
+| options from fifteen days out | the fee axis passed for the first time in the project, and the print count then failed: the best of eight classes is R_max 56 against a reference of 71 |
+| funding rate carry, BTC, two venues, twelve months | 0 of 12 months clear the level and payback gates, and no run of a positive differential in any month earns the 36 USD round trip |
+| a low turnover reversion rule | unproven rather than closed: median net -0.36 cents a share against a median gross of +0.40, and 57 symbols in one window cannot separate a signal from a draw |
+
+**Three things survive all of them.** The engine: a market data handler, a matching engine, an order state machine, a
+queue model and a fee model, re-derived by four gate tiers on every commit. The criteria, which turned out to be the
+same three in a fixed order -- **the fee, then the position's own move, then the number of actions a window contains**
+-- with the binding one moving down that list on each new venue. And the recipe, which is what the eight lines actually
+bought: **one question a step, stated before the step; the measurement named before the money is spent; every claim
+re-derived by the binary; and two non-adjacent windows before anything is believed.**
+
+Total spent on data across all eight: **1.27 USD**, of which the funding histories were free.
