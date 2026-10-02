@@ -588,6 +588,36 @@ two-hour sessions -- is what two standard deviations need** to separate one from
 campaign's +39246.13 is the position. That is the honest state of the line: the fee question is settled in the
 quoting's favour, sixteen rows deep, and the question that remains is not a fee question.
 
+### Where the line goes next, and why the venue is the variable
+
+**The campaign settles the instrument and leaves the venue, and the four properties that decide a venue are written
+down as a test rather than as a preference.** A retail quoter needs fees low enough to be a term rather than the
+term itself; a spread wide in ticks rather than in basis points; no speed race; and a counterparty that is not a
+better informed market maker. US large cap equities fail all four -- a fixed one cent tick, a commission per share
+plus a regulatory fee on proceeds, microsecond competition, and Citadel on the other side -- and the eight windows
+above are what that failure looks like as arithmetic: 941 USD of margin a window against a 10588 USD position draw.
+The venues that pass the same four are where retail market making actually happens, and the repository already has
+the plumbing for two of them: **options on a US venue, where the fee is per contract rather than per share and the
+spread is a percentage of the premium rather than a tick**, and **crypto venues whose maker fee is zero or a
+rebate**, where the readers, the free archives and the carry ledger already exist. Neither is a rewrite; both are
+this engine pointed at a different contract, which is what it was built to be able to do.
+
+**The hedge axis has now been measured too, and it says the hedge instrument matters more than the hedge.** On the
+one day both instruments exist for, a MES hedge at a notional-matched beta removes **8 percent** of the inventory
+term at the one second horizon a fill lives on -- MES explains 9.4 percent of MU's one second variance, against 50.4
+percent at five minutes, where the same hedge removes 61.3 percent. So a crude cross product hedge is not a fix for
+a quoting strategy, and the reason is worth keeping: **the common factor only appears at horizons longer than a
+quote's life.** What that leaves is a screening question the existing tools can answer -- which instrument's returns
+explain an inventory's at the horizon the inventory is actually held -- and a same industry candidate, SMH or SOXX
+for a memory name and MU options for MU, is the first row of it.
+
+**And the deliverable of this phase is the method rather than the strategy.** What the eight windows bought for
+2.96 USD is not a profitable policy but a repeatable one: a pre-registered rule, an instrument priced a day at a
+time before it is bought, an engine that separates a quoting margin from a position term and a fee schedule from a
+commission, and four gates that re-derive every claim from the binary. Pointing that at a new venue class costs days
+and a few dollars, and the record of SPY, of the micro E-mini, of AAPL and of MU is the evidence that it works: four
+markets falsified with numbers rather than with opinions, which is the part of this project that is finished.
+
 | Spend | What it buys | Cost |
 |---|---|---|
 | the screen (gate 1) | top of book only, over a candidate list and a few days — **spent: 0.52 USD on thirty symbols, AAPL and TSLA pass** | 5 to 20 USD |
