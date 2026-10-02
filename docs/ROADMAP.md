@@ -868,6 +868,28 @@ is the whole of the options venue's apparent advantage and the reason the one da
 restriction removes those, the number that decides is the print count a window contains -- 5 to 264 against 7,623 --
 which is what Q1 and Q2 already measured.
 
+### Test A executed: the high flow names at 20 to 45 days, which closes the options line
+
+The one corner the expiry restriction allows that had never been measured was the monthly of the names where option
+volume lives. It cost 0.0426 USD and it fails: **0 of 41 series clear the reference.**
+
+| series, 2026-10-30 expiry | prints in two hours | median spread | sigma a contract | R_max |
+|---|---:|---:|---:|---:|
+| TSLA C355, the best of them | 184 | 0.35 | 53.88 | 56 |
+| NVDA C230 | 246 | 0.20 | 48.09 | 46 |
+| NVDA C235 | 237 | 0.15 | 37.72 | 41 |
+| TSLA C350 | 90 | 0.35 | 61.84 | 24 |
+| COIN C195 | 6 | 1.63 | 55.48 | 9 |
+
+**The hypothesis was that a high flow name's monthly would print ten to fifty times what a quiet name's monthly does,
+and the measurement says it prints the same**: 5 to 246 prints in two hours against 5 to 264 for AAPL, IWM, KO and
+XSP, so the flow in these names lives in the one day expiry and nowhere else. Eight classes have now been measured at
+twenty to forty five days and the best R_max in any of them is **56** against the reference of 71.
+
+**So the options line is closed, and the reason is no longer the fee** -- that axis passed, first time in this project
+-- **but the number of times a monthly series trades**, which is a few times a minute at best, against its own price
+moving tens of dollars a contract over the same two hours. Spend on this venue to date: **1.27 USD**.
+
 ### The bar every next step has to clear
 
 The direction from the owner is that each iteration answer one question, prove basic profitability first, and only then
