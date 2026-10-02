@@ -2246,37 +2246,67 @@ capital, and the row whose peak inventory is 100 shares is what the second of th
 
 ### What the account's fee schedule adds
 
-Every equity row above prices **one term**: a share commission of 0.0035 USD, which is 0.35 of a cent tick a side.
-The account's own schedule, read on 2026-10-02, adds three more, and one of them decides the sign of the row:
+Reading the broker's own pages on 2026-10-02 for what those terms actually are, they are these:
 
 | term | how it is charged | AAPL, 332.71 a share | SPY, 764.96 a share |
 |---|---:|---:|---:|
 | the share commission, Tiered at this account's volume | per share, both sides | +0.35 ticks | +0.35 ticks |
-| the exchange's maker rebate, passed through under Tiered | per share, on a passive fill | -0.29, an assumption of the same order as the commission and unverified | on a different tape, unverified |
-| the SEC fee, charged on **proceeds** | per share sold | **+0.92 ticks** | **+2.13 ticks** |
-| the FINRA TAF | per share sold | +0.017 ticks | +0.017 ticks |
+| the Nasdaq credit for adding displayed liquidity, from the broker's own NASDAQ/Island pass-through table (read there: remove 0.0030 USD, add (0.0013) USD) | per share, on a passive fill | **-0.13 ticks** | not read |
+| the SEC fee, charged on **proceeds**, at the published 0.0000206 | per share sold | **+0.685 ticks** | **+1.58 ticks** |
+| the NSCC and DTC clearing fee, 0.0002 USD a share | per share | +0.02 ticks | +0.02 ticks |
+| the FINRA consolidated audit trail fee, 0.000003 USD a share | per share | +0.0003 ticks | +0.0003 ticks |
+| the FINRA TAF | per share sold | prints as 0.00 on the schedule | 0.00 |
 
-A run's fills are about half buys and half sells, so per fill that is **0.53 ticks with the rebate and 0.82
-without it**, against the **0.640 ticks** of captured edge the AAPL conservative row measured. **Whether the rebate
-reaches the account therefore decides whether that row's quoting pays**: 0.53 covers the edge with 0.11 ticks to
-spare, 0.82 falls 0.18 short. The rebate and the routing are one question at this broker rather than two -- Fixed
-bundles the exchange fees and offers `Fixed - Direct Routing`, and it is Tiered that passes the rebate through --
-so the row is waiting on a channel answer and not on a code change.
+A run's fills are about half buys and half sells, so the arrangements the account can actually choose cost this per
+fill, against the **0.640 ticks** the AAPL conservative row captured:
+
+| arrangement | per fill | against the capture |
+|---|---:|---:|
+| Tiered, SmartRouted, exchange credit passed through | **0.583 ticks** | **+0.057 ticks, about 34 USD over the window** |
+| Tiered, SmartRouted, credit not passed through | 0.713 ticks | -0.073 ticks |
+| Fixed, SmartRouted, exchange fee bundled into the rate | 0.863 ticks | -0.223 ticks |
+| Fixed with API direct routing, 0.0075 USD a share | 1.113 ticks | -0.473 ticks |
+
+**So the fee schedule decides nothing, and the arrangement that would let a quote choose its venue is the worst of
+the four.** The best case leaves 0.057 of a tick a fill -- 34 USD on a two hour window whose position cost 3,340 --
+and every other case is negative. That is why the venue question is answered by recording where orders land rather
+than by paying for routing, and why the cross-day measurement is the only test left standing.
 
 Read across symbols, the same table says something the screen rule does not: because the SEC fee is charged on
-proceeds, **it grows with the share price**. A 765 dollar ETF pays about 2.1 ticks a side to sell where a 332
-dollar share pays 0.9, so the rule's "three times the fee per side" is not price independent, and the correction
-points the same way the rest of the equity evidence does -- at cheaper shares with wider spreads. The rate used
-here is not read from a fee rate advisory: the advisory this repository fetched on 2026-10-02 was the Section 6(b)
-**issuer registration** fee, 153.10 USD per million for fiscal 2025, which is not the transaction fee, so the
-number is the one the account's schedule implies for a sale and the cheapest way to check it is the account's own
-trade confirmation.
+proceeds, **it grows with the share price** -- 1.58 ticks a side to sell a 765 dollar ETF against 0.685 on a 332
+dollar share -- and at 0.685 it is **the largest single term in the row, 59% of the 0.583**, larger than the
+commission the model has been pricing all along. The rule's "three times the fee per side" is therefore not price
+independent, and the correction points the same way the rest of the equity evidence does -- at cheaper shares with
+wider spreads.
 
-Nothing in this section moves a measured number: every row above remains what the engine printed, and the terms
-here are added in prose so that a reader can see which of them the engine does not carry. The instrument the engine
-prices states a commission per share and nothing else, and the two fee terms of a sale plus the rebate of a passive
-fill are the change that would put them in it -- which is worth making when the rates are confirmed rather than
-guessed, and which is written down here so that it is not forgotten between the two.
+**One term could still turn the sign, and the broker's own note about it is written for a strategy that requotes.**
+Every market's commission table this repository could read carries a "minimum per order" row -- Japan, Singapore,
+Malaysia and India all print one, in their own currencies -- the US Fixed examples on the same page demonstrate
+1.00 USD for a 100 share order at 25 USD, and the API direct routed row prints `Minimum per order USD 1.00`; the
+Tiered figure this repository has been given is **USD 0.35**, and it is recorded here as reported rather than read,
+because three attempts to fetch the US commission table found it in the part of the page the fetcher truncates.
+What was read verbatim, in the Chinese rendering of the same page, is the note that decides how such a minimum
+applies:
+
+> "modifying an order is treated as cancelling the original order and replacing it with a new one. At some
+> exchanges, this can cause the modified order to be charged commission as if it were a new order. For example, if
+> you submit a 200 share order, 100 shares execute, and then you modify the order and the remaining 100 shares also
+> execute, then both 100 share orders are subject to the minimum commission."
+
+The AAPL row cancels or replaces **45,680 of its 45,907 orders** and its fills average **26 shares**, so a minimum
+that follows the order instance would be charged on almost every fill rather than once per hundred shares. The two
+readings bound the term with numbers the run already has: if the minimum follows the order, the commission stays at
+**210.58 USD**; if it follows every execution, **2,324 fills at 0.35 is 813.40 USD**, which is 3.9 times what the
+model charges and takes the per fill cost from **0.583 to 1.585 ticks** against a capture of 0.640. Those two are
+**535 USD apart on a window whose position term is 3,340**, so what this decides is whether the quoting covers its
+fee, not whether the window pays -- and the exact number needs one counter the engine does not print yet, the
+number of order instances that executed at least one share.
+
+Nothing in this section moves a measured number: every row above remains what the engine printed, and these terms
+are prose beside them so that a reader can see what the engine does not carry. The change that would carry them is
+now named and sized -- two fees on a sale, a credit on a passive fill, and a minimum per order instance -- and the
+first of those needs the counter above, which is a smaller change than the fee model itself and is worth making
+first, because it is what turns this paragraph's bracket into a number.
 
 
 

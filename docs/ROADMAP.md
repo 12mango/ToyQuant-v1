@@ -143,11 +143,16 @@ decided venue by venue rather than in general, which is why it is a question for
 plan on.
 
 What that does to the fee arithmetic is in
-[Performance History](PERFORMANCE_HISTORY.md#what-the-accounts-fee-schedule-adds), and it is not small. The SEC fee
-is charged on the **proceeds of a sale**, so in ticks it **scales with the share price**: at the rate this
-repository has not verified, about 0.9 of a tick on a 332 dollar share and about 2.1 on a 765 dollar one. That is a
-dimension the screen rule below does not have, and it points the same way the rest of the equity evidence does --
-at cheaper shares with wider spreads.
+[Performance History](PERFORMANCE_HISTORY.md#what-the-accounts-fee-schedule-adds), and it is not small. Reading the
+same pages for the terms themselves gives three numbers that matter: the **SEC fee is 0.0000206 of the proceeds of a
+sale**, so in ticks it **scales with the share price** -- 0.685 of a tick on a 332 dollar share and 1.58 on a 765
+dollar one -- and it is the largest single term in an equity fill; the **Nasdaq credit for adding displayed
+liquidity is 0.0013 a share** against 0.0030 for removing it, which is less than half what this document had
+assumed a maker rebate was worth; and **every market's schedule carries a minimum per order**, whose note on the
+same page says a modified order is charged as a new order. With those three, the four arrangements the account can
+choose come out at 0.583, 0.713, 0.863 and 1.113 ticks a fill against the 0.640 an AAPL fill captured, so **the fee
+decides whether the quoting covers itself and nothing more** -- and the arrangement that buys venue control is the
+worst of the four.
 
 **The conclusion is narrower than the question.** Only one market in this table has all three columns at once:
 a US ETF, priced in cents, with a commission that is a fraction of one, and a free daily depth archive to test
