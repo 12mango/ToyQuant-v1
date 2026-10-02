@@ -773,6 +773,57 @@ validated, one window before a session and one session before a week**. The recu
 for is a deliberate purchase each time rather than a standing subscription, and the zero-cost alternative —
 recording our own broker's feed — is the default once a live line exists.
 
+### The owner's three decisions, and what each one changes
+
+Three questions were left to the owner, and the answers move work rather than opinions. They are recorded with what
+each one changes in a measurement, because a decision that changes no number is a preference.
+
+**The fee floor is per order, and a requote is a new order.** The account holder confirms it directly: partial fills
+of the same order on the same trading day are charged once, while a cross-day execution and a cancel and replace each
+reset the order instance and are charged their own floor. The repository had already read the broker's own note saying
+exactly that, in the Chinese rendering of the page, and had already built the counter that measures how often it binds;
+what is new is that the figure is confirmed rather than reported, and that the trap is a stated risk rather than a
+footnote. **What it changes is the cost model rather than the market.** The options screen amortised the 1.00 USD floor
+over two contracts of one order, which assumes a fill sequence belongs to the order that produced it. A market maker
+requotes on every fair price move, so the floor is charged per requote cycle rather than per fill, and the term that
+decides a thin margin is the floor divided by the contracts that fill before the quote is replaced. The engine already
+reports that count, as filled order **instances** with a size histogram, and the AAPL window already shows the shape:
+**1,222 order instances against 2,324 fills, 79 percent of the instances filling fewer than 100 shares.** The queue
+measurement is therefore the measurement of two things at once, capture and the number of instances the floor is
+charged on, and it remains the only step left that can move the answer.
+
+**The options business is long dated or it is not a business.** The one day expiry series produced the best ratios
+measured anywhere in this project and they are set aside deliberately: a one day option's spread is the price of
+standing in front of expiry flow, so the capture is compensation for tail risk rather than a quoting edge, the premium
+can be smaller than the 1.00 USD floor itself, and the position's sigma is a lottery's. **The pre-registered
+restriction is a DTE above fifteen days with moderate liquidity**, which is the part of the options universe that can
+be run as a market rather than as an insurance book. Paper trading may still be opened, and its purpose is re-scoped
+with the restriction: it is the bench for the order API, the latency and the hedge logic, **not** a test of whether
+high frequency quoting pays.
+
+**The equity line is in hibernation, with its reasons measured.** The quoting margin was positive in sixteen of
+sixteen windows and the position term drowned it, **10,588 USD of sigma against 941 of capture**, which is five
+hundred and six windows to separate them at any size this account can run; the fee floor then binds on seventy-nine
+percent of order instances; and no swept parameter moves the ratio by more than twenty percent. Nothing further will
+be bought to widen that sample, and the line is closed as a decision rather than left open as a hope.
+
+### The bar every next step has to clear
+
+The direction from the owner is that each iteration answer one question, prove basic profitability first, and only then
+ask whether it can be run continuously. Written as a bar rather than an intention:
+
+1. **One question per step**, stated before the step runs, with the measurement named that answers it and the cost
+   named before it is spent.
+2. **Basic profitability** means, on the measured window, net capture per fill positive after the account's whole
+   schedule **including the per order floor**, and capture at least the size of one window's own position standard
+   deviation. The first is already printed as fees paid and minimum commission paid; the second is the quotient
+   measured above, and MU's 0.089 is the worked example of failing it.
+3. **Continuity** means the same sign on at least two non-adjacent windows, which is the check that one window was not
+   the market's accident.
+
+The engine core -- market data handling, the order state machine and the gates -- is the asset that survives all of
+this, and the venue and instrument decisions above are what it gets pointed at next rather than work to be redone.
+
 ### The execution order, once the seven hold
 
 The stages below are the ones a forward reading produces as well, because the shape of a live chain does not

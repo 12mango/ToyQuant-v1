@@ -2293,6 +2293,13 @@ applies:
 > you submit a 200 share order, 100 shares execute, and then you modify the order and the remaining 100 shares also
 > execute, then both 100 share orders are subject to the minimum commission."
 
+**And the mechanism is now confirmed rather than inferred from a page.** The account holder states the charge
+directly: partial fills of one order on the same trading day are charged once, while a cross-day execution or a cancel
+and replace resets the instance, so each is charged its own floor. That promotes the paragraph above from a note this
+repository read into a term the models are allowed to rely on, and it makes the requoting case the ordinary case
+rather than the corner: a maker that replaces its quotes on every fair price move meets the floor once per cycle, so
+the number that decides a thin margin is the floor divided by the contracts that fill before the replacement.
+
 The counter that decides it now exists, and on this window the answer is that the minimum applies. The run reports
 the filled order **instances** and their sizes, and AAPL shows **1,222 instances against 2,324 fills**, with
 **969 of them -- 79% -- filling fewer than 100 shares**, which is where 0.35 stops binding at a 0.0035 share rate:

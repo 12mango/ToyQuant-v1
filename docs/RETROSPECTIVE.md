@@ -53,6 +53,10 @@ outcome by an order of magnitude.**
   inventory shift, size, the exposure cap, the kill switch and the fee schedule have all been swept.
 * Four markets have therefore been falsified with numbers: crypto perpetuals, the micro E-mini, SPY and the US large
   cap equities, and in each case the reason is the ratio of the fee and the spread to the inventory's own move.
+* **The equity line is placed in hibernation rather than continued**, and its reasons are numbers rather than a
+  shortage of effort: the fee floor binds on seventy-nine percent of order instances, no swept parameter moves the
+  ratio by more than twenty percent, and separating a 941 USD capture from a 10,588 USD position term would take five
+  hundred and six windows. The C++ core stays as infrastructure; what is closed is the direction.
 
 ## What is open, and how each would be verified
 
