@@ -180,8 +180,11 @@ archives against a year of OKX daily archives, both keyless, for nothing.
 | 2024-04 | 14.68 | -21.32 | -1.30% | 1765 | 21 | 16 h | 136 h | 0 |
 | 2024-05 | 12.94 | -23.06 | -1.36% | 2070 | 18 | 20 h | 104 h | 0 |
 | 2024-06 | 39.29 | **+3.29** | **+0.20%** | 660 | 15 | 16 h | 160 h | 0 |
+| 2024-07 | 13.44 | -22.56 | -1.33% | 1993 | 15 | 16 h | 104 h | 0 |
 | 2024-08 | 3.72 | -32.28 | -1.90% | 7204 | 22 | 16 h | 80 h | 0 |
+| 2024-09 | 14.83 | -21.17 | -1.29% | 1748 | 17 | 24 h | 96 h | 0 |
 | 2024-10 | 2.43 | -33.57 | -1.98% | 11002 | 18 | 8 h | 72 h | 0 |
+| 2024-11 | 63.59 | **+27.59** | **+1.68%** | 408 | 16 | 16 h | 112 h | 0 |
 | 2024-12 | 31.69 | -4.31 | -0.25% | 845 | 11 | 16 h | 216 h | 0 |
 
 **No month clears all three gates, and every gate fails by an order of magnitude rather than by a margin.** The best
@@ -194,8 +197,8 @@ month, including the longest of two hundred and sixteen hours, earns enough to p
 the bleeding loop stated as a measurement: enter, pay the fee, watch the sign flip inside a day, leave, and pay it
 again.
 
-Two limits on the sample are recorded with the result. Nine of the twelve months are measured because three OKX
-monthly fetches failed and are being re-run, and the monthly figures are the two files' own windows rather than the
+Two limits on the sample are recorded with the result. All twelve months of 2024 are measured, the three whose first
+OKX fetch failed having been re-fetched, and the monthly figures are the two files' own windows rather than the
 engine's clock, which is why March reads 19.79 here against the recorded run's 17.58. The fee is the repository's own
 measured 18.00 USD a side for two legs, doubled for the exit, and the venue risk, the counterparty risk and the KYC
 wall the owner names are not in these numbers at all, because they can only make a failing result worse.
