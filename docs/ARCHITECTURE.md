@@ -19,6 +19,24 @@ The diagrams show control flow. The tables show ownership and responsibilities. 
 show the smallest representative implementation surface; detailed prose explains only the design
 decisions that are not obvious from those views.
 
+## For a reviewer in a hurry
+
+The four things this document is worth reading for, in the order an engineer would ask about them:
+
+* **the queue**, because it is the part most simulators fudge: a quote's fills are decided by what is ahead of it, the
+  model carries four settings from a conservative lower bound to an optimistic upper bound, and the recorded bound sweep
+  shows the conclusions of this repository do not move between them;
+* **the fee**, because it is charged the way a broker charges it: a per-unit commission, a maker and taker rate, a floor
+  per order instance, the fees that follow a sale's proceeds, and a credit for displayed liquidity — with the equity
+  schedule that made a one cent tick visible as a cost rather than as an assumption;
+* **the state machine**, because the order audit keeps what a strategy did rather than what it intended: filled order
+  instances with their size histogram, cancels before and after a fill, the queue consumed, and the markout of the fills
+  that arrived;
+* **the honesty of the measurement**, because the numbers quoted in [Performance](PERFORMANCE.md) and
+  [Performance History](PERFORMANCE_HISTORY.md) are re-derived by `tools/verify_l2.sh` rather than copied, and the
+  designs that were measured and then rejected are kept rather than deleted — [Low-Latency Design](LATENCY_DESIGN.md) is
+  that record.
+
 ## 1. System Map
 
 ```mermaid

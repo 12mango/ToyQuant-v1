@@ -19,6 +19,49 @@ ToyQuant replays market data through the complete trading loop — market events
 
 It is a toy project for learning and experimentation, not a production trading system. APIs, scenarios, and strategy behavior may change between versions.
 
+## What this repository is, in two halves
+
+**A low-latency C++20 replay engine.** A market data reader, an L2 ladder, a matching engine with price–time priority and a
+queue model, an order state machine, a fee model that charges a broker's schedule the way a broker charges it, and a
+portfolio ledger — re-derived by four gate tiers on every commit. The measured work behind it is in
+[Low-Latency Design](docs/LATENCY_DESIGN.md) and [Performance](docs/PERFORMANCE.md): a line reader that was 61 percent of
+an event and was halved, a ladder sized for one instrument, per-symbol state keyed by an integer id, a single-producer
+ring between the feed and the strategy, a stage profiler, and an integer-plus-scale price parse that is bit-identical to
+the decimal one.
+
+**A measurement project that used it to close eight markets with numbers.** The question was whether a personal
+account's quote can pay for itself, and the answer is no in every market tested, each closed by a quotient rather than
+by an opinion:
+
+| market | the number that closed it |
+|---|---|
+| crypto perpetuals, the micro E-mini, SPY | the fee is a multiple of the spread the venue offers |
+| US large cap equities | the quoting margin was positive in 16 of 16 windows against a position term of 10,588 USD, and the fee floor binds on 79 percent of order instances |
+| options one day out | the spread is payment for tail risk, and the premium can be smaller than the fee floor |
+| options fifteen days out | the fee axis passed for the first time; the print count did not, at R_max 56 against a reference of 71 |
+| funding rate carry, two venues, twelve months | 0 of 12 months clear the level and payback gates, and no run pays the 36 USD round trip |
+| a low turnover reversion rule | 4 of 8 windows positive, and the payoff is small wins against large losses |
+
+What that is worth to an engineer is the part an interview cannot fake: **the reason each of those doors is closed,
+measured rather than assumed** — the fee against the tick, the position's own move against the edge, the number of
+actions a window contains, and a 20 ms cancel latency that turned 0.095 ticks of capture into -0.44.
+[Retrospective](docs/RETROSPECTIVE.md) is the closing document and [Roadmap](docs/ROADMAP.md) is the reasoning behind
+it; the total spent on data across all eight lines was 1.27 USD.
+
+## Verification, because the claims are the product
+
+Every number in these documents is re-derived from the binary, and the gate is what enforces it:
+
+* `tools/verify_l2.sh fast` is the per-edit tier: the unit tests, an L2 slice with batch, order, fill, PnL and queue
+  invariants, the L1 checks, and the record-and-replay round trips;
+* `tools/verify_l2.sh all` adds the full-file stdout hash against a cached reference, and the same tests under
+  AddressSanitizer and UndefinedBehaviorSanitizer;
+* `tools/lint_prose.py` refuses a flag or a queue model named in a document that the binary does not accept, and
+  `tools/check_docs.py` re-derives every quoted run block;
+* the strategy rules and the pass criteria were written down **before** the data that decided them was bought, and every
+  download is priced with a free query first — `tools/screen_spread.py` and `tools/venue_ratio.py` refuse to spend
+  without a cap.
+
 ## Versions
 
 The line that predates the queue model — the Binance Trade+BBO replay, the legacy CSV and UDP inputs, and the
@@ -228,6 +271,7 @@ ToyQuant deliberately excludes real exchange connectivity, FIX, a risk gateway, 
 | Document | Contents |
 |---|---|
 | [Design Review](docs/DESIGN_REVIEW.md) | Why the demo is built this way: the constraints it holds itself to, the decisions and rejected alternatives behind each component, the measured headline results, what is still wrong with it, and the 30-second version of the pitch |
+| [Retrospective](docs/RETROSPECTIVE.md) | The closing document: the eight markets this project closed and the number that closed each one, the three things that survive them, and what the search phase left behind |
 | [User Guide](docs/USER_GUIDE.md) | CLI reference, scenarios, experiments, data contracts, and troubleshooting |
 | [Learning Path](docs/LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference |
 | [Architecture](docs/ARCHITECTURE.md) | Data flow, module responsibilities, matching rules, order lifecycle |
