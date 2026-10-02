@@ -2546,6 +2546,37 @@ window edge from a 10588 draw, and the rule the campaign was written to test -- 
 schedule -- is answered yes, sixteen times over, which is the answer the fee section has been looking for since the
 fee was found to be larger than a tick.
 
+**The Avellaneda and Stoikov question has now been asked of this engine too, and the answer is that the shift as
+this engine implements it makes the ratio worse rather than better.** The inventory-aware strategy shifts its quote
+centre by the position's fraction of the inventory limit, capped in ticks, which is the reservation price of that
+model in the form the engine can use; the recorded sweep runs the same eight MU windows at the same size and spread
+with a shift of one, two and six ticks against none:
+
+| setting | fills a day | units a day | quoting margin USD, summed | the position term USD, summed | net USD, summed |
+|---|---:|---:|---:|---:|---:|
+| none | 867 | 8,861 | +3096.26 | +2853.20 | **+5949.46** |
+| shift 1 | 1,132 | 11,320 | +3289.57 | -1524.38 | +1765.19 |
+| shift 2 | 1,244 | 12,434 | +3676.55 | -5631.03 | -1954.48 |
+| shift 6 | 1,411 | 14,104 | +4166.65 | -9678.39 | **-5511.74** |
+
+**The shift raises the quoting margin by 35 percent and the position term by more.** It brings 59 percent more
+units through without dropping the capture below 10.7 ticks a unit, so the margin grows -- and the position term
+grows from +2853.20 to -9678.39, which is a swing of 12531.59 on a sample whose margin moved by 1070.39. Per unit
+of fill the ratio goes from 4.4 ticks of margin against 4.0 of position to 3.7 against 8.6, so what the shift buys
+in volume it pays for in inventory.
+
+**The most useful part of the result is why, and it is a property of the unit rather than of the model.** The
+shift is given in ticks and the quote spacing is one tick, so a six-tick shift moves the reducing side six half
+spreads toward the mid -- an aggressiveness the model's optimum never asks for, since its reservation price moves
+by a fraction of the spread. **The Avellaneda and Stoikov version of this is therefore not tested by this sweep**,
+and what it would need is recorded rather than guessed: the same eight windows at a spread of five to ten ticks,
+with the shift held at or below half of it. That is free and it is the next run this question should have.
+
+**What the sweep does establish is that the position term is not a placement artefact.** Moving where the quotes
+sit, by six times the spacing, changes the margin by a third and the position term by five times the sample's whole
+margin, which is the strongest evidence yet that the term dominating every window in this document is the market's
+move across whatever inventory the strategy is carrying, and not something a quote can be placed away from.
+
 
 
 

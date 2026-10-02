@@ -56,6 +56,10 @@ struct AppConfig
     // default the recorded runs use. 0 means "use the default". It exists because the fill count is
     // dominated by where the quote sits, and that has to be measurable rather than argued about.
     double base_spread_ticks = 0.0;
+    // How far the inventory-aware strategy moves its quote centre at a full inventory, in ticks: the
+    // Avellaneda and Stoikov reservation price in the form this engine can use, where the shift is
+    // proportional to the position rather than solved from a risk aversion. 0 uses the strategy's own 2.0.
+    double inventory_shift_ticks = 0.0;
     // QueueModel::Lumpy settings: how many whole orders a level decrease is read as, and the seed for
     // the draws. Both default to the model's own choice, so a run without them is reproducible.
     uint64_t queue_lump_chunks = 0;

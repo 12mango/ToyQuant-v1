@@ -32,6 +32,7 @@ constexpr std::string_view kMaxPositionPrefix = "--max-position=";
 constexpr std::string_view kMaxExposurePrefix = "--max-exposure-usd=";
 constexpr std::string_view kKillSwitchPrefix = "--kill-switch-loss-usd=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
+constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
 constexpr std::string_view kEdgeCoverPrefix = "--edge-cover-ticks=";
 constexpr std::string_view kMinSpreadPrefix = "--min-spread-ticks=";
@@ -426,6 +427,17 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.base_spread_ticks = ticks;
+            }
+            else if (flag.compare(0, kInventoryShiftPrefix.size(), kInventoryShiftPrefix) == 0)
+            {
+                double ticks = 0.0;
+                std::istringstream stream(flag.substr(kInventoryShiftPrefix.size()));
+                if (!(stream >> ticks) || !(ticks > 0.0))
+                {
+                    error = "--inventory-shift-ticks must be a positive number of ticks";
+                    return false;
+                }
+                cfg.inventory_shift_ticks = ticks;
             }
             else if (flag.compare(0, kRefreshPrefix.size(), kRefreshPrefix) == 0)
             {

@@ -98,10 +98,21 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                                 refresh_price_ticks_override > 0 ? refresh_price_ticks_override
                                                                 : 2);
         base_config.flatten_band_units = config.flatten_band_units;
+        // The same fee terms the active strategy is given, so a comparison of the two is a comparison of the
+        // inventory shift rather than of the shift plus a gate one of them has and the other does not.
+        base_config.maker_fee_rate = instrument ? instrument->maker_fee_rate : 0.0;
+        base_config.fee_per_unit = instrument ? instrument->fee_per_share : 0.0;
+        base_config.multiplier = instrument ? instrument->multiplier : 1.0;
+        base_config.edge_cover_ticks = config.edge_cover_ticks_override;
+        base_config.min_spread_ticks = config.min_spread_ticks_override;
+        base_config.markout_cover = config.markout_cover;
         return std::make_unique<InventoryAwareL2MarketMaker>(
             InventoryAwareL2MarketMakerConfig{.base = base_config,
                                                .inventory_limit = inventory_limit,
-                                               .max_inventory_shift_ticks = 2.0});
+                                               .max_inventory_shift_ticks =
+                                                   config.inventory_shift_ticks_override > 0.0
+                                                       ? config.inventory_shift_ticks_override
+                                                       : 2.0});
     }
     if (strategy_name == "active_l2" || strategy_name == "adaptive_l2")
     {

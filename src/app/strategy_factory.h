@@ -25,6 +25,8 @@ struct StrategyFactoryConfig
     uint64_t order_size_override = 0;
     int64_t inventory_limit_override = 0;
     double base_spread_ticks_override = 0.0;
+    // The inventory-aware strategy's quote shift at a full inventory, in ticks. 0 leaves its own default.
+    double inventory_shift_ticks_override = 0.0;
     uint64_t refresh_price_ticks_override = 0;
     // The decision layer's expected-value gate: extra ticks a quote has to cover on top of the maker fee.
     // 0 leaves the gate off, which is what every run recorded in the documents asks for.
