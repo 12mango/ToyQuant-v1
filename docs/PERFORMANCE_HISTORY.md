@@ -2244,5 +2244,39 @@ PnL is measured on exposure the account is not funding, and `exposure_over_colla
 made that worse. A real account would hold that position against more capital or a smaller position against that
 capital, and the row whose peak inventory is 100 shares is what the second of those looks like.
 
+### What the account's fee schedule adds
+
+Every equity row above prices **one term**: a share commission of 0.0035 USD, which is 0.35 of a cent tick a side.
+The account's own schedule, read on 2026-10-02, adds three more, and one of them decides the sign of the row:
+
+| term | how it is charged | AAPL, 332.71 a share | SPY, 764.96 a share |
+|---|---:|---:|---:|
+| the share commission, Tiered at this account's volume | per share, both sides | +0.35 ticks | +0.35 ticks |
+| the exchange's maker rebate, passed through under Tiered | per share, on a passive fill | -0.29, an assumption of the same order as the commission and unverified | on a different tape, unverified |
+| the SEC fee, charged on **proceeds** | per share sold | **+0.92 ticks** | **+2.13 ticks** |
+| the FINRA TAF | per share sold | +0.017 ticks | +0.017 ticks |
+
+A run's fills are about half buys and half sells, so per fill that is **0.53 ticks with the rebate and 0.82
+without it**, against the **0.640 ticks** of captured edge the AAPL conservative row measured. **Whether the rebate
+reaches the account therefore decides whether that row's quoting pays**: 0.53 covers the edge with 0.11 ticks to
+spare, 0.82 falls 0.18 short. The rebate and the routing are one question at this broker rather than two -- Fixed
+bundles the exchange fees and offers `Fixed - Direct Routing`, and it is Tiered that passes the rebate through --
+so the row is waiting on a channel answer and not on a code change.
+
+Read across symbols, the same table says something the screen rule does not: because the SEC fee is charged on
+proceeds, **it grows with the share price**. A 765 dollar ETF pays about 2.1 ticks a side to sell where a 332
+dollar share pays 0.9, so the rule's "three times the fee per side" is not price independent, and the correction
+points the same way the rest of the equity evidence does -- at cheaper shares with wider spreads. The rate used
+here is not read from a fee rate advisory: the advisory this repository fetched on 2026-10-02 was the Section 6(b)
+**issuer registration** fee, 153.10 USD per million for fiscal 2025, which is not the transaction fee, so the
+number is the one the account's schedule implies for a sale and the cheapest way to check it is the account's own
+trade confirmation.
+
+Nothing in this section moves a measured number: every row above remains what the engine printed, and the terms
+here are added in prose so that a reader can see which of them the engine does not carry. The instrument the engine
+prices states a commission per share and nothing else, and the two fee terms of a sale plus the rebate of a passive
+fill are the change that would put them in it -- which is worth making when the rates are confirmed rather than
+guessed, and which is written down here so that it is not forgotten between the two.
+
 
 

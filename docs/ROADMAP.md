@@ -89,7 +89,7 @@ there continuous free depth to test the answer on.
 
 | Market | Tradable by a Hong Kong individual | Fee in ticks | Free continuous depth |
 |---|---|---|---|
-| US stocks and ETFs | yes, through a broker with US market access | a share commission is a fraction of a cent on a hundred dollar share whose tick is one cent, so about a third to a half of a tick a side, and a zero commission tier makes the fee not the wall at all | **no usable free depth**: IEX HIST is IEX's own book, so no national best bid can be built from it, and it is an order-level feed for a venue this account cannot rest on. The depth route that is used is paid and cheap: ten levels plus the trades for about two dollars a session |
+| US stocks and ETFs | yes, through a broker with US market access | a share commission is a fraction of a cent on a hundred dollar share whose tick is one cent, so about a third to a half of a tick a side; **the zero commission schedule is not available to a Hong Kong account (read 2026-10-02)**, and the per side cost is **not price independent**, because the SEC fee on a sale is charged on proceeds -- see the fee section below | **no usable free depth**: IEX HIST is IEX's own book, so no national best bid can be built from it, and it is an order-level feed for a venue this account cannot rest on. The depth route that is used is paid and cheap: ten levels plus the trades for about two dollars a session |
 | HKEX index futures | yes, through local brokers | no stamp duty on futures; the exchange and levy per contract are a fraction of the HK$50 HSI tick and a broker commission is of the same order, so about a tick a side, which is close to the width of a one tick quote | **no**: realtime and historical depth are licensed subscription products, so the only route is to record a broker's own realtime feed into the replay format |
 | HK cash equities | yes | a stamp duty of 0.1% a side is about ten basis points, an order of magnitude over any spread measured in this repository, plus levies and commission | no |
 | A-shares through northbound | yes | a sell side stamp duty of 0.05% plus commission, and settlement is T+1 | no |
@@ -125,6 +125,29 @@ within fifteen seconds as a violation.
 **Not confirmed by any page reached from here, and therefore not relied on**: a fifty messages per second client
 limit, a forced daily restart of the gateway, and whether a Hong Kong resident is offered the Lite schedule at
 all. Those need the account, and none of them changes what can be built next.
+
+Read on 2026-10-02, from the account's own pricing page and from the broker's SmartRouting page, now that an
+account exists. **The Lite schedule is not available to a Hong Kong resident**, so the zero commission tier this
+document's tables were written against is out, and both remaining schedules are Pro ones: **Fixed at 0.005 USD a
+share** and **Tiered at 0.0005 to 0.0035** a share by monthly volume. They are not the same product at two prices.
+**Fixed bundles the commission and the exchange fees and still passes the regulatory fees on a sale** — SEC and
+FINRA TAF — while **Tiered is fully unbundled**: a low commission, then exchange, clearing and regulatory fees per
+trade, and it is the schedule that **passes the exchange's maker rebate through to the account**. Routing is where
+they part company. The commission tables list **`Fixed - Direct Routing`** as a schedule of its own, which is the
+shape this document read on 2026-10-01; the SmartRouting page says **SmartRouting for US-listed securities is
+ordinarily for Pro accounts only** and that it is the facility which can be told to prefer the venue **paying the
+highest rebate**, per order or as a global default, so a maker that wants the rebate uses SmartRouting and a maker
+that wants to choose the venue uses the Fixed schedule, **and the two may not be available together**. One
+exception appears in the same tables -- "tiered - direct routing" on the EUIBSI venue -- so the combination is
+decided venue by venue rather than in general, which is why it is a question for the channel and not a fact to
+plan on.
+
+What that does to the fee arithmetic is in
+[Performance History](PERFORMANCE_HISTORY.md#what-the-accounts-fee-schedule-adds), and it is not small. The SEC fee
+is charged on the **proceeds of a sale**, so in ticks it **scales with the share price**: at the rate this
+repository has not verified, about 0.9 of a tick on a 332 dollar share and about 2.1 on a 765 dollar one. That is a
+dimension the screen rule below does not have, and it points the same way the rest of the equity evidence does --
+at cheaper shares with wider spreads.
 
 **The conclusion is narrower than the question.** Only one market in this table has all three columns at once:
 a US ETF, priced in cents, with a commission that is a fraction of one, and a free daily depth archive to test
@@ -395,7 +418,7 @@ from -- the check that the screen and the floor are counting the same thing.
 | 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
 | 5 | the broker's rate limits and latency carry the pace the strategy needs | its published limits, and the latency the repository already models | free |
 | 6 | the strategy survives a realistic round trip | the two latency flags the repository already has, at five and at fifty milliseconds — **run, and it failed** | free |
-| 7 | the sign survives the fee tiers | a zero commission tier, a maker rebate, and the worst realistic tier, with the rate at which it flips recorded | 5 to 10 USD |
+| 7 | the sign survives the fee tiers | **the three this account actually has, read 2026-10-02**: Tiered with the maker rebate passed through, Tiered without it, and Fixed, which bundles the exchange fee and offers `Fixed - Direct Routing`; the zero commission schedule is not available to this account | 5 to 10 USD |
 
 **A failure on any of the seven sends the quoting line back to a research entry**, and the repository returns to
 what it is best at, which is auditing the execution and the fee of a strategy developed elsewhere. That is a
