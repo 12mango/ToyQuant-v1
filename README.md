@@ -274,6 +274,7 @@ ToyQuant deliberately excludes real exchange connectivity, FIX, a risk gateway, 
 | [Retrospective](docs/RETROSPECTIVE.md) | The closing document: the eight markets this project closed and the number that closed each one, the three things that survive them, and what the search phase left behind |
 | [User Guide](docs/USER_GUIDE.md) | CLI reference, scenarios, experiments, data contracts, and troubleshooting |
 | [Learning Path](docs/LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference |
+| [Main Line](docs/MAINLINE.md) | The eleven steps to read the source in, with the measured result each step produced, and the per-part verdict on what to keep, freeze or delete |
 | [Architecture](docs/ARCHITECTURE.md) | Data flow, module responsibilities, matching rules, order lifecycle |
 | [Performance](docs/PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted |
 | [Low-Latency Design](docs/LATENCY_DESIGN.md) | Why each low-latency change is faster, how it was verified, and what was measured and rejected |

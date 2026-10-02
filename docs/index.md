@@ -9,6 +9,7 @@ project that is a mechanical answer: most of the claims here are re-derived by t
 |---|---|---|
 | evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
 | understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the evidence |
+| read the code | [Main Line](MAINLINE.md) | the module reference in [Architecture](ARCHITECTURE.md) |
 | run it | [User Guide](USER_GUIDE.md) | the [Data Files](https://github.com/12mango/ToyQuant-v1/blob/main/data/README.md) note for the input contracts |
 | know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](LATENCY_DESIGN.md) for why each change is faster |
 | see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the section named in whichever document quoted it |
