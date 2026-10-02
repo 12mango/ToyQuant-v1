@@ -257,6 +257,15 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
         out = us_equity_spec(symbol);
         return true;
     }
+    // The three the second screen passed under the account's own schedule (2026-10-02): the spread at their
+    // trades is 7.5, 10.8 and 12.6 times the round turn of that schedule and all three are above the activity
+    // floor, where AAPL fails the same rule at 2.57 and TSLA passes at 4.13. Registered the same way, and for the
+    // same reason, as the two above.
+    if (symbol == "MSTR" || symbol == "MU" || symbol == "AMD")
+    {
+        out = us_equity_spec(symbol);
+        return true;
+    }
     if (symbol == "MESZ6")
     {
         out = micro_es_spec(symbol);

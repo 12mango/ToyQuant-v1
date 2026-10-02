@@ -2411,6 +2411,41 @@ purchase this document would make is not more days of the same symbol; it is the
 spread is wide relative to its fee, which is the one measurement the screen's price column can still select for and
 the one the screen has not yet been run on.
 
+**It has now been run, and the engine confirms it.** Thirty single names were screened on 2026-10-02 for 0.295 USD
+and **three pass both halves with a schedule ratio far above anything before them**: MSTR at 7.482, MU at 10.770 and
+AMD at 12.572, against TSLA's 4.132 and AAPL's 2.573, with 3.55, 7.55 and 3.99 trade prints a second against the
+floor's 2.8. Their two-hour windows were then bought in ten levels for 0.202 USD and run through the pinned policy
+with the account's schedule, and they produce the first positive quoting margin this repository has measured:
+
+| symbol | price USD | capture ticks/unit | schedule round turn ticks | the floor USD | fills | units | capture less all fees USD | the position's own move USD | net USD |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| MU | 1073.76 | **12.5337** | 2.693 | 150.21 | 831 | 12,584 | **+1246.6** | +5735.3 | **+6981.9** |
+| AMD | 616.15 | 9.7868 | 1.750 | 55.37 | 371 | 9,781 | **+812.8** | -1842.3 | -1029.5 |
+| MSTR | 155.96 | 1.3952 | 0.802 | 68.24 | 641 | 20,604 | **+137.5** | -1021.5 | -884.0 |
+
+Three facts, in the order they matter.
+
+* **The quoting pays for itself, which is new.** Capture less the commission, the regulatory fee, clearing, the
+  audit trail, the rebate **and the minimum per order** is positive on all three, by 137 to 1247 USD a window, and
+  the minimum is the term the screen deliberately left out: 210 to 518 orders were charged it, for 55 to 150 USD.
+  The rule the screen applies without the floor is therefore **conservative**, and the floor did not overturn it.
+  Compare the two symbols this section is named after, where the same arithmetic is -181 USD a window.
+* **The window's own result is still the position's.** MU's gross of 7312.40 contains 1577 of capture and 5735 of the
+  mid moving while the inventory was held; AMD's -884.98 is 957 of capture against -1842 of position; MSTR's -884.03
+  is 287 of capture against -1021. The same pattern as every other row in this document, and the same conclusion:
+  the quoting is now a positive term and the position is still the larger one.
+* **But the ratio has moved enough to be measurable.** Against a per-window position draw on the order of 3000 USD,
+  an edge of 137 to 1247 USD needs **23 to 1900 windows** by the arithmetic above, where the -181 to 37 USD edge of
+  AAPL needed 3,600 to 26,000. The best of these is one month of daily two-hour sessions rather than fifteen years,
+  which is the first time any symbol in this repository has been inside a retail timeframe.
+
+**Two caveats are written down before anything is concluded from it.** The inventory limit is in shares, so 1,000
+shares is 1,165,040 USD of peak exposure on MU against 363,631 on AAPL, and a position draw rides on that number:
+the three rows are not size-matched, and the next run should hold the notional comparable rather than the share
+count. And one window is one draw, so what these rows establish is that the screen's second rule **selects symbols
+whose quoting covers their whole schedule**, which is the claim the rule makes; they do not establish an expected
+value, and the windows needed for that are the ones the third fact counts.
+
 
 
 
