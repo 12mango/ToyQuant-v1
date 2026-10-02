@@ -841,6 +841,33 @@ long dated series, which would have to come in better than 43 prints a fill wher
 that is run, the line is closed as a recorded decision with its numbers, which is what the owner asked for rather than
 another round of tuning.
 
+### The venue picker: what a top of book ratio can and cannot decide
+
+`tools/venue_ratio.py` computes the same quotient on any top of book file the repository already owns, and reports it
+as the largest number of prints per fill that still covers one window's own standard deviation -- a fill ratio, and so
+comparable to the 71 prints a fill the equity screen used. It was run for nothing over the two things already on disk:
+the sixty equity files in the screen cache, and the option series bought for the screens above.
+
+| group | clip | best R_max | reading |
+|---|---:|---:|---|
+| 60 US equities, whole schedule plus the SEC fee and the maker rebate | 1 share | none, every one negative | 0.35 USD on one share is seventy times the half spread of a one cent market |
+| the same | 100 shares | MU 1298, AMD 985, TSLA 872, AAPL 784, CCL 295 | amortising the floor makes every liquid name clear the reference |
+| 128 option series, 0.65 USD a contract and a 1.00 USD floor | 1 contract | AAPL P332.5 at 254, then 203, 192, 177, 113 | a contract is large enough a unit that one instance pays its own floor |
+| the same | 2 contracts | 344, then 214, 177 | the floor stops binding at two contracts |
+
+**And the table does not settle the venue, which is the finding rather than a disappointment.** The ratio flatters the
+wide ticked and heavily traded names -- MU's 1298 prints of room per fill against the options' 254 -- while the engine
+measured MU as a loss over eight windows. The two sigmas are different quantities: this one is the standard deviation
+of one unit's price, and the engine's 10,588 is the standard deviation of the position the policy actually builds,
+which is the price move multiplied by the inventory it carried. **A one lot ratio is a necessary condition and not a
+sufficient one, so it cannot rank venues against each other**, and reading it as a ranking would have repeated the
+mistake the last three sections each corrected.
+
+**What it does settle is the size of a unit.** A single contract can pay its own floor and a single share cannot, which
+is the whole of the options venue's apparent advantage and the reason the one day series stood out. Once the expiry
+restriction removes those, the number that decides is the print count a window contains -- 5 to 264 against 7,623 --
+which is what Q1 and Q2 already measured.
+
 ### The bar every next step has to clear
 
 The direction from the owner is that each iteration answer one question, prove basic profitability first, and only then
