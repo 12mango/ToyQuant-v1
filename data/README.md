@@ -262,7 +262,18 @@ python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_15
 The last form runs on a file already on disk, which is how the tool is tested without spending anything, and it
 accepts a ten-level file because that schema carries the top of book columns as well. Downloads are cached under
 `data/v2/screen/`, named by symbol and window, so a symbol that has been screened once can be re-measured for
-nothing. What it reports, and why it reports two distributions:
+nothing.
+
+**The cheap schema is a way to rank a symbol and not a substitute for the ten-level one, and that was measured
+rather than assumed** (2026-10-02, and it cost nothing because the AAPL file for the recorded window was already in
+the cache): converted by `tools/fetch_databento.py --convert` and run through the same policy as the ten-level
+file, top of book gives **1,182 fills against 2,324** and **67,157 submitted orders against 45,907**. The engine's
+own output says why -- with one level, a book whose touch is taken has nothing left to become the new touch, so
+quotes land behind the touch 23,148 times instead of 11,596 -- which is also why this script is only ever read for
+its spread, its trade counts and its cost: the strategy runs on ten levels, and a top-of-book file buys a different
+measurement rather than the same one for less.
+
+What it reports, and why it reports two distributions:
 
 * **the median book spread next to the median spread at the trades.** They are not the same number, and the second
   is the one that matters: SPY's book has a median of 2.000 ticks over its recorded two hours while the rows where

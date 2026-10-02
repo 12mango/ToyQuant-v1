@@ -421,7 +421,7 @@ from -- the check that the screen and the floor are counting the same thing.
 | # | Must be true | The cheapest way to kill it | Cost |
 |---|---|---|---|
 | 1 | the half spread at the trades is at least three times the fee per side | `tools/screen_spread.py`, which prices the window before it spends and refuses to download without a stated cap — **run: AAPL and TSLA pass, thirty symbols, 0.52 USD** | 5 to 20 USD |
-| 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open | 10 to 20 USD, or 40 to 95 for the sixty-odd sessions the expiring credit makes affordable — see the budget section below |
+| 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open — **its first half is answered for nothing as of 2026-10-02**: the AAPL window cut into eight leaves the capture positive in all eight, and the position term is thirty times the edge, so the second half is unanswerable at a personal account's scale rather than merely unfunded | 10 to 20 USD for full sessions, or **2.30 for ten two-hour windows**, which is the unit every recorded equity row uses — see the budget section below |
 | 3 | our order really rests where we measured it | pin a destination and re-measure, or record where orders actually land for a week and measure that | free, then 1 to 2 USD |
 | 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
 | 5 | the broker's rate limits and latency carry the pace the strategy needs | its published limits, and the latency the repository already models | free |
@@ -450,6 +450,33 @@ rather than fell, and the gate that carries the line is now the second one: does
 the position's own move separated out, across days a single session cannot speak for. Gates 3, 4 and 5 are free
 and need a channel answer, and the fee tiers (7) are worth 5 to 10 USD now that a symbol exists to run them on.
 
+**The second gate has now been taken as far as it can be taken, for nothing, and it returns a pass and then a dead
+end.** Cutting the AAPL window into eight quarter hours needs no new data: `tools/analyze_l2_windows.py` cannot cut
+these files, because it re-runs the engine per window and a converted Databento file carries one snapshot, in its
+first row, so a slice has no book state to apply its deltas to. The engine already writes every fill it made, so
+`out/probe_windows.py` cuts the window from its own ledger instead, and the buckets say two things the purchase
+could not have said better. **The capture is positive in all eight quarters**, +0.26 to +1.38 ticks a unit, mean
++0.70, so the first half of the gate passes and the quoting edge is not a one-window artefact. **The position term
+swings by 1,930 USD inside one of those quarters**, against a fee bill of 210.58 for the whole two hours, and the
+single bucket of the eight that is positive is positive because its drift was +12 rather than because its capture
+paid: that bucket's capture, +0.3794, is under the 0.579 the schedule charges a unit before any minimum. That
+leaves the expected value: 0.6402 ticks captured against 0.940 a unit charged with the minimum per order and 0.579
+without it is **-181 USD a window or +36.70**, so the floor decides the sign and nothing else does -- but a per
+window position draw on the order of 3,000 USD against an edge of 37 to 100 makes the sign unobservable, needing
+3,600 to 26,000 windows, or fifteen years of daily two-hour sessions at the cheap end. Smaller size does not help,
+because both terms are proportional to the volume quoted, which is what makes this a dead end rather than a
+funding problem. The rows are in
+[Performance History](PERFORMANCE_HISTORY.md#what-the-accounts-fee-schedule-adds).
+
+**The cheap schema was priced as a way around that, and measured against the expensive one instead of assumed.**
+The screen's own downloads are top of book only, under the cached files in `data/v2/screen/`, and an AAPL file for
+the recorded window was already there, so the comparison cost nothing: converted and run through the same policy it
+gives 1,182 fills against the ten level file's 2,324, and 67,157 submitted orders against 45,907. The mechanism is
+visible in the same output -- with one level, a book whose touch is taken has nothing left, so quotes land behind
+the touch 23,148 times instead of 11,596 -- which is why **the cheap schema is not a substitute for a measurement,
+while a two-hour window is the measurement and costs a quarter of a full session**, and the budget below is
+corrected accordingly.
+
 ### The data budget, and its deadline
 
 One budget fact changes how the three remaining gates should be run rather than whether they can be: the
@@ -467,20 +494,33 @@ a re-download of the same window costs the same as the first one.
 What it buys, at the rates recorded above (0.5 USD a gigabyte of DBN on the micro E-mini, 2 on an equity, and a
 two-hour equity window under a dollar):
 
+**The unit matters more than the rate, and the estimates below were written before that was noticed.** They are
+priced for **full sessions of six and a half hours**; every recorded US equity row is a **two-hour window**, a
+quarter of a session, and it is the window that a gate is measured on. At the measured 0.23 USD for AAPL's two
+hours in ten levels, **ten sessions of two hours cost 2.30 USD and the sixty-odd sessions cost 14**, against the 10
+to 20 and 40 to 95 written above. The cheap top-of-book schema is **not** the way to that number -- it was measured
+on 2026-10-02 and it moves the fills and the orders by half, so it buys a different measurement rather than the same
+one for less -- and the route to a cheaper campaign is the window length and the symbol count, both of which the
+recorded rows already use one of.
+
 | Spend | What it buys | Cost |
 |---|---|---|
 | the screen (gate 1) | top of book only, over a candidate list and a few days — **spent: 0.52 USD on thirty symbols, AAPL and TSLA pass** | 5 to 20 USD |
-| two to three months of daily sessions for the surviving symbol | the out-of-sample campaign (gate 2) at a strength the roadmap's eight to ten sessions cannot reach, sixty-odd sessions instead — **the next purchase, on AAPL or TSLA, and the one that now carries the line** | 40 to 95 USD, and the screen's own row counts narrow it before anything is bought |
+| two to three months of daily sessions for the surviving symbol | the out-of-sample campaign (gate 2) at a strength the roadmap's eight to ten sessions cannot reach, sixty-odd sessions instead — **now the second priority rather than the next purchase, because the probe above shows what the campaign would measure is below the noise it would measure it in** | **2.30 USD for ten two-hour windows, 14 for sixty**, and the screen's own row counts narrow it before anything is bought |
 | the fee tiers (gate 7) | the same window under a zero commission tier, a rebate and the worst realistic tier | 5 to 10 USD |
 
 **The recommendation is to front-load the evidence, and it has now been followed once.** The other reading of a
 credit with a date on it is to hoard it, and that buys nothing: it is 124 USD of historical data that becomes
 zero on 2027-03-30, while everything above together is less than the balance. So the screen ran first, for 0.52
 USD, because it is what decides whether any of the rest is worth buying, and it produced two symbols. The
-out-of-sample campaign is next and it has a specific question now -- whether the capture stays positive once the
-position's own move is separated out, which is the difference between "the fee is covered" and "the window pays"
--- so it runs as deep as the surviving symbol's own volume makes affordable, which is a stronger version of gate 2
-for the same money; and whatever is left is either spent on more days before the date or written down here as
+out-of-sample campaign's own question has now been answered by a free probe rather than by the campaign: the
+capture does stay positive, and it stays positive below the position noise at any size this account can run. **So
+the next purchase is one more screen rather than a campaign**, because the pre-registered rule has a price column
+it has never been run on -- the SEC fee is charged on the proceeds of a sale, so a cheaper share with the same
+spread in ticks pays a smaller regulatory fee for the same capture -- and a candidate list of cheaper, wider names
+is a few dollars of top of book, judged against a rule that was written down before any of them was screened. The
+campaign follows only if that screen produces a symbol whose capture clears the account's **whole** schedule rather
+than its commission; and whatever is left is either spent on more days before the date or written down here as
 forfeited, **with the amount**, so that the loss is a recorded decision rather than a quiet one. Two things do not
 consume it at all: every replay, sweep and gate run after a download, which is free forever, and the live and paper
 phases, whose data comes from our own recorded feed rather than from a vendor.

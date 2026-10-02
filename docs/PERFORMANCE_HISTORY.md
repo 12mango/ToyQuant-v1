@@ -2350,5 +2350,67 @@ section reached before with a number instead of a bracket. Every term is a param
 priced exactly as every recorded row was -- the baseline is unchanged to the last digit -- and the account's first
 trade confirmation is what should replace the rates used here.
 
+**The window can be cut into eight for nothing, and the answer it gives is the one gate 2 was going to buy.**
+`tools/analyze_l2_windows.py` cannot cut these files: it re-runs the engine per window and needs a book baseline at
+each cut, and a converted Databento file carries one snapshot, in its first row, so a slice would hand the engine a
+book built from deltas with no state to apply them to. The engine already writes every fill it made, with its
+timestamp, side, price, quantity and fee, so the same question comes out of one run of the whole window instead:
+walk the depth file's absolute level sizes into a touch midpoint series, join it with the ledger, and bucket.
+`out/probe_windows.py` does that, and its aggregate row is what makes its buckets readable:
+
+| term | the probe | the engine's own line |
+|---|---:|---:|
+| fee USD | 210.58 | **210.584** |
+| capture USD | 419.59 | 385.16 (`captured_edge_usd`) |
+| the inventory term USD | -3695.40 | -- (the engine books it inside `net_pnl_usd`) |
+| net USD | -3486.39 | -3165.53 |
+
+The fee agrees to the cent, which is the ledger checking itself; the capture differs by nine percent because the
+probe measures the mid at the fill while the engine measures the quote's own distance, and the net differs by ten
+percent for the same reason. A ten percent proxy does not settle a tenth of a tick, so the aggregate is what it is
+used for -- as a check that the buckets add up -- and the buckets are then read for their **spread**, which no
+proxy error can hide:
+
+| 15 minutes | fills | capture ticks a unit | inventory term USD | net USD |
+|---|---:|---:|---:|---:|
+| 00-15 | 502 | +1.3775 | -1929.82 | -1800.76 |
+| 15-30 | 325 | +0.8367 | -128.28 | -83.78 |
+| 30-45 | 197 | +0.3794 | +12.19 | **+13.68** |
+| 45-60 | 341 | +0.3610 | -553.90 | -553.00 |
+| 60-75 | 262 | +0.3475 | -112.26 | -112.44 |
+| 75-90 | 185 | +0.2605 | -148.99 | -153.43 |
+| 90-105 | 285 | +0.6726 | -229.12 | -206.34 |
+| 105-120 | 227 | +0.6055 | -605.21 | -590.32 |
+
+Three readings, and the third is the one that closes the question.
+
+* **The capture is positive in all eight buckets**, +0.26 to +1.38 ticks a unit, mean +0.70. The quoting edge is
+  therefore not an artefact of one window: gate 2's first half -- "capture stays positive across days" -- is
+  already answered, for nothing, and the answer is yes.
+* **The inventory term swings by 1930 USD inside a single quarter hour of a two hour window**, against a fee bill
+  of 210.58 for the whole of it. One bucket's drift is ten fee bills.
+* **One bucket in eight is positive, and it is positive because its drift was +12**, not because its capture
+  covered the cost: that bucket's capture, +0.3794, is below the 0.579 the schedule charges a unit before any
+  minimum.
+
+That leaves the line's expected value, which is the whole question, computable without another download. A unit of
+fill captured 0.6402 ticks and the account's schedule charges 0.940 a unit with the minimum per order and 0.579
+without it, so one window's expected value is **-181 USD** if the minimum follows the order and **+36.70** if it
+does not: **the floor decides the sign and nothing else does.** What the floor cannot decide is whether the sign is
+observable. The inventory term drew -3695 in this window and -1929 in its first quarter hour, so its per window
+standard deviation is on the order of 3000; separating an edge of 37 to 100 USD from that at two standard
+deviations needs between 3,600 and 26,000 windows, or fifteen years of daily two hour sessions at the cheap end. A
+smaller size does not help, because both terms are proportional to the volume quoted: the ratio is 0.64 ticks of
+capture against a position term that is thirty times the edge, at any size a personal account can run.
+
+**So the purchase that was going to decide this is no longer the purchase that would.** Gate 2's first half is
+answered for nothing and its second half is unanswerable at this scale rather than merely unfunded, and what is
+left of the quoting line is the fee arithmetic above: a market where the capture covers the commission 1.83 times
+and a schedule -- whose smallest term, a minimum per order, is larger than the whole edge of the window. The next
+purchase this document would make is not more days of the same symbol; it is the same two hours of a symbol whose
+spread is wide relative to its fee, which is the one measurement the screen's price column can still select for and
+the one the screen has not yet been run on.
+
+
 
 
