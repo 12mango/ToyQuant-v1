@@ -48,6 +48,24 @@ class Pipeline
         position_limit_ = limit;
     }
 
+    // The hard exposure cap in USD and the loss at which the run stops quoting. See the flags of the same
+    // names: the cap is in dollars rather than shares because the same share count is three times the
+    // exposure on a thousand dollar share, and the switch stops quoting rather than flattening.
+    void set_hard_exposure_limit_usd(double limit)
+    {
+        hard_exposure_limit_usd_ = limit;
+    }
+
+    void set_kill_switch_loss_usd(double loss)
+    {
+        kill_switch_loss_usd_ = loss;
+    }
+
+    bool kill_switch_triggered() const
+    {
+        return kill_switch_triggered_;
+    }
+
     // The share schedule terms a broker charges at order level rather than per fill: the commission per unit,
     // and the floor one order's commission has under it. Both zero by default, so a run that sets nothing
     // charges exactly what it charged before the floor could be modelled. The commission is the broker's own
@@ -167,6 +185,14 @@ class Pipeline
     int64_t pending_buy_quantity_{0};
     int64_t pending_sell_quantity_{0};
     uint64_t risk_rejected_orders_{0};
+    // The hard limits this run was given, and what they did. The switch is a latch: once it trips it stays
+    // tripped, and every order the strategy asks for afterwards is counted rather than submitted.
+    double hard_exposure_limit_usd_{0.0};
+    double kill_switch_loss_usd_{0.0};
+    uint64_t hard_limit_rejections_{0};
+    bool kill_switch_triggered_{false};
+    uint64_t kill_switch_ts_{0};
+    uint64_t kill_switch_rejected_orders_{0};
     double starting_cash_usd_{0.0};
     double unit_notional_usd_{0.0};
     // USD value of one price unit in one quantity unit, from the instrument: 1 unless the contract has a

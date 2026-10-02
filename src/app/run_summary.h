@@ -194,6 +194,16 @@ struct RunSummary
     int64_t strategy_net_position{0};
     uint64_t strategy_position_mismatches{0};
     uint64_t risk_rejected_orders{0};
+    // The hard limits and what they did. `max_exposure_limit_usd` and `kill_switch_loss_usd` echo the
+    // flags, 0 when they were not given; `hard_limit_rejections` counts orders the exposure cap refused and
+    // `kill_switch_rejected_orders` counts everything the strategy asked for after the switch tripped, with
+    // `kill_switch_ts` the moment it did.
+    double max_exposure_limit_usd{0.0};
+    uint64_t hard_limit_rejections{0};
+    double kill_switch_loss_usd{0.0};
+    bool kill_switch_triggered{false};
+    uint64_t kill_switch_ts{0};
+    uint64_t kill_switch_rejected_orders{0};
     double starting_cash_usd{0.0};
     double max_abs_exposure_usd{0.0};
     uint64_t exposure_over_collateral_fills{0};
@@ -303,6 +313,12 @@ struct RunSummary
                << " max_quote_lifetime=" << execution_quality.max_quote_lifetime
                << " position_limit=" << position_limit
                << " risk_rejected_orders=" << risk_rejected_orders
+               << " max_exposure_limit_usd=" << max_exposure_limit_usd
+               << " hard_limit_rejections=" << hard_limit_rejections
+               << " kill_switch_loss_usd=" << kill_switch_loss_usd
+               << " kill_switch_triggered=" << kill_switch_triggered
+               << " kill_switch_ts=" << kill_switch_ts
+               << " kill_switch_rejected_orders=" << kill_switch_rejected_orders
                << " strategy_net_position=" << strategy_net_position
                << " strategy_position_mismatches=" << strategy_position_mismatches
                << " starting_cash_usd=" << starting_cash_usd

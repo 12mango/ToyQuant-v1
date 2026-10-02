@@ -365,6 +365,11 @@ The main comparison metrics are:
   either convention is computable from this field exactly.
 - `min_commission_orders`, `min_commission_paid` — how many orders were charged a schedule's floor under one
   order's commission and what it added, both zero unless `--fee-schedule=min=...` names a floor
+- `max_exposure_limit_usd`, `hard_limit_rejections` — the exposure cap the run was given and how many orders it
+  refused, both zero unless `--max-exposure-usd=...` names one
+- `kill_switch_loss_usd`, `kill_switch_triggered`, `kill_switch_ts`, `kill_switch_rejected_orders` — the loss the
+  switch was set at, whether it tripped, the timestamp it did, and how many orders the strategy asked for after
+  that and did not get. All zero or false unless `--kill-switch-loss-usd=...` names a loss
 - `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is
@@ -417,6 +422,8 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--funding-rates=FILE` | Apply an instrument's funding history as the replay passes each settlement | Off, and the summary then has no `[FUNDING]` line |
 | `--maker-fee-rate=R` | Replace the venue's maker rate, for the fee question; the run echoes it in its `[Mode]` line and may be negative for a rebate | Off, the venue's own rate |
 | `--fee-schedule=KEY=VALUE[,...]` | Price a run under a broker's own schedule instead of the venue's. Keys: `min` (a floor under one order's commission, USD), `regulatory` (a fraction of the proceeds of a sale), `clearing` and `audit` (USD a share on every execution), `rebate` (USD a share of credit for adding liquidity). All five are 0 unless named and the `[Mode]` line reports the five in force | Off: the venue's own schedule, which is what every recorded row uses |
+| `--max-exposure-usd=X` | Refuse any order whose projected marked exposure would pass X dollars. It is in dollars rather than in shares because the same share count is three times the exposure on a thousand dollar share, which is the difference between MU and AAPL in the recorded rows | Off: no cap, which is what every recorded row uses |
+| `--kill-switch-loss-usd=X` | Stop the run quoting once realised plus unrealised reaches a loss of X dollars. It is a latch: checked once a cycle before anything is submitted, it stays tripped, and it stops quoting rather than flattening | Off: the run quotes to the end of its input |
 | `--markout-cover` | Quote only where the capture also covers what passive fills at that distance have cost, measured from our own resolved fills | Off |
 | `--flatten-band=N` | Reduce a position above N units with a taker order at the touch instead of carrying it | Off |
 | `--live-pacing[=SPEED]` | Deliver the replay against the wall clock at this speed and report how late it ran as `[LIVE]`; the fifth positional argument on this mode means the same at real time | Off, which reads the file as fast as it can |

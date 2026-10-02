@@ -721,6 +721,12 @@ RunSummary Pipeline::summary() const
             .strategy_net_position = strategy_.net_position(),
             .strategy_position_mismatches = strategy_position_mismatches_,
             .risk_rejected_orders = risk_rejected_orders_,
+            .max_exposure_limit_usd = hard_exposure_limit_usd_,
+            .hard_limit_rejections = hard_limit_rejections_,
+            .kill_switch_loss_usd = kill_switch_loss_usd_,
+            .kill_switch_triggered = kill_switch_triggered_,
+            .kill_switch_ts = kill_switch_ts_,
+            .kill_switch_rejected_orders = kill_switch_rejected_orders_,
             .starting_cash_usd = starting_cash_usd_,
             .max_abs_exposure_usd = max_abs_exposure_usd_,
             .exposure_over_collateral_fills = exposure_over_collateral_fills_,
@@ -795,8 +801,48 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         engine_.cancel_order(order_id);
     }
 
+    // The kill switch, checked once a cycle before anything is submitted, and deliberately here rather than in
+    // the strategy: a limit a strategy can reason about is a limit the strategy can talk itself out of. It
+    // stops quoting and it does not flatten -- flattening has been measured on this engine and costs more than
+    // it saves -- and the strategy's own cancels still run above, so what is already resting comes back on the
+    // next cycle instead of staying at the venue.
+    if (kill_switch_loss_usd_ > 0.0 && !kill_switch_triggered_)
+    {
+        const auto account = portfolio_.metrics();
+        if (account.realized_pnl + account.unrealized_pnl <= -kill_switch_loss_usd_)
+        {
+            kill_switch_triggered_ = true;
+            kill_switch_ts_ = ts;
+        }
+    }
+
     for (auto& order : orders)
     {
+        if (kill_switch_triggered_)
+        {
+            ++kill_switch_rejected_orders_;
+            continue;
+        }
+        // The hard exposure cap, in dollars rather than in shares because the same share count is three times
+        // the exposure on a thousand dollar share. It marks the projected position at the order's own price,
+        // which is the conservative side of the mark for an order that adds to the position, and it runs
+        // before the position gate so that neither gate folds the other's pending quantity into its own check.
+        if (hard_exposure_limit_usd_ > 0.0 && order.quantity > 0)
+        {
+            const int64_t signed_quantity =
+                order.side == Side::Buy ? static_cast<int64_t>(order.quantity)
+                                        : -static_cast<int64_t>(order.quantity);
+            const int64_t projected = position_ + pending_buy_quantity_ - pending_sell_quantity_ +
+                                      signed_quantity;
+            const double marked =
+                std::abs(static_cast<double>(projected)) / static_cast<double>(quantity_scale_) *
+                unit_notional_at(unit_notional_usd_, multiplier_, order.price);
+            if (marked > hard_exposure_limit_usd_)
+            {
+                ++hard_limit_rejections_;
+                continue;
+            }
+        }
         // Pre-trade position gate. It counts the quantity already resting on the side that the order
         // adds to, because those orders can still fill, and a market maker that ignores that can post
         // risk it has no collateral for.

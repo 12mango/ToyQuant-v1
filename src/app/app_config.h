@@ -45,6 +45,13 @@ struct AppConfig
     // Pre-trade position limit in quantity units for the pipeline gate. 0 leaves the gate off, which
     // is the historical behaviour; the run still reports the marked exposure against the collateral.
     int64_t position_limit = 0;
+    // The two hard limits, both off at 0. `max_exposure_usd` refuses an order whose projected marked
+    // exposure would pass it, in USD rather than in shares because the same share count is three times the
+    // exposure on a thousand dollar share. `kill_switch_loss_usd` stops the run quoting once realised plus
+    // unrealised reaches that loss, and it does not flatten: a switch that loses money on the way out is a
+    // worse control than one that stops.
+    double max_exposure_usd = 0.0;
+    double kill_switch_loss_usd = 0.0;
     // Quote placement, as a half-spread in ticks: 1 puts the quote at the venue touch, 2 is the
     // default the recorded runs use. 0 means "use the default". It exists because the fill count is
     // dominated by where the quote sits, and that has to be measurable rather than argued about.

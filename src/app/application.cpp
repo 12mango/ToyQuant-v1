@@ -167,6 +167,8 @@ void Application::run_legacy_csv_mode() const
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
     pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
+    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
     pipeline.set_trace_order(cfg_.trace_order);
     CsvFeed feed(
         csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick); }, cfg_.delay,
@@ -228,6 +230,8 @@ void Application::run_replay_mode() const
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
     pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
+    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
     pipeline.set_trace_order(cfg_.trace_order);
     // The funding series is optional and owned here, because the pipeline only borrows it. A file that names
     // no settlement for this instrument is an error rather than an empty input, since a wrong symbol would
@@ -370,6 +374,8 @@ void Application::run_l2_replay_mode() const
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
     pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
+    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
     pipeline.set_profiler(profiler);
     pipeline.set_trace_order(cfg_.trace_order);
     // The broker's own commission and its floor, which are the only schedule terms the fee model needs at order
@@ -531,6 +537,8 @@ void Application::run_legacy_udp_mode() const
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
     pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
+    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
     pipeline.set_trace_order(cfg_.trace_order);
     UdpFeed feed(port);
     feed.start();

@@ -29,6 +29,8 @@ constexpr std::string_view kBrokerOutageHoldsPrefix = "--broker-outage-holds=";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
+constexpr std::string_view kMaxExposurePrefix = "--max-exposure-usd=";
+constexpr std::string_view kKillSwitchPrefix = "--kill-switch-loss-usd=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
 constexpr std::string_view kEdgeCoverPrefix = "--edge-cover-ticks=";
@@ -391,6 +393,28 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.position_limit = static_cast<int64_t>(limit);
+            }
+            else if (flag.compare(0, kMaxExposurePrefix.size(), kMaxExposurePrefix) == 0)
+            {
+                double exposure = 0.0;
+                std::istringstream stream(flag.substr(kMaxExposurePrefix.size()));
+                if (!(stream >> exposure) || !(exposure > 0.0))
+                {
+                    error = "--max-exposure-usd must be a positive number of US dollars";
+                    return false;
+                }
+                cfg.max_exposure_usd = exposure;
+            }
+            else if (flag.compare(0, kKillSwitchPrefix.size(), kKillSwitchPrefix) == 0)
+            {
+                double loss = 0.0;
+                std::istringstream stream(flag.substr(kKillSwitchPrefix.size()));
+                if (!(stream >> loss) || !(loss > 0.0))
+                {
+                    error = "--kill-switch-loss-usd must be a positive number of US dollars";
+                    return false;
+                }
+                cfg.kill_switch_loss_usd = loss;
             }
             else if (flag.compare(0, kBaseSpreadPrefix.size(), kBaseSpreadPrefix) == 0)
             {
