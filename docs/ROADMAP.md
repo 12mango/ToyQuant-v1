@@ -152,7 +152,10 @@ assumed a maker rebate was worth; and **every market's schedule carries a minimu
 same page says a modified order is charged as a new order. With those three, the four arrangements the account can
 choose come out at 0.583, 0.713, 0.863 and 1.113 ticks a fill against the 0.640 an AAPL fill captured, so **the fee
 decides whether the quoting covers itself and nothing more** -- and the arrangement that buys venue control is the
-worst of the four.
+worst of the four. All five terms are parameters the engine now prices with, `--fee-schedule=...`, zero unless a run
+names them so every recorded row is unchanged, and a run under the account's own figures puts an AAPL fill at
+**0.940 ticks against the 0.640 it captured**: on the account's schedule the quoting does not cover itself, by
+354.76 USD over the two hours, which the position term of 3,340 still dwarfs.
 
 **The conclusion is narrower than the question.** Only one market in this table has all three columns at once:
 a US ETF, priced in cents, with a commission that is a fraction of one, and a free daily depth archive to test

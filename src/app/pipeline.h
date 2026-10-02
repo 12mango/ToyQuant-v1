@@ -48,6 +48,16 @@ class Pipeline
         position_limit_ = limit;
     }
 
+    // The share schedule terms a broker charges at order level rather than per fill: the commission per unit,
+    // and the floor one order's commission has under it. Both zero by default, so a run that sets nothing
+    // charges exactly what it charged before the floor could be modelled. The commission is the broker's own
+    // per-share term and not the venue's rate, because a broker's floor is a floor on its commission.
+    void set_schedule_terms(double commission_per_unit, double min_commission_per_order)
+    {
+        commission_per_unit_ = commission_per_unit;
+        min_commission_per_order_ = min_commission_per_order;
+    }
+
     // Collateral report inputs: the cash the run started with, the USD value of one quantity unit
     // where 0 means the traded price is the unit value (the spot case), and the quantity scale the
     // instrument counts in. The scale matters because quantities are raw instrument units: one BTCUSDT
@@ -163,6 +173,9 @@ class Pipeline
     // multiplier, which is how a futures notional is five times its index price rather than equal to it.
     double multiplier_{1.0};
     uint64_t quantity_scale_{1};
+    // The two schedule terms charged per order rather than per fill. See set_schedule_terms.
+    double commission_per_unit_{0.0};
+    double min_commission_per_order_{0.0};
     double max_abs_exposure_usd_{0.0};
     uint64_t exposure_over_collateral_fills_{0};
     uint64_t strategy_position_mismatches_{0};
@@ -220,6 +233,10 @@ class Pipeline
         // makes a new order, so the quantity that decides a fee is the size of the order instance that
         // filled. It is accumulated here and bucketed when the order ends.
         uint64_t filled_quantity{0};
+        // The broker's own share commission charged to this order so far, which is what its floor is measured
+        // against when the order ends. It is not `fee`: the venue's rate and the fees on a sale are not what
+        // a commission floor applies to.
+        double commission{0.0};
         // Queue profile. The level belongs to our order while it rests, so the queue behind it is measured
         // when the order arrives and again before any cancel, never after it leaves: the engine erases a
         // level once no order rests in it, and a reading taken after that would report an empty queue for a

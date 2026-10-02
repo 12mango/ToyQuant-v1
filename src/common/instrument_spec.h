@@ -39,6 +39,21 @@ struct InstrumentSpec
     // way a fraction of notional cannot represent. Every instrument this repository traded before the equity
     // entry leaves it at zero, which is what makes the field additive rather than a change to those schedules.
     double fee_per_share{0.0};
+    // The rest of a share schedule, all zero by default so that an instrument which does not set them is
+    // priced exactly as it was before they existed. A broker's equity schedule has four more terms than a
+    // rate and a per-share commission: a **floor under the commission of one order**, charged once per order
+    // instance rather than once per fill; a **fee on the proceeds of a sale**; **per-share fees on every
+    // execution** (clearing and the consolidated audit trail); and the venue's **credit when a fill adds
+    // liquidity**, which is a payment rather than a cost and is why a market maker's schedule is read in
+    // full rather than as a commission. Read from a broker's own pages on 2026-10-02 -- 0.0000206 of
+    // aggregate sales, 0.0002 and 0.000003 a share, and 0.0013 a share of credit for displayed add liquidity
+    // on the venue this repository measured -- and left at zero here, because the rates belong to an account
+    // and the account's first trade confirmation is what should set them.
+    double min_commission_per_order{0.0};
+    double regulatory_fee_rate{0.0};
+    double clearing_fee_per_share{0.0};
+    double audit_fee_per_share{0.0};
+    double maker_rebate_per_share{0.0};
 };
 
 // USD value of one quantity unit at `price`. Shared by the fee model and the portfolio so the
@@ -85,6 +100,40 @@ inline double fee_on_fill(double rate, double unit_notional_usd, double multipli
                              : static_cast<double>(quantity);
     return fill_notional_usd(unit_notional_usd, multiplier, price, quantity, quantity_scale) * rate +
            units * fee_per_share;
+}
+
+// The part of a fill's fee that is neither a rate nor a per-unit commission: the fees a share schedule
+// charges on the proceeds of a sale and on every execution, minus the venue's credit when the fill makes the
+// book deeper. It is a second function rather than four more parameters on fee_on_fill because it needs two
+// facts fee_on_fill does not: which side of the trade the fill is, and whether it added or removed liquidity.
+//
+// It is templated on the schedule type because the matching engine's FeeSchedule and an InstrumentSpec carry
+// these fields under the same names, and one arithmetic shared by both is what keeps them from drifting apart.
+template <typename Schedule>
+inline double schedule_fee_on_fill(const Schedule& schedule, double price, uint64_t quantity, bool sell,
+                                   bool added_liquidity)
+{
+    const double units = schedule.quantity_scale > 0
+                             ? static_cast<double>(quantity) /
+                                   static_cast<double>(schedule.quantity_scale)
+                             : static_cast<double>(quantity);
+    double fee = units * (schedule.clearing_fee_per_share + schedule.audit_fee_per_share);
+    if (sell)
+        fee += fill_notional_usd(schedule.unit_notional_usd, schedule.multiplier, price, quantity,
+                                 schedule.quantity_scale) *
+               schedule.regulatory_fee_rate;
+    if (added_liquidity) fee -= units * schedule.maker_rebate_per_share;
+    return fee;
+}
+
+// What a floor under one order's commission still owes, given what that order's fills have been charged so
+// far. It takes the charged amount rather than the order's quantity because a broker charges the floor per
+// order instance and not per fill, so the shortfall is only known when the order ends: a 100 share order that
+// fills 26 shares and is replaced has been charged for 26 shares and owes the rest of the floor.
+inline double min_commission_shortfall(double min_commission_per_order, double commission_charged)
+{
+    return min_commission_per_order > commission_charged ? min_commission_per_order - commission_charged
+                                                         : 0.0;
 }
 
 inline InstrumentSpec btc_usdt_spec(uint64_t quantity_scale = 1000000)

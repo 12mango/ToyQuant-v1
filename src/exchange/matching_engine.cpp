@@ -30,7 +30,10 @@ void MatchingEngine::report_trade(const exchange::Order& order, double price, ui
                            .liquidity_role = liquidity_role,
                            .fee = fee_on_fill(rate, fee_schedule_.unit_notional_usd, fee_schedule_.multiplier,
                                               fee_schedule_.fee_per_share, price, quantity,
-                                              fee_schedule_.quantity_scale)});
+                                              fee_schedule_.quantity_scale) +
+                                  schedule_fee_on_fill(fee_schedule_, price, quantity,
+                                                       order.side == exchange::Side::Sell,
+                                                       liquidity_role == LiquidityRole::Maker)});
 }
 
 uint64_t MatchingEngine::queue_ahead_at(const std::string& symbol, const Side side,

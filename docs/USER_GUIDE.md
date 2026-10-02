@@ -363,6 +363,8 @@ The main comparison metrics are:
   `<=50, 51-99, 100-199, 200-499, 500-999, 1000+` shares. The two bounds at 100 and 200 are where the
   two share schedules this repository has read stop charging a minimum per order, so a commission under
   either convention is computable from this field exactly.
+- `min_commission_orders`, `min_commission_paid` — how many orders were charged a schedule's floor under one
+  order's commission and what it added, both zero unless `--fee-schedule=min=...` names a floor
 - `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is
@@ -414,6 +416,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--trace-order=N` | Trace the queue in front of order N, reported as `[QUEUE_TRACE]` lines | 0, no trace |
 | `--funding-rates=FILE` | Apply an instrument's funding history as the replay passes each settlement | Off, and the summary then has no `[FUNDING]` line |
 | `--maker-fee-rate=R` | Replace the venue's maker rate, for the fee question; the run echoes it in its `[Mode]` line and may be negative for a rebate | Off, the venue's own rate |
+| `--fee-schedule=KEY=VALUE[,...]` | Price a run under a broker's own schedule instead of the venue's. Keys: `min` (a floor under one order's commission, USD), `regulatory` (a fraction of the proceeds of a sale), `clearing` and `audit` (USD a share on every execution), `rebate` (USD a share of credit for adding liquidity). All five are 0 unless named and the `[Mode]` line reports the five in force | Off: the venue's own schedule, which is what every recorded row uses |
 | `--markout-cover` | Quote only where the capture also covers what passive fills at that distance have cost, measured from our own resolved fills | Off |
 | `--flatten-band=N` | Reduce a position above N units with a taker order at the touch instead of carrying it | Off |
 | `--live-pacing[=SPEED]` | Deliver the replay against the wall clock at this speed and report how late it ran as `[LIVE]`; the fifth positional argument on this mode means the same at real time | Off, which reads the file as fast as it can |

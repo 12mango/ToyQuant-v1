@@ -45,6 +45,7 @@ constexpr std::string_view kSymbolBPrefix = "--symbol-b=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
+constexpr std::string_view kFeeSchedulePrefix = "--fee-schedule=";
 constexpr std::string_view kMarkoutCoverFlag = "--markout-cover";
 constexpr std::string_view kFlattenBandPrefix = "--flatten-band=";
 }  // namespace
@@ -113,6 +114,12 @@ void print_usage(const char* executable)
                      "starts behind; 1.0 is FIFO\n";
         std::cerr << "   funding: --funding-rates=FILE applies the instrument's funding history as the "
                      "replay passes each settlement, reported as a [FUNDING] line\n";
+        std::cerr << "   schedule: --fee-schedule=KEY=VALUE[,KEY=VALUE] (l2_replay) prices a run under a "
+                     "broker's own schedule, where the keys are min (a floor per order, in USD), regulatory "
+                     "(a fraction of the proceeds of a sale), clearing and audit (USD a share on every "
+                     "execution) and rebate (USD a share of credit for adding liquidity); every one of them "
+                     "is zero unless named, and the [Mode] line reports the five in force";
+        std::cerr << "\n";
         std::cerr << "   fees: --maker-fee-rate=R replaces the venue's maker rate for a sensitivity "
                      "measurement, and the run reports it in the [Mode] line\n";
         std::cerr << "   gate: --markout-cover (l2_replay, active_l2) quotes only where the capture also "
@@ -501,6 +508,47 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.has_maker_fee_rate = true;
             }
+            else if (flag.compare(0, kFeeSchedulePrefix.size(), kFeeSchedulePrefix) == 0)
+            {
+                // Comma separated key=value pairs, because the terms arrive together: one flag that names all
+                // five keeps a sensitivity run to one command line, and a run that names a subset is priced
+                // under that subset with the rest at zero rather than under a half remembered default.
+                std::stringstream items(flag.substr(kFeeSchedulePrefix.size()));
+                std::string item;
+                while (std::getline(items, item, ','))
+                {
+                    const std::size_t equals = item.find('=');
+                    if (equals == std::string::npos)
+                    {
+                        error = "--fee-schedule wants key=value pairs separated by commas";
+                        return false;
+                    }
+                    const std::string key = item.substr(0, equals);
+                    double value = 0.0;
+                    std::istringstream value_stream(item.substr(equals + 1));
+                    if (!(value_stream >> value))
+                    {
+                        error = "--fee-schedule value for " + key + " must be a number";
+                        return false;
+                    }
+                    if (key == "min")
+                        cfg.fee_schedule.min_commission_per_order = value;
+                    else if (key == "regulatory")
+                        cfg.fee_schedule.regulatory_fee_rate = value;
+                    else if (key == "clearing")
+                        cfg.fee_schedule.clearing_fee_per_share = value;
+                    else if (key == "audit")
+                        cfg.fee_schedule.audit_fee_per_share = value;
+                    else if (key == "rebate")
+                        cfg.fee_schedule.maker_rebate_per_share = value;
+                    else
+                    {
+                        error = "--fee-schedule keys are min, regulatory, clearing, audit and rebate";
+                        return false;
+                    }
+                }
+                cfg.has_fee_schedule = true;
+            }
             else
             {
                 error = "optional replay flags must be --no-output, --fast-validation, "
@@ -508,6 +556,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--max-position=N, --base-spread-ticks=N, --refresh-price-ticks=N, "
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
                         "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
+                        "--fee-schedule=KEY=VALUE[,KEY=VALUE], "
                         "--markout-cover, --flatten-band=N, or --paper-broker with one of its faults";
                 return false;
             }

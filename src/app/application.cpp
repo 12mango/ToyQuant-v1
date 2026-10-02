@@ -213,13 +213,7 @@ void Application::run_replay_mode() const
                                           cfg_.refresh_price_ticks_override,
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks});
-    MatchingEngine engine(instrument.tick_size,
-                          FeeSchedule{.maker_rate = instrument.maker_fee_rate,
-                                      .taker_rate = instrument.taker_fee_rate,
-                                      .quantity_scale = instrument.quantity_scale,
-                                      .unit_notional_usd = instrument.unit_notional_usd,
-                                      .multiplier = instrument.multiplier,
-                                      .fee_per_share = instrument.fee_per_share},
+    MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           1, cfg_.queue_model, cfg_.queue_lump_chunks,
                           cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
                           cfg_.arrival_share, cfg_.order_latency_us,
@@ -289,12 +283,27 @@ void Application::run_l2_replay_mode() const
         throw std::invalid_argument("no instrument specification for L2 replay symbol: " + cfg_.symbol);
     // A different maker fee rate than the venue's, for the runs that ask what the fee would have had to be.
     if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
+    // And the account's own schedule, when a run names one. It is applied here, before the instrument reaches
+    // the venue, the strategy and the pipeline, so all three price the schedule the mode line reports.
+    if (cfg_.has_fee_schedule)
+    {
+        instrument.min_commission_per_order = cfg_.fee_schedule.min_commission_per_order;
+        instrument.regulatory_fee_rate = cfg_.fee_schedule.regulatory_fee_rate;
+        instrument.clearing_fee_per_share = cfg_.fee_schedule.clearing_fee_per_share;
+        instrument.audit_fee_per_share = cfg_.fee_schedule.audit_fee_per_share;
+        instrument.maker_rebate_per_share = cfg_.fee_schedule.maker_rebate_per_share;
+    }
     Logger logger(application_log_path(cfg_.discard_output));
     configure_logger(logger);
     logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
                " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
                " queue_model=", queue_model_name(cfg_.queue_model),
-               " maker_fee_rate=", instrument.maker_fee_rate);
+               " maker_fee_rate=", instrument.maker_fee_rate,
+               " min_commission_per_order=", instrument.min_commission_per_order,
+               " regulatory_fee_rate=", instrument.regulatory_fee_rate,
+               " clearing_fee_per_share=", instrument.clearing_fee_per_share,
+               " audit_fee_per_share=", instrument.audit_fee_per_share,
+               " maker_rebate_per_share=", instrument.maker_rebate_per_share);
 
     // Per-stage timing is opt-in. The profiler allocates nothing until sampling starts, so
     // a run without --profile-stages pays nothing beyond this construction.
@@ -330,13 +339,7 @@ void Application::run_l2_replay_mode() const
                                       .markout_cover = cfg_.markout_cover,
                                       .flatten_band_units = cfg_.flatten_band,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks});
-    MatchingEngine engine(instrument.tick_size,
-                          FeeSchedule{.maker_rate = instrument.maker_fee_rate,
-                                      .taker_rate = instrument.taker_fee_rate,
-                                      .quantity_scale = instrument.quantity_scale,
-                                      .unit_notional_usd = instrument.unit_notional_usd,
-                                      .multiplier = instrument.multiplier,
-                                      .fee_per_share = instrument.fee_per_share},
+    MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           1, cfg_.queue_model, cfg_.queue_lump_chunks,
                           cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
                           cfg_.arrival_share, cfg_.order_latency_us,
@@ -369,6 +372,10 @@ void Application::run_l2_replay_mode() const
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_profiler(profiler);
     pipeline.set_trace_order(cfg_.trace_order);
+    // The broker's own commission and its floor, which are the only schedule terms the fee model needs at order
+    // level rather than per fill: the floor is charged when an order ends, because that is when the order's own
+    // total is known.
+    pipeline.set_schedule_terms(instrument.fee_per_share, instrument.min_commission_per_order);
     // The adverse-selection gate needs the pipeline to measure what the venue's own prints were worth to a
     // passive fill, and it is the only way the strategy can know it: it never sees the midpoint after a fill.
     pipeline.set_markout_cover(cfg_.markout_cover);

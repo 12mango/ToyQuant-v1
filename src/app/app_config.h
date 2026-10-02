@@ -101,6 +101,21 @@ struct AppConfig
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.
     bool has_maker_fee_rate = false;
     double maker_fee_rate = 0.0;
+    // A whole broker schedule, for the runs that ask what the account's own terms would have produced: the
+    // floor under one order's commission, the fee on the proceeds of a sale, the per-share fees on every
+    // execution, and the venue's credit for adding liquidity. `--fee-schedule=min=0.35,regulatory=0.0000206,
+    // clearing=0.0002,audit=0.000003,rebate=0.0013` sets all five, any subset sets the rest to zero, and a
+    // run that names none is priced under the venue's own schedule, which is every recorded row.
+    struct ScheduleTerms
+    {
+        double min_commission_per_order{0.0};
+        double regulatory_fee_rate{0.0};
+        double clearing_fee_per_share{0.0};
+        double audit_fee_per_share{0.0};
+        double maker_rebate_per_share{0.0};
+    };
+    bool has_fee_schedule = false;
+    ScheduleTerms fee_schedule;
     // The adverse-selection gate: quote only where the capture also covers what passive fills at that distance
     // have actually cost, measured from the market's own prints. It exists on the L2 decision layer that carries
     // the expected-value gate, so it is refused for the other strategies rather than silently ignored.

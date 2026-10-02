@@ -219,6 +219,17 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 if (report.exec_type == ExecType::Trade) audit->second.filled = true;
                 if (report.exec_type == ExecType::Trade)
                     audit->second.filled_quantity += report.executed_quantity();
+                if (report.exec_type == ExecType::Trade && commission_per_unit_ > 0.0)
+                {
+                    // The broker's own commission, accumulated per order so that the floor can be applied to
+                    // the order's total when it ends. The venue's rate is not part of it: a broker's floor is
+                    // a floor on its commission.
+                    const double units =
+                        quantity_scale_ > 0 ? static_cast<double>(report.executed_quantity()) /
+                                                  static_cast<double>(quantity_scale_)
+                                            : static_cast<double>(report.executed_quantity());
+                    audit->second.commission += units * commission_per_unit_;
+                }
                 if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
                 {
                     const uint64_t lifetime = quote_cycle_ >= audit->second.start_cycle
@@ -263,6 +274,17 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                         ++execution_quality_.filled_order_count_by_size[bucket];
                         execution_quality_.filled_order_quantity_by_size[bucket] +=
                             audit->second.filled_quantity;
+                        // The floor, which is why this counter exists: an order that filled less than the
+                        // floor's worth of shares owes the difference, and the order ending is the only
+                        // moment the total is known.
+                        const double shortfall =
+                            min_commission_shortfall(min_commission_per_order_, audit->second.commission);
+                        if (shortfall > 0.0)
+                        {
+                            portfolio_.charge_fee(shortfall);
+                            ++execution_quality_.min_commission_orders;
+                            execution_quality_.min_commission_paid += shortfall;
+                        }
                     }
                     order_audit_.erase(audit);
                 }

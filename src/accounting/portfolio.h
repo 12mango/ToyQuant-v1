@@ -68,6 +68,12 @@ class Portfolio
     void mark_to_market(const std::unordered_map<std::string, double>& prices);
     void reset();
 
+    // A fee that belongs to no single execution: a schedule's floor under one order's commission is charged
+    // when the order ends, because that is the only moment the order's total is known. It is booked to fees
+    // and to cash exactly like the fee of a fill, and deliberately not to the maker or taker split, which
+    // counts the venue's own fees per execution and would be reporting a commission as a venue charge.
+    void charge_fee(double fee);
+
     // One interval of a per-interval cash flow on one position: the funding a perpetual pays, the basis
     // a future pays at roll, a dividend, or the financing a position is charged. One method for all four
     // because the ledger side is identical and only the source of the rate differs.

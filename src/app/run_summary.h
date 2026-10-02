@@ -60,6 +60,11 @@ struct ExecutionQualityMetrics
     uint64_t orders_that_filled{0};
     std::array<uint64_t, kFillSizeBucketCount> filled_order_count_by_size{};
     std::array<uint64_t, kFillSizeBucketCount> filled_order_quantity_by_size{};
+    // The floor under a broker's commission, when the schedule has one: how many orders were charged it and
+    // how much it added. Zero for every run that sets no floor, which is every run recorded before it could
+    // be modelled.
+    uint64_t min_commission_orders{0};
+    double min_commission_paid{0.0};
 
     // The histogram as one field, `count/quantity` per bucket, so that the [EXECUTION] line does not grow
     // by twelve numbers to carry it.
@@ -305,7 +310,9 @@ struct RunSummary
                << " exposure_over_collateral_fills=" << exposure_over_collateral_fills
                << " working_orders=" << working_orders
                << " orders_that_filled=" << execution_quality.orders_that_filled
-               << " filled_orders_by_size=" << execution_quality.size_histogram() << "\n"
+               << " filled_orders_by_size=" << execution_quality.size_histogram()
+               << " min_commission_orders=" << execution_quality.min_commission_orders
+               << " min_commission_paid=" << execution_quality.min_commission_paid << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string()
                << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
                << " net_pnl_usd=" << pnl.net_pnl_usd

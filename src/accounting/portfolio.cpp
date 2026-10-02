@@ -17,6 +17,14 @@ void Portfolio::reset()
     taker_trade_count_ = 0;
 }
 
+void Portfolio::charge_fee(double fee)
+{
+    if (fee == 0.0) return;
+    fees_paid_ += fee;
+    cash_ -= fee;
+    realized_pnl_ -= fee;
+}
+
 void Portfolio::apply(const ExecutionReport& report)
 {
     if (report.exec_type != ExecType::Trade || report.quantity == 0) return;

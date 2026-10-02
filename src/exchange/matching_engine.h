@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include "common/types.h"
+#include "common/instrument_spec.h"
 #include "execution_report.h"
 #include "market/market_event.h"
 #include "order.h"
@@ -33,7 +34,34 @@ struct FeeSchedule
     // See InstrumentSpec::fee_per_share: a commission per unit on top of the rates, which is how a US equity
     // fill is priced. 0, the default, leaves every schedule that existed before the equity entry unchanged.
     double fee_per_share{0.0};
+    // See InstrumentSpec for the four share schedule terms below them: a floor per order, a fee on the
+    // proceeds of a sale, per-share fees on every execution, and the venue's credit for adding liquidity.
+    // All zero by default, so a schedule that does not set them is priced exactly as it was before.
+    double min_commission_per_order{0.0};
+    double regulatory_fee_rate{0.0};
+    double clearing_fee_per_share{0.0};
+    double audit_fee_per_share{0.0};
+    double maker_rebate_per_share{0.0};
 };
+
+// The venue's fee schedule for an instrument, in one place, because a term that is added to the instrument
+// and forgotten at a construction site prices a run at zero while the mode line reports the term as set: that
+// is what happened to these four share schedule terms on their first day, and one function is what stops it
+// happening again. Every caller that builds an engine from an instrument uses this rather than listing fields.
+inline FeeSchedule fee_schedule_of(const InstrumentSpec& instrument)
+{
+    return FeeSchedule{.maker_rate = instrument.maker_fee_rate,
+                       .taker_rate = instrument.taker_fee_rate,
+                       .quantity_scale = instrument.quantity_scale,
+                       .unit_notional_usd = instrument.unit_notional_usd,
+                       .multiplier = instrument.multiplier,
+                       .fee_per_share = instrument.fee_per_share,
+                       .min_commission_per_order = instrument.min_commission_per_order,
+                       .regulatory_fee_rate = instrument.regulatory_fee_rate,
+                       .clearing_fee_per_share = instrument.clearing_fee_per_share,
+                       .audit_fee_per_share = instrument.audit_fee_per_share,
+                       .maker_rebate_per_share = instrument.maker_rebate_per_share};
+}
 
 struct PriceLevel
 {

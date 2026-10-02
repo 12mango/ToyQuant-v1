@@ -2327,5 +2327,28 @@ what turns every net figure in the equity rows into one a broker's statement wou
 with the rates from a first trade confirmation rather than from a page -- the two readings of the minimum are 183
 USD apart on this window, and a confirmation is what settles which one is real.
 
+**The second change is made, and the schedule above is now something a run can be priced under.** The instrument
+and the venue both carry the five terms -- a floor per order, a fee on the proceeds of a sale, per-share clearing
+and audit fees, and the credit for adding liquidity -- all defaulting to zero, and
+`--fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013` sets them for a run,
+which the `[Mode]` line then reports as the schedule in force. On the AAPL row that turns the venue's **210.584 USD**
+of fees into the account's **565.342**, and the total reconciles to the cent:
+
+| term | USD |
+|---|---:|
+| the share commission the venue charged too | 210.584 |
+| the floor, charged on **969** orders and reported as `min_commission_paid` | **217.115** |
+| the SEC fee on the sales, at 0.0000206 of proceeds | 203.65 |
+| clearing and audit trail, per share | 12.21 |
+| the credit for the fills that added liquidity | -78.22 |
+| **total** | **565.342** |
+
+So the fill costs **0.940 ticks** against the 0.640 it captured, the window's net moves from -3,165.53 to
+**-3,520.29**, and the whole of that 354.76 is the fee: on the account's own schedule **the quoting does not cover
+itself**, and the position term at 3,340 is still an order of magnitude larger, which is the same conclusion this
+section reached before with a number instead of a bracket. Every term is a parameter, so a run that names none is
+priced exactly as every recorded row was -- the baseline is unchanged to the last digit -- and the account's first
+trade confirmation is what should replace the rates used here.
+
 
 
