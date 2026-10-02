@@ -165,6 +165,42 @@ recorded before anything can be said about it.
 
 ## The carry line: financing flows before carry strategies
 
+### The carry gates executed: the three conditions the owner set, and the answer on nine months
+
+The line's own measurement needed 745 hours to pay for its fees against 728 hours held, and it charged the fee once.
+Charging the round trip -- entry and exit, because a differential that flips forces an exit -- makes it 36.00 USD, and
+the owner's three gates were then applied to the free funding histories of both venues: a year of Binance monthly
+archives against a year of OKX daily archives, both keyless, for nothing.
+
+| month | carry USD on 10,000 a leg | net after the round trip | net annualised on the capital | payback hours | runs of a positive differential | median run | longest run | runs that pay the round trip |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2024-01 | 26.80 | -9.20 | -0.54% | 999 | 17 | 24 h | 128 h | 0 |
+| 2024-02 | 4.34 | -31.66 | -1.99% | 5768 | 16 | 16 h | 72 h | 0 |
+| 2024-03 | 19.79 | -16.21 | -0.95% | 1354 | 27 | 8 h | 56 h | 0 |
+| 2024-04 | 14.68 | -21.32 | -1.30% | 1765 | 21 | 16 h | 136 h | 0 |
+| 2024-05 | 12.94 | -23.06 | -1.36% | 2070 | 18 | 20 h | 104 h | 0 |
+| 2024-06 | 39.29 | **+3.29** | **+0.20%** | 660 | 15 | 16 h | 160 h | 0 |
+| 2024-08 | 3.72 | -32.28 | -1.90% | 7204 | 22 | 16 h | 80 h | 0 |
+| 2024-10 | 2.43 | -33.57 | -1.98% | 11002 | 18 | 8 h | 72 h | 0 |
+| 2024-12 | 31.69 | -4.31 | -0.25% | 845 | 11 | 16 h | 216 h | 0 |
+
+**No month clears all three gates, and every gate fails by an order of magnitude rather than by a margin.** The best
+level is June's 0.20 percent annualised against a gate of ten, and eight of the nine months lose money after the
+round trip. The best payback is June's 660 hours against a gate of 72.
+
+**The third gate is the one that explains the other two.** The differential does not persist: a month holds eleven to
+twenty-seven separate runs of it being positive, the median run is eight to twenty-four hours, and **not one run in any
+month, including the longest of two hundred and sixteen hours, earns enough to pay the 36.00 USD round trip.** That is
+the bleeding loop stated as a measurement: enter, pay the fee, watch the sign flip inside a day, leave, and pay it
+again.
+
+Two limits on the sample are recorded with the result. Nine of the twelve months are measured because three OKX
+monthly fetches failed and are being re-run, and the monthly figures are the two files' own windows rather than the
+engine's clock, which is why March reads 19.79 here against the recorded run's 17.58. The fee is the repository's own
+measured 18.00 USD a side for two legs, doubled for the exit, and the venue risk, the counterparty risk and the KYC
+wall the owner names are not in these numbers at all, because they can only make a failing result worse.
+
+
 Everything measured so far prices one income stream, the spread a fill captures, and one cost, the fee. That is why
 every sweep ends in the same place: the spread is a fraction of a tick and the fee is a multiple of it. A second
 income stream exists that does not depend on speed or on capturing a spread — a perpetual pays funding, a future
