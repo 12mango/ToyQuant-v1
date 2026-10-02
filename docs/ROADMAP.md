@@ -639,8 +639,9 @@ a detail: at one contract the floor spends 1.00 to collect 0.65, and at two it s
 
 evaluated at a stated clip size, because the commission has a per order floor and the rest is per contract. The
 multiplier is 100, the tick is 0.05 for a non-penny class, and `tools/screen_spread.py` prices this with
-`--fee-schedule=` plus its own multiplier, tick and clip size arguments; the activity floor stays
-2.8 trade prints a second. Three consequences are written down before the answer is in: the **penny classes fail**
+`--fee-schedule=` plus its own multiplier, tick and clip size arguments; and the activity floor was restated rather than
+repeated, because 2.8 prints a second is a stock's own tape and the screen below shows no option series reaching it.
+Three consequences are written down before the answer is in: the **penny classes fail**
 for the reason cheap shares fail, since a one cent spread is 0.50 USD against an 0.87 USD cost; a **five cent spread
 is 2.50 USD against the same cost** and passes; and **the fraction of the premium the spread represents does not
 matter to the fee**, only to the inventory, which is where the second number below comes from.
@@ -660,6 +661,45 @@ thinner book does to fills, because the top of book experiment halved them. And 
 among thousands on one underlying, so a chain is a many instrument problem for readers that take one file at a time;
 a single series is inside the engine's shape, a chain is not, and a delta hedge is a second instrument again, which
 the MES measurement says only works at horizons longer than a quote's life.
+
+### Step 1 executed: the SPY chain screen, and the verdict it returns
+
+The screen was run with one argument still missing from `tools/screen_spread.py`, because the ranking that decides the
+verdict does not need it; what the clip size moves is the last factor of two and not the sign.
+
+**What was bought, and for how much.** The whole SPY chain at one minute sampled top of book, 0.2325 USD: 203 MB,
+1,560,172 rows, **12,626 series** over 119 minutes, with the chain's definition free. Then the trade records for the
+40 series of one expiry (2026-10-01) and one strike slab (740 to 779), 0.0853 USD and priced before the purchase,
+which are **6,817 prints in two hours**. Total data spend on this venue to date: **0.32 USD**.
+
+**Two numbers came out of the chain before any series was opened.** 8,839 of the 12,626 series are quoted with a mean
+spread of at least 0.05 USD in at least 100 of the 119 minutes, so **a wide spread is the rule in this venue** and not
+the exception, and the ten widest are 2028 LEAPS with a 4.94 USD mean spread. That is the mirror image of equities,
+where one cent of tick held every name to the fee, and it is a real structural difference between the two.
+
+**And then the same measurement that killed JNUG killed the interesting half of it**, because prints and spread run in
+opposite directions inside a single expiry.
+
+| series | prints in two hours | prints a second | mean spread, USD |
+|---|---:|---:|---:|
+| C765, nearest the money | 1,147 | 0.159 | 0.0256 |
+| C764 | 510 | 0.071 | 0.0344 |
+| C763 | 237 | 0.033 | 0.0560 |
+| C762 | 104 | 0.014 | 0.0556 |
+| C750, forty strikes away | 28 | 0.004 | 0.1646 |
+| C740, sixty strikes away | 3 | 0.0004 | 0.1839 |
+
+**So the rule returns a fail, and on two axes that do not overlap.** The cost clause needs a spread of about 3.5 cents
+to clear three times 0.585 USD a contract, and it is met only by series printing four to twenty times too little. The
+series with the flow has a 2.56 cent spread, which misses the three times test by about 1.4. The busiest series in the
+whole slab manages 1,147 prints, which at seventy-one prints a fill is nineteen fills where the target is thirty, and
+**not one series in the slab reaches the restated floor of about 2,130 prints in the window.**
+
+**What is not ruled out, stated before it is needed.** One expiry, one session, one product family. The series screened
+are a penny class, so the one cent tick and the 0.75 USD pass-through are both near their worst, and the classes that
+carry a rebate were deliberately left unscreened so that the rule cannot be read afterwards as an excuse built to fit
+the result. The screen costs 0.32 USD and about a day; the same screen on XSP, which pays 0.30 a contract and quotes
+in a different tick, is the one experiment the numbers leave standing.
 
 | Spend | What it buys | Cost |
 |---|---|---|
