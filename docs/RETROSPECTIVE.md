@@ -92,7 +92,7 @@ one a number rather than an opinion.
 | options at one day to expiry | the spread is payment for tail risk rather than a quoting edge, and the premium can be smaller than the fee floor |
 | options from fifteen days out | the fee axis passed for the first time in the project, and the print count then failed: the best of eight classes is R_max 56 against a reference of 71 |
 | funding rate carry, BTC, two venues, twelve months | 0 of 12 months clear the level and payback gates, and no run of a positive differential in any month earns the 36 USD round trip |
-| a low turnover reversion rule | unproven rather than closed: median net -0.36 cents a share against a median gross of +0.40, and 57 symbols in one window cannot separate a signal from a draw |
+| a low turnover reversion rule | the sign does not replicate: 4 of MU's 8 windows positive, median net -23.34 cents a share, and the best window earned 149.76 while the worst lost 980.38, so it wins small and loses big |
 
 **Three things survive all of them.** The engine: a market data handler, a matching engine, an order state machine, a
 queue model and a fee model, re-derived by four gate tiers on every commit. The criteria, which turned out to be the
