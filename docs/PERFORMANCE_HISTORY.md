@@ -2446,6 +2446,106 @@ count. And one window is one draw, so what these rows establish is that the scre
 whose quoting covers their whole schedule**, which is the claim the rule makes; they do not establish an expected
 value, and the windows needed for that are the ones the third fact counts.
 
+**Both controls now exist, and six windows of one day measure what they cost rather than what they are worth.**
+`tools/limit_sweep.sh` re-runs the six US equity windows on disk at the pinned size, four kill-switch thresholds
+against off and three exposure caps against off:
+
+| symbol | off | 250 | 500 | 1000 | 2000 | when it tripped |
+|---|---:|---:|---:|---:|---:|---|
+| AAPL | -3520.29 | **-1802.30** | -2547.29 | -2402.27 | -2516.75 | 26, 34, 64 and 3133 seconds |
+| TSLA | -1821.66 | **-574.38** | -978.27 | -1569.36 | -2032.86 | 602 to 2312 seconds |
+| SPY | -35.54 | -35.54 | -35.54 | -35.54 | -35.54 | never |
+| MSTR | -884.03 | -745.28 | -857.06 | -884.03 | -884.03 | 5771 and 6680 seconds |
+| AMD | -1029.47 | -2305.94 | -2406.67 | -2508.41 | **-568.94** | 1004 to 1448 seconds |
+| MU | **+6981.90** | -2011.23 | -2023.23 | -2095.66 | -2069.55 | 215 to 281 seconds |
+| **sum** | **-309.09** | -7474.67 | -8848.06 | -9495.27 | -8107.67 | |
+
+**The switch is insurance, and on this sample the premium is larger than the claims.** It saved 3564.55 USD across
+AAPL, TSLA, MSTR and one AMD setting, and it cost 8993.13 on MU alone, where it tripped 215 seconds into a window
+that closed 6981.90 up. Summed, it turns -309.09 into -7474.67 at its tightest and -8107.67 at its loosest, so **no
+threshold on this sample pays**. The sweep also shows why: the threshold is in dollars and the exposure is not, so
+the same 500 USD fires 245 seconds into MU's window and 1031 seconds into AMD's, and a control whose trigger is a
+fixed dollar amount against a varying notional is a control on position size rather than on loss. Anything that
+runs it live has to scale the threshold, and this table is the evidence for that.
+
+| symbol | off | cap 100000 | cap 200000 | cap 350000 |
+|---|---:|---:|---:|---:|
+| MU | **+6981.90** | 0 (nothing submitted) | +1235.01 | -630.09 |
+| AMD | -1029.47 | **+362.74** | -59.16 | -694.40 |
+| MSTR | -884.03 | -1315.02 | -884.03 | -884.03 |
+| AAPL | **-3520.29** | -1837.16 | -2807.82 | -3517.55 |
+| **sum** | **+1548.11** | -2789.44 | -2516.00 | -5726.07 |
+
+**The exposure cap is a variance control, and its effect on the total is the sign of the position term.** It cut
+AAPL's loss by 1683.13 and turned AMD positive at the tight setting, and it removed MU's 6981.90, because that
+number was the position's draw and not the quoting's. The one row a reader can misread is MU at a 100000 cap: one
+order of 100 shares is 107400 USD of notional, above the cap, so **every order is refused, nothing is submitted and
+the run does nothing at all** -- 549732 refusals, zero fills, which is visible rather than silent, and is what a cap
+below one order's notional means.
+
+**Both tables end in the same place: one day is one draw of the position term, and no control can be judged on
+it.** The six windows sum to -309.09 uncapped and every part of that is inside a single window's position term,
+which is why what follows buys days rather than thresholds.
+
+**The eight-window campaign has been run, and the first of its rules is answered cleanly.** Seven more MU windows
+were bought for 0.608 USD at 13:30 to 15:30 UTC on 2026-09-22, 09-23, 09-24, 09-25, 09-28, 09-30 and 10-01, joined
+by 09-29 which was already on disk, and each window was run at the pinned size and at a notional-matched size, both
+under the account's schedule. The loop is:
+
+    for day in 2026-09-22 2026-09-23 2026-09-24 2026-09-25 2026-09-28 2026-09-29 2026-09-30 2026-10-01; do
+      for size in "100 1000" "30 300"; do set -- $size
+        toy_quant l2_replay data/v2/xnas_MU_trades_${day}_1330_1530.csv.gz \
+          data/v2/xnas_MU_depth_${day}_1330_1530.csv.gz MU 0 active_l2 1 conservative \
+          --order-size=$1 --inventory-limit=$2 --base-spread-ticks=1 \
+          --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013
+      done
+    done
+
+| day | size | capture ticks | capture USD | markout USD | fees USD | the floor USD | quoting margin USD | the position term USD | net USD |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 09-22 | 100 | 11.7965 | 2131.16 | -648.21 | 412.12 | 162.52 | **+1070.83** | -15466.06 | -14395.20 |
+| 09-22 | 30 | 12.4031 | 1218.11 | -447.71 | 325.62 | 194.53 | **+444.78** | -6503.36 | -6058.57 |
+| 09-23 | 100 | 14.9659 | 2464.89 | -1166.73 | 369.35 | 135.91 | **+928.81** | +11106.54 | +12035.30 |
+| 09-23 | 30 | 14.4728 | 1307.18 | -632.84 | 284.47 | 158.79 | **+389.87** | +2920.89 | +3310.76 |
+| 09-24 | 100 | 13.5488 | 1766.22 | -678.50 | 274.31 | 109.42 | **+813.42** | -589.85 | +223.57 |
+| 09-24 | 30 | 14.0461 | 1064.97 | -451.92 | 226.54 | 129.21 | **+386.51** | -812.69 | -426.18 |
+| 09-25 | 100 | 13.6922 | 2158.99 | -838.84 | 325.35 | 121.91 | **+994.81** | +1293.55 | +2288.35 |
+| 09-25 | 30 | 13.6041 | 1087.78 | -436.58 | 246.07 | 140.71 | **+405.13** | -1257.29 | -852.15 |
+| 09-28 | 100 | 9.7663 | 1311.62 | -500.18 | 325.15 | 144.10 | **+486.30** | +18196.56 | +18682.80 |
+| 09-28 | 30 | 10.3035 | 795.64 | -344.30 | 259.19 | 157.07 | **+192.15** | +7636.99 | +7829.15 |
+| 09-29 | 100 | 12.5337 | 1577.23 | -610.66 | 330.50 | 150.21 | **+636.07** | +6345.83 | +6981.90 |
+| 09-29 | 30 | 12.3960 | 888.42 | -385.04 | 262.81 | 163.22 | **+240.57** | -991.62 | -751.05 |
+| 09-30 | 100 | 11.4330 | 1932.53 | -743.28 | 355.66 | 122.49 | **+833.59** | -2111.09 | -1277.49 |
+| 09-30 | 30 | 11.3611 | 1026.25 | -449.16 | 272.17 | 149.69 | **+304.92** | -964.39 | -659.47 |
+| 10-01 | 100 | 14.4143 | 3552.56 | -1244.55 | 547.15 | 211.59 | **+1760.86** | +12946.09 | +14706.90 |
+| 10-01 | 30 | 14.0802 | 1764.53 | -621.42 | 410.79 | 242.44 | **+732.33** | +2824.65 | +3556.97 |
+
+**The first rule passes, in both sizes and in every window: the quoting margin -- capture less markout less every
+fee including the minimum per order -- is positive in all sixteen rows**, averaging 940.59 a window at the pinned
+size with a standard deviation of only 382.24, where the two symbols this section is named after are -181 a window.
+**The quoting edge is out of sample**, and it is the first claim in this document that a week of windows supports
+rather than one.
+
+**The second rule depends on the size, and the pre-registration did not say which size it applied to -- that was an
+omission and it is recorded as one.** At the pinned size the eight nets average +4905.77 with a median of +4635.13,
+so both halves pass. At the matched size they average +743.68 but the median is -542.82, which is rule 3: the
+profit is carried by outliers, so the exposure cap is mandatory rather than optional. Both readings are true
+statements about their own size.
+
+**What the campaign also measures, and this is the part that decides the line, is that the edge is much smaller than
+the noise it sits in.** Over the eight windows the quoting margin sums to **+7524.69** while the position term sums
+to **+31721.57**, and their dispersions per window are **382.24** and **10587.96** -- the noise is eleven times the
+edge. Separating an edge of 940.59 from a noise of 10587.96 at two standard deviations needs about **506 windows**,
+or two years of daily two-hour sessions, which is a smaller number than the 3600 to 26000 the AAPL arithmetic
+produced and a larger one than the 23 the matched-exposure estimate hoped for. The eight windows' own total,
++39246.13, is 81 percent position.
+
+**So the campaign's answer is: the edge is real, the line is not yet a business, and the thing to buy next is not
+more of the same symbol.** Eight windows of one symbol in a week that trended one way cannot separate a 940 a
+window edge from a 10588 draw, and the rule the campaign was written to test -- whether the quoting covers its own
+schedule -- is answered yes, sixteen times over, which is the answer the fee section has been looking for since the
+fee was found to be larger than a tick.
+
 
 
 

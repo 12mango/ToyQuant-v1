@@ -551,6 +551,43 @@ on 2026-10-02 and it moves the fills and the orders by half, so it buys a differ
 one for less -- and the route to a cheaper campaign is the window length and the symbol count, both of which the
 recorded rows already use one of.
 
+**The multi-day campaign is now pre-registered, and its rules are written here before it runs.** The purchase is
+seven more two-hour windows of MU at 13:30 to 15:30 UTC -- 2026-09-22, 09-23, 09-24, 09-25, 09-28, 09-30 and
+10-01, with 09-29 already on disk, so **eight windows in ten levels for 0.608 USD**, priced a day at a time before
+any of it was bought. (2026-10-02 is not among them because it is not available: the dataset's own available end is
+that day at 13:20 UTC, twenty minutes before the window opens.) MU is the symbol because it is the one whose screen
+ratio is 10.770 and whose quoting margin measured positive at matched exposure; AAPL is deliberately not bought,
+because the account's own schedule fails it at 2.573.
+
+Each window is run twice, at the pinned size the recorded rows use and at a notional-matched size, both with the
+account's schedule. **Four rules decide what the campaign means, and they are stated before anything is measured:**
+
+1. the quoting margin -- capture less markout less every fee including the minimum per order -- is positive in at
+   least six of the eight windows: **the quoting edge is out of sample**;
+2. the mean and the median of the eight net results are both positive: **the line has an expected value**;
+3. the mean is positive and the median is not: **the line is carried by outliers**, it is recorded as that, and the
+   exposure cap becomes mandatory rather than optional;
+4. the mean is not positive: **the quoting line is closed**, with the numbers that closed it.
+
+What the campaign cannot decide is written down with the rules: eight windows are eight draws of the position term,
+which is the term that has decided every window so far, so no rule above speaks to how large the edge is against
+that noise -- only to whether the edge is there.
+
+**It has now been run, and it returns a pass on the rule that mattered and a qualified answer on the second.** The
+seven windows cost 0.608 USD and the eighth was already on disk: **the quoting margin is positive in all sixteen
+rows** -- eight windows at two sizes -- averaging 940.59 a window against a standard deviation of 382.24, so rule 1
+holds out of sample. Rule 2 holds at the pinned size, mean +4905.77 and median +4635.13, and falls to rule 3 at the
+matched size, mean +743.68 and median -542.82, and **the omission that makes both readings possible is mine**: the
+pre-registration above does not say which size the four rules apply to, and it is left in place as written rather
+than edited now that the answer is in.
+
+**And the campaign measured the number this line has been carrying as an estimate: the noise is eleven times the
+edge.** The quoting margin sums to 7524.69 across the eight windows with a per-window dispersion of 382.24, while
+the position term sums to 31721.57 with a dispersion of 10587.96, so **about 506 windows -- two years of daily
+two-hour sessions -- is what two standard deviations need** to separate one from the other, and 81 percent of the
+campaign's +39246.13 is the position. That is the honest state of the line: the fee question is settled in the
+quoting's favour, sixteen rows deep, and the question that remains is not a fee question.
+
 | Spend | What it buys | Cost |
 |---|---|---|
 | the screen (gate 1) | top of book only, over a candidate list and a few days — **spent: 0.52 USD on thirty symbols, AAPL and TSLA pass** | 5 to 20 USD |
