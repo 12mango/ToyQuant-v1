@@ -639,7 +639,7 @@ a detail: at one contract the floor spends 1.00 to collect 0.65, and at two it s
 
 evaluated at a stated clip size, because the commission has a per order floor and the rest is per contract. The
 multiplier is 100, the tick is 0.05 for a non-penny class, and `tools/screen_spread.py` prices this with
-`--multiplier=100 --tick=0.05 --fee-schedule=` plus one added argument for the clip size; the activity floor stays
+`--fee-schedule=` plus its own multiplier, tick and clip size arguments; the activity floor stays
 2.8 trade prints a second. Three consequences are written down before the answer is in: the **penny classes fail**
 for the reason cheap shares fail, since a one cent spread is 0.50 USD against an 0.87 USD cost; a **five cent spread
 is 2.50 USD against the same cost** and passes; and **the fraction of the premium the spread represents does not
