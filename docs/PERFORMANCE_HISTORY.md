@@ -2577,6 +2577,45 @@ sit, by six times the spacing, changes the margin by a third and the position te
 margin, which is the strongest evidence yet that the term dominating every window in this document is the market's
 move across whatever inventory the strategy is carrying, and not something a quote can be placed away from.
 
+**It has since been run the way the model asks, and it closes the quote-placement axis rather than opening it.** The
+same eight windows at a half spread of five and of ten ticks, each with the shift held at a quarter and at half of
+it, since MU's median spread at the trades is 29 ticks and a five tick half spread is therefore still inside the
+market's own spread:
+
+| setting | fills | units | quoting margin USD | position term USD | net USD |
+|---|---:|---:|---:|---:|---:|
+| half spread 1, no shift | 5,989 | 70,885 | +3096.26 | +2853.20 | +5949.46 |
+| half spread 5, no shift | 4,732 | 58,314 | +2827.96 | -337.33 | +2490.61 |
+| half spread 5, shift 2.5 | 6,314 | 76,899 | +3402.41 | -2927.88 | +474.54 |
+| half spread 10, no shift | 3,394 | 43,277 | +2360.32 | +940.00 | +3300.30 |
+| half spread 10, shift 2.5 | 4,416 | 55,070 | +2887.20 | -1697.18 | +1190.02 |
+| half spread 10, shift 5 | 4,666 | 58,845 | +3153.85 | -2615.19 | +538.65 |
+
+**A sum is not the measure, and reading this table by its sums is a trap the first pass fell into.** The ratio of
+the two summed columns is 8.38 for a five tick spread against 1.09 for a one tick spread, which reads as a sevenfold
+improvement, and it is an artefact: the position term's *sum* is near zero in that row because this sample's eight
+draws cancelled, not because its risk is smaller. What decides whether an edge is measurable is the dispersion of
+the position term against the mean margin, and the same eight rows give:
+
+| setting | margin a window, mean | margin, standard deviation | position term a window, mean | position term, standard deviation | windows at two standard deviations |
+|---|---:|---:|---:|---:|---:|
+| half spread 1 | +387.03 | 164.30 | +356.65 | **4145** | **458** |
+| half spread 5 | +353.50 | 158.00 | -42.17 | **3363** | **362** |
+
+**So quoting five ticks out instead of at the touch buys about twenty percent, not seven hundred percent**, and the
+shift that is the model's own mechanism makes both columns worse at every width it was tried at: at a five tick
+spread, adding a 2.5 tick shift raises the margin by 574.45 and the position term by 2590.55. This is consistent
+with the one tick sweep above and it points the same way -- a more aggressive reducing side buys volume near the
+touch, where the fills are, and pays for it in the inventory it does not reduce.
+
+**That closes the axis.** The quote's distance, its width, its shift, the size, the exposure cap, the kill switch
+and the fee schedule have between them moved the ratio by twenty percent in the best case, from 458 windows to 362,
+against a target that needs it below one. Whatever decides this line is not on this list, which is the finding the
+two sweeps were run to produce: **the position term is the market's move across the inventory a quoting strategy
+must carry to earn its spread, and no quoting parameter changes either of the two terms it is made of.** The lever
+that is left is the venue, where the same arithmetic comes out differently, and `docs/ROADMAP.md` now carries the
+test for one rather than a preference between them.
+
 
 
 
