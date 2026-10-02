@@ -28,6 +28,8 @@ Usage:
     python3 tools/screen_spread.py --download --max-cost-usd=5 --symbols SPY,QQQ,IWM \\
         --start 2026-09-29T13:30 --end 2026-09-29T15:30
     python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
+    python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \\
+        --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013
 
 `--input` computes the same statistics from a file already on disk, which is how this script is tested without
 spending anything and how a ten-level file can be screened as if it were top of book, because the ten-level
@@ -49,6 +51,38 @@ from pathlib import Path
 BASE = "https://hist.databento.com/v0/"
 FEE_PER_SHARE = 0.0035
 TICK = 0.01
+# The account's schedule, all zero until named, so a run without the flag reproduces the recorded table exactly:
+# the keys match the engine's own --fee-schedule, so one string prices the screen and the replay the same way.
+SCHEDULE_DEFAULTS = {"min": 0.0, "regulatory": 0.0, "clearing": 0.0, "audit": 0.0, "rebate": 0.0}
+
+
+def parse_schedule(text):
+    schedule = dict(SCHEDULE_DEFAULTS)
+    for item in [piece for piece in text.split(",") if piece.strip()]:
+        if "=" not in item:
+            raise SystemExit(f"--fee-schedule: {item!r} is not KEY=VALUE")
+        key, value = item.split("=", 1)
+        if key.strip() not in schedule:
+            raise SystemExit(f"--fee-schedule: {key.strip()!r} is not one of "
+                             f"{', '.join(sorted(schedule))}")
+        try:
+            schedule[key.strip()] = float(value)
+        except ValueError:
+            raise SystemExit(f"--fee-schedule: {value!r} is not a number")
+    return schedule
+
+
+def schedule_per_side(schedule, price, fee_per_share, tick, multiplier):
+    """The account's charge for one unit filled on one side, in ticks, at a given share price.
+
+    The commission, the clearing fee and the audit fee are charged a share whichever side it is; the rebate is
+    credited on the fills that add liquidity, which is the side a market maker is on; and the regulatory fee is
+    charged on the proceeds of a sale, so it enters halved here, because a market maker sells on half its fills.
+    That halving is what puts the share price into a rule that used to be the same for every symbol.
+    """
+    unit = fee_per_share + schedule["clearing"] + schedule["audit"] - schedule["rebate"]
+    unit += 0.5 * schedule["regulatory"] * price
+    return unit / (tick * multiplier)
 
 
 def api(endpoint, params, timeout=3600):
@@ -119,7 +153,7 @@ def download(args, symbol):
     return target
 
 
-def measure(path, symbol, tick, multiplier, fee_per_share):
+def measure(path, symbol, tick, multiplier, fee_per_share, schedule=None):
     """One streaming pass: the spread distribution in ticks, the trade count and the time covered.
 
     Two distributions are collected on purpose. The book spread is what the screen rule used to be written
@@ -130,6 +164,7 @@ def measure(path, symbol, tick, multiplier, fee_per_share):
     spreads = Counter()
     ticks_seen = []
     trade_ticks = []
+    trade_prices = []
     trades = 0
     rows = 0
     first_ts = last_ts = None
@@ -137,7 +172,7 @@ def measure(path, symbol, tick, multiplier, fee_per_share):
         reader = csv.reader(handle)
         header = next(reader)
         columns = {name: index for index, name in enumerate(header)}
-        for name in ("ts_event", "action", "bid_px_00", "ask_px_00"):
+        for name in ("ts_event", "action", "bid_px_00", "ask_px_00", "price"):
             if name not in columns:
                 raise SystemExit(f"{path}: missing column {name}")
         for row in reader:
@@ -163,12 +198,21 @@ def measure(path, symbol, tick, multiplier, fee_per_share):
             spreads[round(ticks)] += 1
             if is_trade:
                 trade_ticks.append(ticks)
+                try:
+                    trade_prices.append(float(row[columns["price"]]))
+                except ValueError:
+                    pass
     if not ticks_seen:
         raise SystemExit(f"{path}: no usable top of book")
     ticks_seen.sort()
     trade_ticks.sort()
     seconds = (last_ts - first_ts) / 1e9 if first_ts and last_ts else 0.0
     fee_ticks = fee_per_share / (tick * multiplier)
+    # The share price is what the second rule needs: the regulatory fee is charged on the proceeds of a sale, so
+    # the same spread in ticks is a different round turn on a ten dollar share and on a three hundred dollar one.
+    median_trade_price = statistics.median(trade_prices) if trade_prices else 0.0
+    schedule_ticks = (schedule_per_side(schedule, median_trade_price, fee_per_share, tick, multiplier)
+                      if schedule else fee_ticks)
     median = statistics.median(ticks_seen)
     median_trade = statistics.median(trade_ticks) if trade_ticks else 0.0
     return {
@@ -188,6 +232,10 @@ def measure(path, symbol, tick, multiplier, fee_per_share):
         "half_spread_ticks": median / 2.0,
         "trade_half_spread_ticks": median_trade / 2.0,
         "fee_ticks": fee_ticks,
+        "price": median_trade_price,
+        "schedule_ticks": schedule_ticks,
+        "round_turn_ticks": 2.0 * schedule_ticks,
+        "schedule_ratio": (median_trade / 2.0) / schedule_ticks if schedule_ticks > 0 else 0.0,
         "ratio": (median_trade / 2.0) / fee_ticks,
         "rows_per_second": rows / seconds if seconds > 0 else 0.0,
         "trades_per_second": trades / seconds if seconds > 0 else 0.0,
@@ -197,22 +245,31 @@ def measure(path, symbol, tick, multiplier, fee_per_share):
 def report(args, results):
     print()
     floor = args.min_trades_per_second
-    print("| symbol | median book spread | median trade spread | half at trades | fee/side | ratio | "
-          ">=3 ticks | rows/s | trades | trades/s | spread | activity |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
+    print("| symbol | price USD | median book spread | median trade spread | half at trades | fee/side | "
+          "schedule/side | round turn | ratio | schedule ratio | >=3 ticks | rows/s | trades | trades/s | "
+          "spread | spread, schedule | activity |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|")
     for row in results:
         threshold = args.min_ratio * 2.0 * row["fee_ticks"]
         verdict = "pass" if row["median_trade_ticks"] >= threshold else "fail"
+        schedule_threshold = args.min_ratio * row["round_turn_ticks"]
+        schedule_verdict = "pass" if row["median_trade_ticks"] >= schedule_threshold else "fail"
         activity = "-" if floor <= 0 else ("pass" if row["trades_per_second"] >= floor else "fail")
-        print(f"| {row['symbol']} | {row['median_ticks']:.3f} | {row['median_trade_ticks']:.3f} | "
-              f"{row['trade_half_spread_ticks']:.3f} | {row['fee_ticks']:.3f} | {row['ratio']:.3f} | "
-              f"{row['at_three_or_more']:.3f} | {row['rows_per_second']:.1f} | {row['trades']} | "
-              f"{row['trades_per_second']:.2f} | {verdict} | {activity} |")
+        print(f"| {row['symbol']} | {row['price']:.2f} | {row['median_ticks']:.3f} | "
+              f"{row['median_trade_ticks']:.3f} | {row['trade_half_spread_ticks']:.3f} | "
+              f"{row['fee_ticks']:.3f} | {row['schedule_ticks']:.3f} | {row['round_turn_ticks']:.3f} | "
+              f"{row['ratio']:.3f} | {row['schedule_ratio']:.3f} | {row['at_three_or_more']:.3f} | "
+              f"{row['rows_per_second']:.1f} | {row['trades']} | {row['trades_per_second']:.2f} | "
+              f"{verdict} | {schedule_verdict} | {activity} |")
         print(f"[SCREEN] symbol={row['symbol']} median_book_ticks={row['median_ticks']:.3f} "
               f"median_trade_ticks={row['median_trade_ticks']:.3f} fee_ticks={row['fee_ticks']:.3f} "
               f"ratio={row['ratio']:.3f} rows={row['rows']} trades={row['trades']} verdict={verdict} "
               f"trades_per_second={row['trades_per_second']:.3f} activity_floor={floor:.3f} "
               f"activity_verdict={activity}")
+        print(f"[SCREEN] schedule symbol={row['symbol']} price={row['price']:.6f} "
+              f"schedule_ticks={row['schedule_ticks']:.6f} round_turn_ticks={row['round_turn_ticks']:.6f} "
+              f"schedule_ratio={row['schedule_ratio']:.6f} threshold_ticks={schedule_threshold:.6f} "
+              f"verdict={schedule_verdict}")
     print()
     print(f"[SCREEN] the rule is the pre-registered one: half spread >= {args.min_ratio:.1f} x the fee per side, "
           f"which is a median spread of {args.min_ratio * 2.0 * (FEE_PER_SHARE / TICK):.3f} ticks at the default "
@@ -223,6 +280,12 @@ def report(args, results):
           "pre-registered number, recorded in docs/ROADMAP.md from the fill counts of the first two screened "
           "symbols; it is applied only when --min-trades-per-second is given, because a floor named in a command "
           "line is a number that was written down before the answer was in.")
+    if args.fee_schedule:
+        print(f"[SCREEN] the second rule is the pre-registered one too: the spread at the trades against "
+              f"{args.min_ratio:.1f} times the round turn of the account's own schedule at each share's price, "
+              f"schedule {args.fee_schedule}. The minimum per order is reported and not charged, because it is "
+              f"charged per order instance and this tool sees no orders; it is measured in the engine on whatever "
+              f"symbol passes here, and the rule and its two written-down consequences are in docs/ROADMAP.md.")
 
 
 def main():
@@ -243,6 +306,13 @@ def main():
     parser.add_argument("--multiplier", type=float, default=1.0,
                         help="USD per price unit per unit, 5 for a micro E-mini, 1 for a share")
     parser.add_argument("--fee-per-share", type=float, default=FEE_PER_SHARE)
+    parser.add_argument("--fee-schedule", default="",
+                        help="the account's schedule as KEY=VALUE pairs, the same keys as the engine's flag: "
+                             "min, regulatory, clearing, audit, rebate. Empty, the default, applies the "
+                             "commission alone, which is what the recorded table was measured under. With a "
+                             "schedule the second verdict compares the spread at the trades to the round turn of "
+                             "the account's own terms at that share's price, and the minimum is reported but not "
+                             "charged, because it is per order instance and top of book cannot see orders")
     parser.add_argument("--min-ratio", type=float, default=3.0)
     parser.add_argument("--min-trades-per-second", type=float, default=0.0,
                         help="the activity floor recorded in docs/ROADMAP.md; 0, the default, reports "
@@ -254,11 +324,13 @@ def main():
 
     if args.min_trades_per_second < 0.0:
         raise SystemExit("--min-trades-per-second cannot be negative")
+    schedule = parse_schedule(args.fee_schedule) if args.fee_schedule else None
 
     if args.input:
         if not args.symbol:
             raise SystemExit("--input needs --symbol")
-        report(args, [measure(args.input, args.symbol, args.tick, args.multiplier, args.fee_per_share)])
+        report(args, [measure(args.input, args.symbol, args.tick, args.multiplier, args.fee_per_share,
+                             schedule)])
         return 0
     symbols = [name.strip() for name in args.symbols.split(",") if name.strip()]
     if args.symbols_file:
@@ -274,7 +346,8 @@ def main():
     if total > args.max_cost_usd:
         raise SystemExit(f"the window costs {total:.6f} USD and the cap is {args.max_cost_usd:.6f} USD; "
                          "raise --max-cost-usd to accept it")
-    results = [measure(download(args, symbol), symbol, args.tick, args.multiplier, args.fee_per_share)
+    results = [measure(download(args, symbol), symbol, args.tick, args.multiplier, args.fee_per_share,
+                       schedule)
                for symbol in symbols]
     report(args, results)
     return 0

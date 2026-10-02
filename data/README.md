@@ -273,6 +273,16 @@ quotes land behind the touch 23,148 times instead of 11,596 -- which is also why
 its spread, its trade counts and its cost: the strategy runs on ten levels, and a top-of-book file buys a different
 measurement rather than the same one for less.
 
+**The rule has a second form now, and it is the first one with a price in it.**
+`--fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013` is the same string the
+engine takes, and with it the tool prints `price`, `schedule_ticks`, `round_turn_ticks`, `schedule_ratio` and a
+second verdict beside the commission-only one: the median spread at the trades against three times the round turn of
+the account's own terms at that share's price. The commission-only verdict stays printed, because the recorded table
+was measured under it and has to stay re-derivable. The minimum per order is reported and deliberately not charged
+here: it is charged per order instance rather than per share, so it depends on how often a policy replaces its
+quotes, which top of book cannot see, and it is measured in the engine on whatever symbol passes. Re-running the
+cached thirty symbols under the rule costs nothing, and `docs/ROADMAP.md` records what it decided.
+
 What it reports, and why it reports two distributions:
 
 * **the median book spread next to the median spread at the trades.** They are not the same number, and the second

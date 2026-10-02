@@ -416,6 +416,54 @@ which is exactly the case this paragraph exists for. The two symbols the floor k
 second, about 2.5 times the floor, and SPY comes back at 3.97, which is the number this table derived the floor
 from -- the check that the screen and the floor are counting the same thing.
 
+**A second rule is now pre-registered, before any candidate has been screened under it, and it is the first one
+with a price in it.** The rule above charges every symbol the same fee per side. That was right while the fee was a
+commission and it is wrong now that the account's schedule is recorded: a commission of 0.0035 a share is the same
+0.35 of a tick on any share whose tick is a cent, but the **SEC fee is charged on the proceeds of a sale**, so it
+is 0.685 of a tick on a 332 dollar share and 0.021 on a 10 dollar one; the account also charges clearing and the
+audit trail a share a side, and credits 0.0013 a share for the fills that add liquidity. The round turn in ticks is
+therefore a function of the share price rather than a constant:
+
+    round_turn_ticks(price) = 2 * (commission + clearing + audit - rebate + 0.5 * regulatory * price) / tick
+
+with the recorded figures -- commission 0.0035, clearing 0.0002, audit 0.000003, rebate 0.0013, regulatory
+0.0000206 -- and the half in front of the regulatory term is because the fee is charged on a sale while a market
+maker sells on half its fills. **The rule is the one above with that denominator**: a symbol passes when its median
+spread at the trades is at least three times the round turn of its own price. Two consequences are written down
+before the run rather than read out of it. The commission-only rule passes a 332 dollar share whose spread is three
+ticks; the same share under this rule needs 3.508, so **AAPL and TSLA are expected to fail the rule they passed**,
+which is not a reason to change the rule but the arithmetic that makes the price column a search dimension rather
+than a footnote. And a ten dollar share with a two cent spread passes here, where the commission-only rule would
+have ranked it at 2.86 and failed it. **The minimum per order is deliberately not in the denominator**: it is
+charged per order instance rather than per share, so it depends on how often a policy replaces its quotes, which
+top of book cannot measure. It stays where it is measured, which is the engine, and a symbol that passes here is
+what gets run there. The rule is applied by
+`tools/screen_spread.py --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013`,
+which prints both verdicts, the old one beside the new, so the recorded table stays re-derivable and a reader can
+see which rule produced which fail.
+
+**It has since been run, over the thirty symbols already in the cache, for nothing, and it both confirmed and
+falsified what was written above.** The confirmation: **AAPL fails the rule it passed**, at a schedule ratio of
+2.573 against a threshold of 3.498 ticks, which is the price column doing its job -- a 332 dollar share's SEC fee
+is 0.685 of a tick a sale, and it is what pushed the round turn from 0.700 to 1.166. The falsification: **TSLA
+passes**, at a schedule ratio of 4.132, because its median spread at the trades is five ticks where AAPL's is three,
+and the prediction above said both would fail. The pre-registered arithmetic was also off by a hundredth of a tick:
+at AAPL's median trade price of 332.71 the threshold is 3.498, not the 3.508 written above, and the number is
+recorded here rather than quietly corrected, because a pre-registration that can be edited after the fact is not
+one.
+
+**And the price column did not produce the new candidate it was hoped for.** Every cheap share in the list fails
+the spread axis rather than the fee axis: AMC at 3.26 USD, BB at 8.52, TLRY at 4.02 and MSOS at 5.12 all have a
+**median spread at the trades of one tick**, which is 0.5 of a tick a side against the 0.35 commission, and the
+regulatory saving their price buys them is a fifth of a tick. The US equity tick is a cent whatever the share
+costs, so a cheap share is not a wide one in ticks, it is a narrow one, and the names whose spreads are wide in
+ticks are the ones the activity floor removes: JNUG, NUGT and LABU pass the spread rule at 38, 24 and 68 times the
+round turn and trade 0.02, 0.04 and 0.05 times a second against the floor's 2.8. **The screen has now measured both
+ends of that trade-off, and the direction it leaves is a candidate list this cache does not contain**: shares whose
+spread is wide in ticks *and* whose flow clears the floor, which on this evidence is a mid-cap single name rather
+than an exchange traded fund or a mega cap. That list is the next purchase, it is a few dollars of top of book, and
+the rule it is judged against is the one above, written down before any of it was screened.
+
 ### The seven things that must be true before any engineering
 
 | # | Must be true | The cheapest way to kill it | Cost |
