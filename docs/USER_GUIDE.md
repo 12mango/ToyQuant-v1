@@ -358,6 +358,11 @@ The main comparison metrics are:
 - `against_depth` and `against_flow` — directional quality of fills
 - `audited_orders`, `audited_filled_orders`, `audited_cancelled_orders` — runtime order lifecycle counts
 - `cancelled_after_fill_orders`, `cancelled_before_fill_orders` — cancellation outcome split
+- `orders_that_filled`, `filled_orders_by_size` — filled order **instances** (a modification or a cancel
+  and replace makes a new one) and their histogram as `count/quantity` per bucket, with the buckets
+  `<=50, 51-99, 100-199, 200-499, 500-999, 1000+` shares. The two bounds at 100 and 200 are where the
+  two share schedules this repository has read stop charging a minimum per order, so a commission under
+  either convention is computable from this field exactly.
 - `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is

@@ -2293,20 +2293,39 @@ applies:
 > you submit a 200 share order, 100 shares execute, and then you modify the order and the remaining 100 shares also
 > execute, then both 100 share orders are subject to the minimum commission."
 
-The AAPL row cancels or replaces **45,680 of its 45,907 orders** and its fills average **26 shares**, so a minimum
-that follows the order instance would be charged on almost every fill rather than once per hundred shares. The two
-readings bound the term with numbers the run already has: if the minimum follows the order, the commission stays at
-**210.58 USD**; if it follows every execution, **2,324 fills at 0.35 is 813.40 USD**, which is 3.9 times what the
-model charges and takes the per fill cost from **0.583 to 1.585 ticks** against a capture of 0.640. Those two are
-**535 USD apart on a window whose position term is 3,340**, so what this decides is whether the quoting covers its
-fee, not whether the window pays -- and the exact number needs one counter the engine does not print yet, the
-number of order instances that executed at least one share.
+The counter that decides it now exists, and on this window the answer is that the minimum applies. The run reports
+the filled order **instances** and their sizes, and AAPL shows **1,222 instances against 2,324 fills**, with
+**969 of them -- 79% -- filling fewer than 100 shares**, which is where 0.35 stops binding at a 0.0035 share rate:
 
-Nothing in this section moves a measured number: every row above remains what the engine printed, and these terms
-are prose beside them so that a reader can see what the engine does not carry. The change that would carry them is
-now named and sized -- two fees on a sale, a credit on a passive fill, and a minimum per order instance -- and the
-first of those needs the counter above, which is a smaller change than the fee model itself and is worth making
-first, because it is what turns this paragraph's bracket into a number.
+| filled order size | orders | shares |
+|---|---:|---:|
+| up to 50 | 737 | 17,738 |
+| 51 to 99 | 232 | 17,129 |
+| 100 to 199 | 253 | 25,300 |
+
+So a 0.35 minimum charged per order instance costs `969 * 0.35 + 0.0035 * 25,300` = **427.70 USD** against the
+**210.58 USD** the per share model charges, a factor of 2.03, and the per fill cost moves from **0.583 to 0.943
+ticks** against a capture of 0.640. **The quoting therefore stops covering its fee**, short by about 0.30 of a tick
+a fill. The window's sign does not move: 0.30 of a tick over 60,167 shares is 183 USD on a window whose position
+term is 3,340.
+
+The same three buckets also say why the minimum binds and what would unbind it, and it is not a fee finding. The
+strategy replaces **45,680 of its 45,907 orders** and fills 26 shares at a time, so nearly every order it fills
+fills partially; the 253 orders that did fill 100 shares or more paid the per share rate instead. Getting the other
+969 into that bucket means quoting larger, which is the same direction as the drift term that costs 3,340 and
+against it, so the two have to be traded off rather than fixed separately. TSLA reads the same way -- 1,128
+instances, 920 under 100 shares, 394.80 USD against 177.64, 1.011 ticks a fill against a capture of 0.979, a
+shortfall of 0.03 of a tick -- and SPY reads 529 instances with 324 under 100 shares, though SPY's fee was never
+covered to begin with.
+
+Nothing in this section moves a measured number: every table above is what the engine printed, and the terms here
+are prose beside them so that a reader can see what the engine does not carry. `fees_paid` is still the per share
+figure on purpose -- counting what the broker charges and changing what the engine charges are two changes, and
+this section needed the first. The second is now named and sized: two fees on a sale, a credit on a passive fill,
+and a minimum per order instance, carried by the instrument rather than by prose. It is worth making, because it is
+what turns every net figure in the equity rows into one a broker's statement would agree with, and it should be made
+with the rates from a first trade confirmation rather than from a page -- the two readings of the minimum are 183
+USD apart on this window, and a confirmation is what settles which one is real.
 
 
 

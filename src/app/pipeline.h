@@ -215,6 +215,11 @@ class Pipeline
     {
         uint64_t start_cycle{0};
         bool filled{false};
+        // What the order filled in total, which is not the same quantity as any single fill. A share
+        // commission is charged per share, but a broker's minimum is charged per order and a modification
+        // makes a new order, so the quantity that decides a fee is the size of the order instance that
+        // filled. It is accumulated here and bucketed when the order ends.
+        uint64_t filled_quantity{0};
         // Queue profile. The level belongs to our order while it rests, so the queue behind it is measured
         // when the order arrives and again before any cancel, never after it leaves: the engine erases a
         // level once no order rests in it, and a reading taken after that would report an empty queue for a

@@ -50,6 +50,30 @@ struct ExecutionQualityMetrics
     uint64_t audited_cancelled_orders{0};
     uint64_t cancelled_after_fill_orders{0};
     uint64_t cancelled_before_fill_orders{0};
+    // The same orders again, but by how much each of them filled. A commission's minimum per order is a
+    // fee the per-share rate does not show, and it is charged on the order instance rather than on the
+    // fill, so a strategy whose fills are small pays it on every fill. The bucket bounds are where the
+    // two schedules this repository has read stop charging it -- 100 shares at 0.35 with a 0.0035 share
+    // rate, and 200 at 1.00 with 0.005 -- which puts both thresholds on a boundary and makes the
+    // commission under either convention computable from the counts and the quantity sums.
+    static constexpr std::size_t kFillSizeBucketCount = 6;
+    uint64_t orders_that_filled{0};
+    std::array<uint64_t, kFillSizeBucketCount> filled_order_count_by_size{};
+    std::array<uint64_t, kFillSizeBucketCount> filled_order_quantity_by_size{};
+
+    // The histogram as one field, `count/quantity` per bucket, so that the [EXECUTION] line does not grow
+    // by twelve numbers to carry it.
+    std::string size_histogram() const
+    {
+        std::string text;
+        for (std::size_t index = 0; index < kFillSizeBucketCount; ++index)
+        {
+            if (index != 0) text += ',';
+            text += std::to_string(filled_order_count_by_size[index]) + "/" +
+                    std::to_string(filled_order_quantity_by_size[index]);
+        }
+        return text;
+    }
     uint64_t total_order_lifetime_cycles{0};
     // Where each quote went relative to the venue touch. A quote at the touch joins whatever is
     // displayed there; one behind it is protected by the spread and has to wait longer. On this feed
@@ -279,7 +303,9 @@ struct RunSummary
                << " starting_cash_usd=" << starting_cash_usd
                << " max_abs_exposure_usd=" << max_abs_exposure_usd
                << " exposure_over_collateral_fills=" << exposure_over_collateral_fills
-               << " working_orders=" << working_orders << "\n"
+               << " working_orders=" << working_orders
+               << " orders_that_filled=" << execution_quality.orders_that_filled
+               << " filled_orders_by_size=" << execution_quality.size_histogram() << "\n"
                << "[PORTFOLIO] " << portfolio.to_log_string()
                << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
                << " net_pnl_usd=" << pnl.net_pnl_usd

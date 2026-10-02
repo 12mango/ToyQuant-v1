@@ -60,6 +60,20 @@ double percentile(std::vector<double> values, double fraction)
     return values[index];
 }
 
+// Which bucket a filled order belongs in, by how many shares it filled in total. The bounds are where the
+// two share schedules this repository has read stop charging a minimum per order: 100 shares is 0.35 at a
+// 0.0035 share rate, and 200 shares is 1.00 at 0.005. Both thresholds therefore fall on a boundary, so a
+// commission under either convention is computable exactly from the counts and the quantity sums.
+std::size_t fill_size_bucket(uint64_t quantity)
+{
+    if (quantity <= 50) return 0;
+    if (quantity <= 99) return 1;
+    if (quantity <= 199) return 2;
+    if (quantity <= 499) return 3;
+    if (quantity <= 999) return 4;
+    return 5;
+}
+
 }  // namespace
 
 Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
@@ -203,6 +217,8 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
             if (audit != order_audit_.end())
             {
                 if (report.exec_type == ExecType::Trade) audit->second.filled = true;
+                if (report.exec_type == ExecType::Trade)
+                    audit->second.filled_quantity += report.executed_quantity();
                 if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
                 {
                     const uint64_t lifetime = quote_cycle_ >= audit->second.start_cycle
@@ -235,6 +251,18 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                             static_cast<double>(audit->second.queue_at_end) / at_rest);
                         ++queue_profile_orders_;
                         if (audit->second.min_queue_ahead == 0) ++queue_zero_orders_;
+                    }
+                    // The order instance, not the fill, is what a broker's minimum per order is charged
+                    // on, so it is counted once here, when the order ends, and bucketed by how much it
+                    // filled. A modification or a cancel and replace makes a new instance, which is why
+                    // this counter and the fill count are not the same number.
+                    if (audit->second.filled)
+                    {
+                        ++execution_quality_.orders_that_filled;
+                        const std::size_t bucket = fill_size_bucket(audit->second.filled_quantity);
+                        ++execution_quality_.filled_order_count_by_size[bucket];
+                        execution_quality_.filled_order_quantity_by_size[bucket] +=
+                            audit->second.filled_quantity;
                     }
                     order_audit_.erase(audit);
                 }
