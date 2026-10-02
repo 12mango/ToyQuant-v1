@@ -618,6 +618,49 @@ commission, and four gates that re-derive every claim from the binary. Pointing 
 and a few dollars, and the record of SPY, of the micro E-mini, of AAPL and of MU is the evidence that it works: four
 markets falsified with numbers rather than with opinions, which is the part of this project that is finished.
 
+### The options venue: what has been verified, and the rule that will test it
+
+**The fee census, with its provenance marked because two of its numbers are reported rather than read.** Cboe's own
+schedule, read from the page: a **market maker adding liquidity against non-customer flow is credited 0.25 USD a
+contract** (code GV), a **customer in XSP, MRUT or DJX trading under ten contracts is credited 0.30** (code XC), a
+customer order under 100 contracts routed to certain venues is **free** (code TE), and the pass-through fees for
+routed customer orders run **0.18 to 1.25** a contract with the penny classes the expensive ones (RF at 0.75 against
+RD at 0.25). **So the sign of a per contract fee is a choice of product and order type rather than a market fact**,
+which is the first time this project has had a negative fee inside an account it can actually reach. Reported by the
+account holder rather than read from a page, and therefore marked as reported: the broker's commission is **0.65 USD
+a contract** at the first tier, **the minimum commission is 1.00 USD an order** whatever the size, and the options
+regulatory fee is about **0.02 USD a contract**. The minimum is the one that matters, because it has the same shape
+as the per order floor this repository already models for equities, and it makes the clip size a decision rather than
+a detail: at one contract the floor spends 1.00 to collect 0.65, and at two it spends nothing extra.
+
+**The rule, pre-registered before any series has been measured.** A series passes when
+
+    half_spread_usd * 100 >= 3 * (commission per order + regulatory + clearing - rebate) / contracts_per_order
+
+evaluated at a stated clip size, because the commission has a per order floor and the rest is per contract. The
+multiplier is 100, the tick is 0.05 for a non-penny class, and `tools/screen_spread.py` prices this with
+`--multiplier=100 --tick=0.05 --fee-schedule=` plus one added argument for the clip size; the activity floor stays
+2.8 trade prints a second. Three consequences are written down before the answer is in: the **penny classes fail**
+for the reason cheap shares fail, since a one cent spread is 0.50 USD against an 0.87 USD cost; a **five cent spread
+is 2.50 USD against the same cost** and passes; and **the fraction of the premium the spread represents does not
+matter to the fee**, only to the inventory, which is where the second number below comes from.
+
+**Why this is the venue to test, in one number each.** Capture a unit divided by the notional a unit ties up is
+**1.25 percent** here -- 2.50 USD on a 200 USD contract -- against **0.012 percent** for MU, and that quotient is what
+decides whether an edge can be separated from a position draw at all; the option's own higher volatility takes some
+of it back and the measurement is what would say how much. And the data is a rounding error, priced on 2026-10-02 for
+the 2026-09-29 window: the whole SPY chain at one minute sampled top of book **0.2325 USD**, the same chain at one
+second 9.32, six near the money series with each trade carrying the quote it printed against **0.00033 USD**, a single
+series with the consolidated book **0.00006 USD**, and the chain's own definition free.
+
+**Two risks are written down with the rule, because they are about the data's shape rather than its price.** OPRA
+serves no `mbp-1`, so there is no venue specific ten level book for an option: the best available is a consolidated
+top of book, which aggregates every venue's size at that price, and this repository has already measured what a
+thinner book does to fills, because the top of book experiment halved them. And an option series is one instrument
+among thousands on one underlying, so a chain is a many instrument problem for readers that take one file at a time;
+a single series is inside the engine's shape, a chain is not, and a delta hedge is a second instrument again, which
+the MES measurement says only works at horizons longer than a quote's life.
+
 | Spend | What it buys | Cost |
 |---|---|---|
 | the screen (gate 1) | top of book only, over a candidate list and a few days — **spent: 0.52 USD on thirty symbols, AAPL and TSLA pass** | 5 to 20 USD |
