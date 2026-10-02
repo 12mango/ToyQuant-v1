@@ -701,6 +701,51 @@ carry a rebate were deliberately left unscreened so that the rule cannot be read
 the result. The screen costs 0.32 USD and about a day; the same screen on XSP, which pays 0.30 a contract and quotes
 in a different tick, is the one experiment the numbers leave standing.
 
+### Step 2 executed: representative series, and the verdict that replaces the last one
+
+**The verdict above was wrong, and this is the measurement that corrected it.** The screen had looked at one expiry and
+one strike slab of SPY and concluded that prints and spread run in opposite directions. Picking the strikes properly
+-- nearest the money, on a one day and a thirty day expiry, across four classes -- shows the opposite inside the
+nearest expiry: **the series with the tightest spread also has the most flow**, 8,756 prints in two hours at a two cent
+spread on an AAPL one day put, and 7,623 prints at four cents on the strike next door. What the first screen measured
+was a property of a two day SPY weekly and of forty strikes chosen by hand, not a property of the venue.
+
+**What was spent, and why the second pull cost more than the first.** The free definitions carry every strike and
+expiry, so the picks cost nothing; a one day anchor close for the four underlyings cost 0.0000063 USD; the trades for
+126 series across two expiries cost **0.899 USD**, three orders of magnitude more than the same call on deep out of the
+money strikes, because near the money is where the volume is. Total on this venue: **1.22 USD**.
+
+**The quotient that the screen could not see.** The trades carry the consolidated bid and ask at every print, so the
+mid at print times is the contract's own path, and its standard deviation over the same window is the position term
+the capture has to be separated from. Against MU's own measurement, 941 USD of capture a window over 10,588 USD of
+position standard deviation, or **0.089**:
+
+| series, one day expiry | prints in two hours | median spread, USD | premium, USD | position sigma, USD | capture in two hours, USD | capture / sigma |
+|---|---:|---:|---:|---:|---:|---:|
+| AAPL P327.5 | 5,276 | 0.02 | 0.57 | 0.091 | 74.3 | **8.20** |
+| AAPL P330 | 8,756 | 0.02 | 1.11 | 0.164 | 123.3 | **7.54** |
+| AAPL P332.5 | 7,623 | 0.04 | 1.98 | 0.294 | 214.7 | **7.30** |
+| AAPL C335 | 7,791 | 0.02 | 1.19 | 0.318 | 109.7 | 3.45 |
+| AAPL P335 | 1,668 | 0.15 | 3.22 | 0.533 | 176.2 | 3.31 |
+
+**92 series were measurable, 68 of them at or above MU's ratio, the median 0.206 and the best 8.20**, which is about
+ninety times MU before fees and between thirty-five and fifty-seven times after the account's 0.585 USD a contract.
+The strike in the third row also clears the other two clauses written down before the answer: four cents is 2.00 USD
+against three times the per contract cost, and 7,623 prints is a hundred and seven fills at the ratio the equity screen
+used. **So a candidate passes, and the venue is not closed.**
+
+**What now binds, since it is not the spread, the flow or the fee.** The fill ratio of seventy-one prints a fill is an
+**equity** number, and at a two or four cent spread both sides sit at the touch: whether a retail quote gets one fill in
+seventy-one prints at the touch is a queue question, and the queue is what the engine's own model measures. That is the
+next measurement and it is the only one left that can move the answer, because it scales capture directly: a fill in
+two hundred prints instead of seventy-one divides the quotient by three, and the margin over the fee goes with it.
+
+**Two risks that this table does not show and the next reader should not forget.** Every winner is a **one day**
+expiry, so the premium is small enough that the 1.00 USD order minimum is up to 1.75 times the entire premium, and the
+sigma of the position is a lottery's sigma; the edge may be the price of standing in front of expiry flow rather than
+market making, which is a different business with a different tail. And the sigma here is measured only at print
+times, which understates the risk of holding continuously. Both are recorded before the engine runs rather than after.
+
 | Spend | What it buys | Cost |
 |---|---|---|
 | the screen (gate 1) | top of book only, over a candidate list and a few days — **spent: 0.52 USD on thirty symbols, AAPL and TSLA pass** | 5 to 20 USD |
