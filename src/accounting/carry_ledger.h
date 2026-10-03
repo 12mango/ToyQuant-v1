@@ -4,7 +4,7 @@
 #include <string>
 
 #include "common/instrument_spec.h"
-#include "market/funding_rate.h"
+#include "common/funding.h"
 
 // What a two leg carry earned and what it paid, over the span two funding histories share.
 //

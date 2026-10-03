@@ -42,28 +42,38 @@ set(MARKET_READER_SOURCES
     src/market/deribit_readers.cpp
     src/market/okx_readers.cpp)
 
-set(COMMON_SOURCES
+# The layer boundary, stated as two lists and checked by tools/check_layering.py on every gate run.
+# `CORE_SOURCES` is what a reader learns the engine from: it carries no venue, no legacy header and no carry ledger,
+# so `common <- orderbook/strategy/exchange/accounting <- app` stays readable in that direction only.
+# `LINE_SOURCES` is everything that belongs to one feed family or to a closed line. It stays in the build because the
+# frozen tag and the checked documents need it re-derivable, and it is listed separately so that the boundary is a
+# fact a tool can read rather than a convention a reader has to trust.
+set(CORE_SOURCES
     src/accounting/portfolio.cpp
-    src/accounting/carry_ledger.cpp
     src/accounting/reconciliation.cpp
-    src/market/csv_feed.cpp
-    src/market/funding_rate.cpp
-    ${MARKET_READER_SOURCES}
-    src/market/market_event_recorder.cpp
-    src/market/market_data_validator.cpp
-    src/market/l2_replay_feed.cpp
-    src/market/threaded_l2_replay.cpp
-    src/market/line_reader.cpp
-    src/market/replay_feed.cpp
-    src/legacy/tick_csv_parser.cpp
     src/backtest/performance.cpp
+    src/exchange/matching_engine.cpp
+    src/market/l2_replay_feed.cpp
+    src/market/line_reader.cpp
+    src/market/market_data_validator.cpp
+    src/market/market_event_recorder.cpp
+    src/market/replay_feed.cpp
+    src/market/threaded_l2_replay.cpp
     src/orderbook/orderbook.cpp
     src/orderbook/tick_ladder.cpp
-    src/exchange/matching_engine.cpp
-    src/exchange/paper_broker.cpp
     src/utils/logger.cpp
-    src/utils/stage_profiler.cpp
-)
+    src/utils/stage_profiler.cpp)
+
+set(LINE_SOURCES
+    src/accounting/carry_ledger.cpp
+    src/exchange/paper_broker.cpp
+    src/legacy/tick_csv_parser.cpp
+    src/market/csv_feed.cpp
+    src/market/funding_rate.cpp
+    ${MARKET_READER_SOURCES})
+
+# The union is what the targets take, so no target's sources change when the boundary is redrawn.
+set(COMMON_SOURCES ${CORE_SOURCES} ${LINE_SOURCES})
 
 # Cross-platform threading library.
 find_package(Threads REQUIRED)

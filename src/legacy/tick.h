@@ -1,23 +1,6 @@
 #pragma once
 
-#include <cstdint>
-#include <functional>
-#include <string>
+// The frozen L1 line keeps its own header name, and the type now lives in the core so that the order book does not
+// have to include a legacy header to say what it consumes. See `common/tick.h`.
+#include "common/tick.h"
 
-#include "common/types.h"
-
-namespace legacy
-{
-
-struct Tick
-{
-    uint64_t ts = 0;
-    std::string symbol;
-    double price = 0.0;
-    uint64_t size = 0;
-    Side side = Side::Unknown;
-};
-
-using TickCallback = std::function<void(const Tick&)>;
-
-}  // namespace legacy

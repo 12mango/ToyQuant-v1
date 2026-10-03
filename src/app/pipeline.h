@@ -9,8 +9,8 @@
 #include <utility>
 
 #include "app/run_summary.h"
+#include "common/funding.h"
 #include "exchange/matching_engine.h"
-#include "market/funding_rate.h"
 #include "market/market_event.h"
 #include "orderbook/orderbook.h"
 #include "strategy/strategy.h"

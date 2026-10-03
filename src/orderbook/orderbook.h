@@ -2,8 +2,8 @@
 #include <map>
 #include <mutex>
 
+#include "common/tick.h"
 #include "common/types.h"
-#include "legacy/tick.h"
 #include "market/market_event.h"
 
 struct TopOfBook
