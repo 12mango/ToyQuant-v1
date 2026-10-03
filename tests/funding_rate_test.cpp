@@ -212,7 +212,7 @@ int main()
     // in a recorded block that tools/check_docs.py re-derives.
     {
         const std::filesystem::path root(PROJECT_ROOT_DIR);
-        const auto month = root / "data/v2/BTCUSDT-fundingRate-2024-03.csv";
+        const auto month = root / "data/v2/funding/BTCUSDT-fundingRate-2024-03.csv";
         if (std::filesystem::is_regular_file(month))
         {
             const FundingRateSeries series = read_funding_rate_series(month.string(), "BTCUSDT");
@@ -230,7 +230,7 @@ int main()
             assert(series.sum_rate() > 0.0);
             assert(series.annualized_rate() > 0.0);
         }
-        const auto day = root / "data/v2/okx_funding_2026-01-07_BTC-USDT-SWAP.csv";
+        const auto day = root / "data/v2/funding/okx_funding_2026-01-07_BTC-USDT-SWAP.csv";
         if (std::filesystem::is_regular_file(day))
         {
             // The daily file carries the whole venue, so three settlements for one instrument prove the

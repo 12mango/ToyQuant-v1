@@ -13,7 +13,7 @@ Answers what the public route can and cannot do, for the second venue this repos
   is in contracts, so a linear swap of contract value 0.01 needs that multiplication before it is a base amount.
 
 Usage:
-    python3 tools/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP --output data/v2/okx_...
+    python3 tools/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP --output data/v2/crypto/okx_...
     python3 tools/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP --zip /tmp/already-downloaded.zip
 """
 
@@ -137,7 +137,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--date", required=True, help="file day, for example 2023-03-01, which is midnight UTC+8")
     parser.add_argument("--symbol", required=True, help="for example BTC-USDT-SWAP or BTC-USDT")
-    parser.add_argument("--output", type=Path, help="defaults to data/v2/okx_trades_DATE_SYMBOL.csv")
+    parser.add_argument("--output", type=Path, help="defaults to data/v2/crypto/okx_trades_DATE_SYMBOL.csv")
     parser.add_argument("--zip", type=Path, dest="zip_path", help="reuse a zip that is already on disk")
     parser.add_argument("--max-rows", type=int, help="stop after this many matching rows")
     args = parser.parse_args()
@@ -145,7 +145,7 @@ def main():
         parser.error("--max-rows must be positive")
 
     start_ms, end_ms = day_bounds(args.date)
-    output = args.output or Path(f"data/v2/okx_trades_{args.date}_{args.symbol}.csv")
+    output = args.output or Path(f"data/v2/crypto/okx_trades_{args.date}_{args.symbol}.csv")
 
     try:
         archive = args.zip_path

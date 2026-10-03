@@ -222,10 +222,10 @@ def main():
             # 16:00. Cutting on UTC+8 while the trades archive is cut on UTC is what makes a range worth
             # printing as it is written.
             if len(days) == 1:
-                output = args.output or Path(f"data/v2/okx_funding_{days[0]}_{args.symbol}.csv")
+                output = args.output or Path(f"data/v2/funding/okx_funding_{days[0]}_{args.symbol}.csv")
             else:
                 output = args.output or Path(
-                    f"data/v2/okx_funding_{days[0]}_{days[-1]}_{args.symbol}.csv")
+                    f"data/v2/funding/okx_funding_{days[0]}_{days[-1]}_{args.symbol}.csv")
             rows = []
             for day in days:
                 rows += fetch_okx_day(day, args.symbol, args.zip_path if len(days) == 1 else None)

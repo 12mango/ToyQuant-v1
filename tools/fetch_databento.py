@@ -36,10 +36,10 @@ Usage:
     python3 tools/fetch_databento.py --cost --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \\
         --start 2026-09-29T13:30 --end 2026-09-29T20:00
     python3 tools/fetch_databento.py --download --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \\
-        --start 2026-09-29T13:30 --end 2026-09-29T20:00 --output data/v2/glbx_mbp10_MESZ6_2026-09-29.csv.gz
-    python3 tools/fetch_databento.py --convert --input data/v2/glbx_mbp10_MESZ6_2026-09-29.csv.gz \\
-        --symbol MESZ6 --exchange glbx --depth-out data/v2/glbx_MESZ6_depth.csv \\
-        --trades-out data/v2/glbx_MESZ6_trades.csv
+        --start 2026-09-29T13:30 --end 2026-09-29T20:00 --output data/v2/futures/glbx_mbp10_MESZ6_2026-09-29.csv.gz
+    python3 tools/fetch_databento.py --convert --input data/v2/futures/glbx_mbp10_MESZ6_2026-09-29.csv.gz \\
+        --symbol MESZ6 --exchange glbx --depth-out data/v2/futures/glbx_MESZ6_depth.csv \\
+        --trades-out data/v2/futures/glbx_MESZ6_trades.csv
 """
 
 import argparse

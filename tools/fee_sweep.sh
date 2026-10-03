@@ -28,10 +28,10 @@ STRATEGY_ARGS=(--fast-validation --base-spread-ticks=1 --refresh-price-ticks=4)
 # settled at one rate. The two million record window is the largest sample and costs about three seconds a run,
 # so it is quoted at the venue's own rate rather than at all three.
 WINDOWS=(
-  "0401_incremental_200k|data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz|/tmp/depth_200k_base.csv|"
-  "0401_snapshot_200k|data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz|/tmp/snap_20200401_200k.csv|"
-  "0501_snapshot_200k|data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz|/tmp/snap_0501_200k.csv|"
-  "0401_incremental_2m|data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz|/tmp/depth_2m.csv|0.0002"
+  "0401_incremental_200k|data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz|/tmp/depth_200k_base.csv|"
+  "0401_snapshot_200k|data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz|/tmp/snap_20200401_200k.csv|"
+  "0501_snapshot_200k|data/v2/crypto/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz|/tmp/snap_0501_200k.csv|"
+  "0401_incremental_2m|data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz|/tmp/depth_2m.csv|0.0002"
 )
 
 # First occurrence of field=value in a run's output, which is how tools/check_docs.py reads a recorded block.

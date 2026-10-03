@@ -164,7 +164,7 @@ int main()
     // Parity with the repository fixture that market_data_adapter_test also consumes.
     {
         const auto fixture =
-            std::filesystem::path(PROJECT_ROOT_DIR) / "data/v2/test_aggTrades_5k.csv";
+            std::filesystem::path(PROJECT_ROOT_DIR) / "data/v2/fixtures/test_aggTrades_5k.csv";
         if (std::filesystem::exists(fixture))
         {
             const auto fixture_expected = reference_lines(fixture.string());

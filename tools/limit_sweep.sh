@@ -20,8 +20,8 @@ FIELDS='trade_reports=[0-9]+|fees_paid=[-0-9.]+|net_pnl_usd=[-0-9.]+|max_abs_exp
 
 WINDOWS=(AAPL TSLA SPY MSTR AMD MU)
 for symbol in "${WINDOWS[@]}"; do
-  for file in "data/v2/xnas_${symbol}_trades_2026-09-29_1330_1530.csv.gz" \
-              "data/v2/xnas_${symbol}_depth_2026-09-29_1330_1530.csv.gz"; do
+  for file in "data/v2/equities/xnas_${symbol}_trades_2026-09-29_1330_1530.csv.gz" \
+              "data/v2/equities/xnas_${symbol}_depth_2026-09-29_1330_1530.csv.gz"; do
     if [ ! -f "$file" ]; then
       echo "missing $file: this sweep re-derives from paid downloads" >&2
       exit 2
@@ -35,8 +35,8 @@ field_of() {
 
 run() {
   # shellcheck disable=SC2086
-  "$BIN" l2_replay "data/v2/xnas_$1_trades_2026-09-29_1330_1530.csv.gz" \
-    "data/v2/xnas_$1_depth_2026-09-29_1330_1530.csv.gz" "$1" 0 active_l2 1 conservative \
+  "$BIN" l2_replay "data/v2/equities/xnas_$1_trades_2026-09-29_1330_1530.csv.gz" \
+    "data/v2/equities/xnas_$1_depth_2026-09-29_1330_1530.csv.gz" "$1" 0 active_l2 1 conservative \
     --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 $SCHED $2 2>&1
 }
 

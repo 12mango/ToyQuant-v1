@@ -23,8 +23,8 @@ throughput or latency claim.
 ## Workload
 
 - Executable: `out/build/linux-debug/strategy_benchmark`
-- Trades: `data/v2/test_aggTrades_5k.csv` (3,412 data rows)
-- BBO: `data/v2/test_bookTicker_5k.csv` (35,310 data rows)
+- Trades: `data/v2/fixtures/test_aggTrades_5k.csv` (3,412 data rows)
+- BBO: `data/v2/fixtures/test_bookTicker_5k.csv` (35,310 data rows)
 - Symbol and quantity scale: `BTCUSDT`, `1000000`
 - Each invocation replays the inputs sequentially for five L1 strategy variants and writes intermediate order/trade files under `/tmp`.
 - Trades SHA-256: `f3dc0bcc056dbe27ddfdae330d9e9fa6ebbacd787a3d71692a898ba762450ca3`
@@ -58,8 +58,8 @@ Reproduce from the repository root:
 
 ```bash
 /usr/bin/time -f '%e' ./out/build/linux-debug/strategy_benchmark \
-  data/v2/test_aggTrades_5k.csv \
-  data/v2/test_bookTicker_5k.csv BTCUSDT 1000000
+  data/v2/fixtures/test_aggTrades_5k.csv \
+  data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 1000000
 ```
 
 ## The L1 Line, Before the Queue Model
@@ -120,7 +120,7 @@ Sweep on the 200,000-row window, `--refresh-price-ticks=4`, `prorata`:
 | 12 | 1 | 0.35% | 12.5 | 0.00981 | 0.002 | -0.002 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=5 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=5 --refresh-price-ticks=4
 then: submitted_orders=285 trade_reports=1 fill_rate=0.00350877 captured_edge_per_unit_ticks=5.5 captured_edge_usd=0.00431508 fees_paid=0.002 realized_pnl=-0.002
 -->
 
@@ -155,7 +155,7 @@ same file, which is the same data at ten times the length. At one tick it clears
 | 12 | 1 | 0.03% | 10.5 | 0.00831 | 0.002 | -0.002 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
 then: submitted_orders=2126 trade_reports=267 fill_rate=0.125588 captured_edge_per_unit_ticks=0.088015 captured_edge_usd=0.0186193 fees_paid=0.534 realized_pnl=-1.38723
 -->
 
@@ -244,15 +244,15 @@ is the day, not the feed.
 | 04-01 | incremental (mainline) | 182 | 21 | 11.5% | 0.095 | 0.00157 | 0.042 | 26.8x | -0.109 | 0.961 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
 then: submitted_orders=1146 trade_reports=146 fill_rate=0.1274 captured_edge_per_unit_ticks=0.0856164 captured_edge_usd=0.00987095 fees_paid=0.292 realized_pnl=-0.757038 queue_min_fraction_p50=0.991843
-run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
 then: submitted_orders=526 trade_reports=58 fill_rate=0.110266 captured_edge_per_unit_ticks=0.0344828 captured_edge_usd=0.00113946 fees_paid=0.116 realized_pnl=-0.287468 queue_min_fraction_p50=0.951289
-run: l2_replay data/v2/deribit_trades_2020-06-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200601_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-06-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200601_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
 then: submitted_orders=306 trade_reports=31 fill_rate=0.101307 captured_edge_per_unit_ticks=0.241935 captured_edge_usd=0.00396559 fees_paid=0.062 realized_pnl=-0.114748 queue_min_fraction_p50=0.904849
-run: l2_replay data/v2/deribit_trades_2020-07-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200701_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-07-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200701_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
 then: submitted_orders=196 trade_reports=29 fill_rate=0.147959 captured_edge_per_unit_ticks=0.37931 captured_edge_usd=0.00603727 fees_paid=0.058 realized_pnl=-0.0832212 queue_min_fraction_p50=0.905757
-run: l2_replay data/v2/deribit_trades_2020-08-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200801_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-08-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200801_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4
 then: submitted_orders=339 trade_reports=26 fill_rate=0.0766962 captured_edge_per_unit_ticks=0.461538 captured_edge_usd=0.00531196 fees_paid=0.052 realized_pnl=-0.0633193 queue_min_fraction_p50=0.990675
 -->
 
@@ -334,11 +334,11 @@ Fills away from the midpoint are worth two to three times the ones at it, on a v
 and contract size, which is the strongest form the finding has taken.
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
 then: submitted_orders=737 trade_reports=35 fees_paid=0.07 realized_pnl=-0.0967336
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=8 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=8 --refresh-price-ticks=4
 then: submitted_orders=1800 trade_reports=2 fees_paid=0.004 realized_pnl=0.00954906
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=12 --refresh-price-ticks=4
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=12 --refresh-price-ticks=4
 then: submitted_orders=1800 trade_reports=2 fees_paid=0.004 realized_pnl=0.0159314
 -->
 
@@ -409,9 +409,9 @@ fills arrive rather than only how many. That is the reason the rule is a decisio
 parameter to be increased.
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2
 then: submitted_orders=737 trade_reports=35 fees_paid=0.07 realized_pnl=-0.0967336
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2 --edge-cover-ticks=0.001
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --min-spread-ticks=2 --edge-cover-ticks=0.001
 then: submitted_orders=372 trade_reports=12 fees_paid=0.024 realized_pnl=0.000845982
 -->
 
@@ -436,9 +436,9 @@ Five fills on one day is not evidence of an edge, and the gate as written covers
 selection a fill suffers, which is the next thing the same gate should carry.
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --edge-cover-ticks=0.001
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --edge-cover-ticks=0.001
 then: submitted_orders=463 trade_reports=10 captured_edge_usd=0.00474021 fees_paid=0.02 realized_pnl=-0.167803
-run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --edge-cover-ticks=0.001
+run: l2_replay data/v2/crypto/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --edge-cover-ticks=0.001
 then: submitted_orders=121 trade_reports=5 captured_edge_usd=0.00345258 fees_paid=0.01 realized_pnl=0.00218216
 -->
 
@@ -637,9 +637,9 @@ from benchmark_l2_strategies import slice_csv
 root = Path(sys.argv[1])
 start_ts = 1585699200000000
 end_ts = 1585700100000000
-slice_csv(Path("data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz"),
+slice_csv(Path("data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz"),
           root / "trades.csv", start_ts, end_ts)
-slice_csv(Path("data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv"),
+slice_csv(Path("data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv"),
           root / "depth.csv", start_ts, end_ts)
 PY
 /usr/bin/time -f '%e' ./out/build/linux-debug/toy_quant l2_replay \
@@ -667,8 +667,8 @@ For repeatable timing, use the repository runner instead of assembling shell loo
 ```bash
 .venv/bin/python tools/measure_l2_baseline.py \
   --binary out/build/linux-debug/toy_quant \
-  --trades data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  --depth data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
   --symbol BTC-PERPETUAL \
   --start-ts 1585699200000000 --end-ts 1585702800000000 \
   --runs 5
@@ -810,17 +810,17 @@ transcribed: the command below it runs every variant, prints the table, and wrap
 `tools/check_docs.py` reads back, so these numbers fail a check when they stop being true.
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 conservative --fast-validation
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 conservative --fast-validation
 then: submitted_orders=647 trade_reports=4 fill_rate=0.00618238 queue_ahead_consumed=66230 captured_edge_per_unit_ticks=2.125 markout_per_unit_ticks=-1.25 markout_count=2 max_abs_inventory=1 realized_pnl=-0.0204946 equity=999.98 fees_paid=0.008
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 prorata --fast-validation
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 prorata --fast-validation
 then: submitted_orders=652 trade_reports=4 fill_rate=0.00613497 queue_ahead_consumed=50976 captured_edge_per_unit_ticks=1.375 markout_per_unit_ticks=-1 markout_count=3 max_abs_inventory=1 realized_pnl=-0.0134928 equity=999.987 fees_paid=0.008
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 optimistic --fast-validation
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 optimistic --fast-validation
 then: submitted_orders=652 trade_reports=4 fill_rate=0.00613497 queue_ahead_consumed=50570 captured_edge_per_unit_ticks=1.375 markout_per_unit_ticks=-1 markout_count=3 max_abs_inventory=1 realized_pnl=-0.0134928 equity=999.987 fees_paid=0.008
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 conservative --fast-validation
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 conservative --fast-validation
 then: submitted_orders=406 trade_reports=1 fill_rate=0.00246305 queue_ahead_consumed=55460 captured_edge_per_unit_ticks=2.5 markout_per_unit_ticks=0 markout_count=0 max_abs_inventory=1 realized_pnl=-0.002 equity=1000 fees_paid=0.002
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
 then: submitted_orders=381 trade_reports=3 fill_rate=0.00787402 queue_ahead_consumed=56647 captured_edge_per_unit_ticks=1.16667 markout_per_unit_ticks=-0.5 markout_count=2 max_abs_inventory=1 realized_pnl=-0.00678302 equity=999.995 fees_paid=0.006
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 optimistic --fast-validation
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 optimistic --fast-validation
 then: submitted_orders=279 trade_reports=7 fill_rate=0.0250896 queue_ahead_consumed=18020 captured_edge_per_unit_ticks=0.5 markout_per_unit_ticks=-0.5 markout_count=7 max_abs_inventory=1 realized_pnl=0.0189169 equity=999.988 fees_paid=0.014
 | field | passive_l2 conservative | passive_l2 prorata | passive_l2 optimistic | active_l2 conservative | active_l2 prorata | active_l2 optimistic |
 |---|---:|---:|---:|---:|---:|---:|
@@ -1447,7 +1447,7 @@ comma-counting pre-pass that the old `split_csv(std::string)` needed to size its
 ### Line layer in isolation
 
 A standalone microbenchmark over the first 200 MB (2,591,303 rows, about 76 bytes per row) of
-`data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv`, three runs, medians:
+`data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv`, three runs, medians:
 
 | Stage | Seconds | Throughput |
 |---|---:|---:|
@@ -1474,7 +1474,7 @@ Two conclusions matter more than the 1.44x on the line layer itself:
 
 ### End-to-end
 
-Workload: the full-day `data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz` (119,238 rows)
+Workload: the full-day `data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz` (119,238 rows)
 replayed against the first 2,000,000 rows of the incremental depth file, `active_l2` and the
 conservative queue model. Runtime summary: 1,303,131 events, 1,183,894 incremental batches, one
 snapshot batch.
@@ -1517,7 +1517,7 @@ largest single win turned out to be allocation churn on the batching boundary.
 
 `tests/line_reader_test.cpp` covers LF, CRLF, empty lines, a missing trailing newline, a line
 larger than one block, block level batching, gzip parity, and line-for-line parity against
-`data/v2/test_aggTrades_5k.csv`. `tests/market_data_adapter_test.cpp` gained incremental book
+`data/v2/fixtures/test_aggTrades_5k.csv`. `tests/market_data_adapter_test.cpp` gained incremental book
 reader coverage for `local_timestamp` batching, the snapshot batch that starts the stream, CRLF
 rows, and the header sniffing in `make_deribit_depth_reader`.
 
@@ -1700,7 +1700,7 @@ applies every one of them at its first event, against an account that holds noth
 have to disagree:
 
 <!-- toyquant:check
-run: replay data/v2/test_aggTrades_5k.csv data/v2/test_bookTicker_5k.csv BTCUSDT 0 l1 1000000 --funding-rates=data/v2/BTCUSDT-fundingRate-2024-03.csv
+run: replay data/v2/fixtures/test_aggTrades_5k.csv data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 0 l1 1000000 --funding-rates=data/v2/funding/BTCUSDT-fundingRate-2024-03.csv
 then: funding_points=93 funding_span_hours=736 funding_sum_rate=0.0314019 funding_annualized_rate=0.373751 funding_settlements=88 funding_flow_usd=0
 -->
 
@@ -1713,7 +1713,7 @@ the funding is the only difference in the account.
 <!-- toyquant:check
 run: replay /tmp/btc_trades_settle.csv /tmp/btc_bbo_settle.csv BTCUSDT 0 l1 1000000
 then: events=78477 trade_reports=111 fees_paid=1.25542 realized_pnl=-1.37681 equity=998.122
-run: replay /tmp/btc_trades_settle.csv /tmp/btc_bbo_settle.csv BTCUSDT 0 l1 1000000 --funding-rates=data/v2/BTCUSDT-fundingRate-2024-03.csv
+run: replay /tmp/btc_trades_settle.csv /tmp/btc_bbo_settle.csv BTCUSDT 0 l1 1000000 --funding-rates=data/v2/funding/BTCUSDT-fundingRate-2024-03.csv
 then: events=78477 trade_reports=111 fees_paid=1.25542 funding_settlements=83 funding_flow_usd=0.226775 realized_pnl=-1.15004 equity=998.349
 -->
 
@@ -1752,9 +1752,9 @@ histories share, and opened and closed at the venues' published taker rates. Bin
 BTC-USDT-SWAP in March 2024, 10,000 USD a leg:
 
 <!-- toyquant:check
-run: carry data/v2/BTCUSDT-fundingRate-2024-03.csv data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000
+run: carry data/v2/funding/BTCUSDT-fundingRate-2024-03.csv data/v2/funding/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000
 then: carry_gross_notional_usd=20000 carry_net_notional_usd=0 carry_window_hours=728 carry_settlements=182 carry_leg_a_funding_usd=-304.656 carry_leg_b_funding_usd=322.241 carry_funding_usd=17.5849 carry_fees_usd=18 carry_net_usd=-0.415093 carry_annualized_carry_usd=211.599 carry_annualized_return=0.0211599 carry_to_fees=11.7555 carry_breakeven_hours=745.184
-run: carry data/v2/BTCUSDT-fundingRate-2024-03.csv data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000 --long=b
+run: carry data/v2/funding/BTCUSDT-fundingRate-2024-03.csv data/v2/funding/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000 --long=b
 then: carry_leg_a_funding_usd=304.656 carry_leg_b_funding_usd=-322.241 carry_funding_usd=-17.5849 carry_net_usd=-35.5849 carry_annualized_carry_usd=-211.599 carry_to_fees=-11.7555 carry_breakeven_hours=0
 -->
 
@@ -1815,25 +1815,25 @@ rates are the venue's own maker fee, zero, and a rebate half the size of the fee
 | 0401 incremental 2M | 0.0002 | 267 | -1.39317 | -0.859172 | -1.38723 | -0.00319563 | -0.000321787 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
 then: trade_reports=21 net_pnl_usd=-0.123813 gross_pnl_usd=-0.0818127 closed_pnl_usd=-0.109283 gross_closed_per_fill_usd=-0.00320398 breakeven_maker_rate=-0.000389584
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
 then: trade_reports=21 net_pnl_usd=-0.0818127 gross_pnl_usd=-0.0818127 closed_pnl_usd=-0.0672835 gross_closed_per_fill_usd=-0.00320398 breakeven_maker_rate=-0.000389584
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
 then: trade_reports=21 net_pnl_usd=-0.0398127 gross_pnl_usd=-0.0818127 closed_pnl_usd=-0.0252835 gross_closed_per_fill_usd=-0.00320398 breakeven_maker_rate=-0.000389584
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
 then: trade_reports=146 net_pnl_usd=-0.757038 gross_pnl_usd=-0.465038 closed_pnl_usd=-0.757038 gross_closed_per_fill_usd=-0.00318519 breakeven_maker_rate=-0.000318519
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
 then: trade_reports=146 net_pnl_usd=-0.465038 gross_pnl_usd=-0.465038 closed_pnl_usd=-0.465038 gross_closed_per_fill_usd=-0.00318519 breakeven_maker_rate=-0.000318519
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/snap_20200401_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
 then: trade_reports=146 net_pnl_usd=-0.173038 gross_pnl_usd=-0.465038 closed_pnl_usd=-0.173038 gross_closed_per_fill_usd=-0.00318519 breakeven_maker_rate=-0.000318519
-run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
 then: trade_reports=58 net_pnl_usd=-0.287468 gross_pnl_usd=-0.171468 closed_pnl_usd=-0.287468 gross_closed_per_fill_usd=-0.00295634 breakeven_maker_rate=-0.000295634
-run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
+run: l2_replay data/v2/crypto/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0
 then: trade_reports=58 net_pnl_usd=-0.171468 gross_pnl_usd=-0.171468 closed_pnl_usd=-0.171468 gross_closed_per_fill_usd=-0.00295634 breakeven_maker_rate=-0.000295634
-run: l2_replay data/v2/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-05-01_BTC-PERPETUAL.csv.gz /tmp/snap_0501_200k.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=-0.0002
 then: trade_reports=58 net_pnl_usd=-0.055468 gross_pnl_usd=-0.171468 closed_pnl_usd=-0.055468 gross_closed_per_fill_usd=-0.00295634 breakeven_maker_rate=-0.000295634
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
 then: trade_reports=267 net_pnl_usd=-1.39317 gross_pnl_usd=-0.859172 closed_pnl_usd=-1.38723 gross_closed_per_fill_usd=-0.00319563 breakeven_maker_rate=-0.000321787
 -->
 
@@ -1866,11 +1866,11 @@ Three things follow, and the first is not the one this line has been repeating:
 | 8 ticks | 1 | 6.5 | 0.00514688 | 0 | 0.000514688 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --maker-fee-rate=0.0002
 then: trade_reports=207 captured_edge_per_unit_ticks=0.0966184 gross_pnl_usd=-0.480513 gross_closed_per_fill_usd=-0.00232323 breakeven_maker_rate=-0.000232132
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=4 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=4 --refresh-price-ticks=4 --maker-fee-rate=0.0002
 then: trade_reports=15 captured_edge_per_unit_ticks=0.366667 gross_pnl_usd=-0.0452864 gross_closed_per_fill_usd=-0.00315111 breakeven_maker_rate=-0.000301909
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=8 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=8 --refresh-price-ticks=4 --maker-fee-rate=0.0002
 then: trade_reports=1 captured_edge_per_unit_ticks=6.5 gross_pnl_usd=0.00514688 gross_closed_per_fill_usd=0 breakeven_maker_rate=0.000514688
 -->
 
@@ -1915,11 +1915,11 @@ With the gate on, on the two million record window and at the venue's own maker 
 | 4 ticks | 7 | **+0.0963399** | **+0.11034** | **+0.00157628** | 0 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --markout-cover
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --markout-cover
 then: trade_reports=21 net_pnl_usd=-0.0920398 gross_pnl_usd=-0.0500398 breakeven_maker_rate=-0.000238285 markout_gate_skips=9709
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --markout-cover
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --markout-cover
 then: trade_reports=17 net_pnl_usd=-0.302228 gross_pnl_usd=-0.268228 breakeven_maker_rate=-0.00157781 fill_markout_buy_far_ticks=-0.7 fill_markout_sell_far_ticks=-0.75 fill_markout_samples=17 market_markout_buy_far_ticks=1.05413 market_markout_samples=12683
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=4 --refresh-price-ticks=4 --markout-cover
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_2m.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=4 --refresh-price-ticks=4 --markout-cover
 then: trade_reports=7 net_pnl_usd=0.0963399 gross_pnl_usd=0.11034 breakeven_maker_rate=0.00157628 markout_gate_skips=0
 -->
 
@@ -1947,11 +1947,11 @@ record window, ten contracts a quote and a limit of forty:
 | 5 | 25 | 15 | 6 | 46 | 0.23 | -0.378591 | -0.986591 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40
 then: trade_reports=11 max_abs_inventory=21 taker_fees=0 gross_pnl_usd=0.315192 net_pnl_usd=0.107192
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40 --flatten-band=10
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40 --flatten-band=10
 then: trade_reports=21 max_abs_inventory=20 flatten_orders=3 flatten_quantity=21 taker_fees=0.105 gross_pnl_usd=-0.619526 net_pnl_usd=-1.08253
-run: l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40 --flatten-band=5
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=2 --refresh-price-ticks=4 --order-size=10 --inventory-limit=40 --flatten-band=5
 then: trade_reports=25 max_abs_inventory=15 flatten_orders=6 flatten_quantity=46 taker_fees=0.23 gross_pnl_usd=-0.378591 net_pnl_usd=-0.986591
 -->
 
@@ -1991,11 +1991,11 @@ US share pays 0.0035 USD against a tick of one cent.
 | SPY, one tick, flattening above 1000 shares | 832 | 34618 | 121.163 | 0.241161 | 0.114406 | 282.58 | 161.417 | 0.194011 | 1.07956e-05 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
+run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
 then: trade_reports=799 trade_report_quantity=33352 fees_paid=116.732 captured_edge_per_unit_ticks=0.267855 markout_per_unit_ticks=0.0919135 gross_pnl_usd=379.24 closed_pnl_usd=330.519 net_pnl_usd=262.508 net_per_fill_usd=0.328546 breakeven_maker_rate=1.48655e-05 max_abs_inventory=1099
-run: l2_replay data/v2/xnas_AAPL_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_AAPL_depth_2026-09-29_1330_1530.csv.gz AAPL 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
+run: l2_replay data/v2/equities/xnas_AAPL_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_AAPL_depth_2026-09-29_1330_1530.csv.gz AAPL 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
 then: trade_reports=2324 trade_report_quantity=60167 fees_paid=210.584 captured_edge_per_unit_ticks=0.640152 markout_per_unit_ticks=0.042515 gross_pnl_usd=-2954.95 closed_pnl_usd=-3103.2 net_pnl_usd=-3165.53 net_per_fill_usd=-1.36211 breakeven_maker_rate=-0.000147613 max_abs_inventory=1096
-run: l2_replay data/v2/xnas_TSLA_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_TSLA_depth_2026-09-29_1330_1530.csv.gz TSLA 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
+run: l2_replay data/v2/equities/xnas_TSLA_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_TSLA_depth_2026-09-29_1330_1530.csv.gz TSLA 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
 then: trade_reports=1894 trade_report_quantity=50753 fees_paid=177.635 captured_edge_per_unit_ticks=0.97942 markout_per_unit_ticks=0.34062 gross_pnl_usd=-1297.89 closed_pnl_usd=-1476.02 net_pnl_usd=-1475.53 net_per_fill_usd=-0.779053 breakeven_maker_rate=-7.22386e-05 max_abs_inventory=1098
 -->
 
@@ -2053,9 +2053,9 @@ problem.
 | MES fast, 5 ms each way | 5000/5000 | 1671 | 3941 | 23639 | 0.0185232 | -610.625 | -3054.04 | -1.82768 | -4.00432e-06 |
 
 <!-- toyquant:check
-run: l2_replay data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=1000 --cancel-latency-us=1000
+run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=1000 --cancel-latency-us=1000
 then: trade_reports=921 trade_report_quantity=38487 cancel_requests=52262 captured_edge_per_unit_ticks=0.213825 gross_pnl_usd=136.59 net_pnl_usd=1.8855 net_per_fill_usd=0.00204723 breakeven_maker_rate=4.6397e-06
-run: l2_replay data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=5000 --cancel-latency-us=5000
+run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=5000 --cancel-latency-us=5000
 then: trade_reports=9 trade_report_quantity=500 cancel_requests=113 captured_edge_per_unit_ticks=-0.08 gross_pnl_usd=-1142 net_pnl_usd=-1143.75 net_per_fill_usd=-127.083 breakeven_maker_rate=-0.00297873
 -->
 
@@ -2501,8 +2501,8 @@ under the account's schedule. The loop is:
 
     for day in 2026-09-22 2026-09-23 2026-09-24 2026-09-25 2026-09-28 2026-09-29 2026-09-30 2026-10-01; do
       for size in "100 1000" "30 300"; do set -- $size
-        toy_quant l2_replay data/v2/xnas_MU_trades_${day}_1330_1530.csv.gz \
-          data/v2/xnas_MU_depth_${day}_1330_1530.csv.gz MU 0 active_l2 1 conservative \
+        toy_quant l2_replay data/v2/equities/xnas_MU_trades_${day}_1330_1530.csv.gz \
+          data/v2/equities/xnas_MU_depth_${day}_1330_1530.csv.gz MU 0 active_l2 1 conservative \
           --order-size=$1 --inventory-limit=$2 --base-spread-ticks=1 \
           --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013
       done

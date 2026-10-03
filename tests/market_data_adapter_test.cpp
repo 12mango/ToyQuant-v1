@@ -23,8 +23,8 @@
 int main()
 {
     const auto root = std::filesystem::path(PROJECT_ROOT_DIR);
-    const auto trades = (root / "data/v2/test_aggTrades_5k.csv").string();
-    const auto quotes = (root / "data/v2/test_bookTicker_5k.csv").string();
+    const auto trades = (root / "data/v2/fixtures/test_aggTrades_5k.csv").string();
+    const auto quotes = (root / "data/v2/fixtures/test_bookTicker_5k.csv").string();
 
     // Two sections below read the repository fixtures under data/v2/, which are not tracked: a fresh clone
     // has none of them, so those sections report that they were skipped instead of failing. Skipping
@@ -135,7 +135,7 @@ int main()
     assert(!snapshot_reader->next(snapshot_event));
     std::filesystem::remove(snapshot_path);
 
-    const auto deribit_trades = root / "data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz";
+    const auto deribit_trades = root / "data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz";
     if (std::filesystem::exists(deribit_trades))
     {
         auto deribit_trade_reader = make_deribit_trade_reader(deribit_trades.string());

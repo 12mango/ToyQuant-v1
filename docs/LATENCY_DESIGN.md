@@ -91,7 +91,7 @@ level up.**
 
 `tests/line_reader_test.cpp` covers LF, CRLF, empty lines, a missing trailing newline, a line larger
 than one block, block-level batching, gzip parity, and line-for-line parity against
-`data/v2/test_aggTrades_5k.csv`. End-to-end, `data/runtime/orders.csv` and `trades.csv` match the
+`data/v2/fixtures/test_aggTrades_5k.csv`. End-to-end, `data/runtime/orders.csv` and `trades.csv` match the
 pre-change build byte for byte and the full stdout summary is identical.
 
 ### Result

@@ -14,8 +14,8 @@
 #   python3 tools/fetch_databento.py --download --dataset XNAS.ITCH --schema mbp-10 --symbol SPY \
 #     --start 2026-09-29T13:30 --end 2026-09-29T15:30 --pretty-px --output /tmp/spy.csv
 #   python3 tools/fetch_databento.py --convert --input /tmp/spy.csv --symbol SPY --exchange xnas \
-#     --depth-out data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz \
-#     --trades-out data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz
+#     --depth-out data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz \
+#     --trades-out data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz
 #
 # Usage:
 #   tools/latency_sweep.sh [binary]
@@ -27,10 +27,10 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 BIN=${1:-out/build/linux-debug/toy_quant}
-MES_T=data/v2/glbx_MESZ6_trades_2026-09-29_1330_1530.csv.gz
-MES_D=data/v2/glbx_MESZ6_depth_2026-09-29_1330_1530.csv.gz
-SPY_T=data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz
-SPY_D=data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz
+MES_T=data/v2/futures/glbx_MESZ6_trades_2026-09-29_1330_1530.csv.gz
+MES_D=data/v2/futures/glbx_MESZ6_depth_2026-09-29_1330_1530.csv.gz
+SPY_T=data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz
+SPY_D=data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz
 for file in "$MES_T" "$MES_D" "$SPY_T" "$SPY_D"; do
   if [ ! -f "$file" ]; then
     echo "missing $file: this sweep re-derives from a paid download, see tools/fetch_databento.py" >&2

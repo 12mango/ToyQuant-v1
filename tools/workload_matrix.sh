@@ -13,7 +13,7 @@
 # TRADES and DEPTH override the inputs; the slice is cut by tools/verify_l2.sh.
 set -u
 
-TRADES="${TRADES:-data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz}"
+TRADES="${TRADES:-data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz}"
 DEPTH="${DEPTH:-/tmp/depth_200k_base.csv}"
 export TOY_QUANT_FIELDS="${TOY_QUANT_FIELDS:-submitted_orders trade_reports fill_rate quote_at_touch_orders captured_edge_per_unit_ticks markout_per_unit_ticks captured_edge_usd fees_paid realized_pnl}"
 

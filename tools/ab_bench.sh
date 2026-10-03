@@ -29,8 +29,8 @@ if [ -z "$A" ] || [ -z "$B" ]; then
   exit 2
 fi
 
-TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
-FULL_DEPTH=data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv
+TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
+FULL_DEPTH=data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv
 SLICE_2M=/tmp/depth_2m.csv
 RAW=$(mktemp)
 trap 'rm -f "$RAW"' EXIT

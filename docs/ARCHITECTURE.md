@@ -1136,8 +1136,8 @@ The benchmark can be run with:
 
 ```bash
 ./out/build/linux-debug/strategy_benchmark \
-    data/v2/test_aggTrades_5k.csv \
-    data/v2/test_bookTicker_5k.csv BTCUSDT 1000000
+    data/v2/fixtures/test_aggTrades_5k.csv \
+    data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 1000000
 ```
 
 The benchmark is an educational replay, not a live-trading validation. Its results depend on the

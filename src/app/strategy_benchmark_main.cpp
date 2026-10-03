@@ -8,8 +8,8 @@
 
 int main(int argc, char** argv)
 {
-    std::string trades_path = "data/v2/test_aggTrades_5k.csv";
-    std::string quotes_path = "data/v2/test_bookTicker_5k.csv";
+    std::string trades_path = "data/v2/fixtures/test_aggTrades_5k.csv";
+    std::string quotes_path = "data/v2/fixtures/test_bookTicker_5k.csv";
     std::string symbol = "BTCUSDT";
     uint64_t quantity_scale = 1000000;
     FlowAwareMarketMakerConfig flow_config;

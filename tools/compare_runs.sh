@@ -13,7 +13,7 @@
 # comparison, and tools/check_docs.py will fail the build when the quoted numbers stop being true.
 #
 # Example: the queue models on one window
-#   TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
+#   TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 #   DEPTH=/tmp/depth_200k_base.csv
 #   tools/compare_runs.sh --markdown \
 #     conservative "l2_replay $TRADES $DEPTH BTC-PERPETUAL 0 active_l2 1 conservative --fast-validation" \

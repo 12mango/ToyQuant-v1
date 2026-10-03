@@ -27,8 +27,8 @@ Usage:
     python3 tools/screen_spread.py --cost --symbols SPY,QQQ,IWM --start 2026-09-29T13:30 --end 2026-09-29T15:30
     python3 tools/screen_spread.py --download --max-cost-usd=5 --symbols SPY,QQQ,IWM \\
         --start 2026-09-29T13:30 --end 2026-09-29T15:30
-    python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
-    python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \\
+    python3 tools/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
+    python3 tools/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \\
         --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013
 
 `--input` computes the same statistics from a file already on disk, which is how this script is tested without

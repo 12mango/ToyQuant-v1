@@ -37,23 +37,23 @@ DOC_CHECK_LOG="$(mktemp)"
 FIELD_CHECK_LOG="$(mktemp)"
 PROSE_CHECK_LOG="$(mktemp)"
 TOOL_CHECK_LOG="$(mktemp)"
-TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
-L1_TRADES=data/v2/test_aggTrades_5k.csv
-L1_BBO=data/v2/test_bookTicker_5k.csv
-FULL_DEPTH=data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv
+TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
+L1_TRADES=data/v2/fixtures/test_aggTrades_5k.csv
+L1_BBO=data/v2/fixtures/test_bookTicker_5k.csv
+FULL_DEPTH=data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv
 SLICE_200K=/tmp/depth_200k_base.csv
 SLICE_2M=/tmp/depth_2m.csv
 # The second day exists only as a gzipped snapshot file, so its slice is cut through zcat. It backs the
 # out-of-sample check in docs/PERFORMANCE_HISTORY.md, whose numbers the gate re-derives. All three slices are
 # built on demand, so the cut costs a second once and nothing afterwards.
-SNAPSHOT_0501=data/v2/deribit_book_snapshot_25_2020-05-01_BTC-PERPETUAL.csv.gz
+SNAPSHOT_0501=data/v2/crypto/deribit_book_snapshot_25_2020-05-01_BTC-PERPETUAL.csv.gz
 SLICE_0501=/tmp/snap_0501_200k.csv
 # The funding block in docs/PERFORMANCE_HISTORY.md replays ten minutes around the 2024-03-28 08:00 UTC funding
 # settlement, because a Binance day file is cut on UTC midnight and midnight is itself a settlement instant, so a
 # window that begins with the day applies that settlement to an account that holds nothing. The two slices are one
 # streamed pass each over the day files, cached in /tmp like the rest, and skipped when the day is not on disk.
-BINANCE_TRADES_0328=data/v2/BTCUSDT-aggTrades-2024-03-28.csv
-BINANCE_BBO_0328=data/v2/BTCUSDT-bookTicker-2024-03-28.csv
+BINANCE_TRADES_0328=data/v2/crypto/BTCUSDT-aggTrades-2024-03-28.csv
+BINANCE_BBO_0328=data/v2/crypto/BTCUSDT-bookTicker-2024-03-28.csv
 SLICE_SETTLE_TRADES=/tmp/btc_trades_settle.csv
 SLICE_SETTLE_BBO=/tmp/btc_bbo_settle.csv
 SETTLE_FROM=1711612500000
@@ -71,7 +71,7 @@ ensure_slices() {
   # The out-of-sample table in docs/PERFORMANCE_HISTORY.md quotes one replay per day, each against a slice of that
   # day, and the blocks name the slice. Cutting them here means a day whose slice is missing fails with a run rather
   # than a confusing "input file does not exist", for the same reason as the three above.
-  for day_file in data/v2/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv data/v2/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv.gz; do
+  for day_file in data/v2/crypto/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv data/v2/crypto/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv.gz; do
     [ -e "$day_file" ] || continue
     case "$day_file" in
       *2020-05-01*) continue ;;

@@ -123,8 +123,8 @@ cmake --build build --target l2_strategy_test
 ctest --test-dir build --output-on-failure -R l2_strategy_test
 python3 tools/benchmark_l2_strategies.py \
   --binary build/toy_quant \
-  --trades data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  --depth data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
   --symbol BTC-PERPETUAL \
   --start-ts 1585699200000000 \
   --end-ts 1585699500000000 \
@@ -160,8 +160,8 @@ python3 tools/udp_sender.py --port 9000
 
 ```bash
 ./out/build/linux-debug/toy_quant replay \
-  data/v2/test_aggTrades_5k.csv \
-  data/v2/test_bookTicker_5k.csv \
+  data/v2/fixtures/test_aggTrades_5k.csv \
+  data/v2/fixtures/test_bookTicker_5k.csv \
   BTCUSDT 0 optimized 1000000
 ```
 
@@ -169,10 +169,10 @@ python3 tools/udp_sender.py --port 9000
 
 ```bash
 python3 tools/slice_l2_snapshot.py \
-  data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
   /tmp/deribit_depth.csv --start-ts 1585699200000000 --every 5 --max-rows 300
 ./out/build/linux-debug/toy_quant l2_replay \
-  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   /tmp/deribit_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1
 ```
 
@@ -182,7 +182,7 @@ instead. `bash tools/verify_l2.sh fast` asserts that the replayed recording repo
 
 ```bash
 ./out/build/linux-debug/toy_quant l2_replay \
-  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   /tmp/deribit_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1 --record=/tmp/session
 ./out/build/linux-debug/toy_quant l2_replay \
   /tmp/session_trades.csv /tmp/session_depth.csv BTC-PERPETUAL 0 flow_aware_l2 1
@@ -195,8 +195,8 @@ wait, the processing and the total.
 
 ```bash
 ./out/build/linux-debug/toy_quant l2_replay \
-  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
   BTC-PERPETUAL 0 active_l2 1 --fast-validation --feed-thread
 ```
 
@@ -209,8 +209,8 @@ reproducible from its command line, and a fault the run cannot show is refused.
 
 ```bash
 ./out/build/linux-debug/toy_quant l2_replay \
-  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
   BTC-PERPETUAL 0 active_l2 1 --fast-validation --paper-broker \
   --broker-outage-after=50 --broker-outage-holds=100
 ```

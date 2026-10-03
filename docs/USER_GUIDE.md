@@ -90,8 +90,8 @@ Replay the Binance samples in `data/v2` with:
 
 ```bash
 ./out/build/linux-debug/toy_quant replay \
-  data/v2/test_aggTrades_5k.csv \
-  data/v2/test_bookTicker_5k.csv \
+  data/v2/fixtures/test_aggTrades_5k.csv \
+  data/v2/fixtures/test_bookTicker_5k.csv \
   BTCUSDT 0 optimized 1000000
 ```
 
@@ -119,8 +119,8 @@ Use `l1` when you want the BBO-aware strategy:
 
 ```bash
 ./out/build/linux-debug/toy_quant replay \
-  data/v2/test_aggTrades_5k.csv \
-  data/v2/test_bookTicker_5k.csv \
+  data/v2/fixtures/test_aggTrades_5k.csv \
+  data/v2/fixtures/test_bookTicker_5k.csv \
   BTCUSDT 0 l1 1000000
 ```
 
@@ -144,8 +144,8 @@ Use the same benchmark configuration for every candidate strategy:
 ```bash
 python3 tools/benchmark_l2_strategies.py \
   --binary build/toy_quant \
-  --trades data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  --depth data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
   --symbol BTC-PERPETUAL \
   --start-ts 1585699200000000 \
   --end-ts 1585699500000000 \
@@ -156,8 +156,8 @@ To replay the connected incremental L2 file, pass it as the depth argument:
 
 ```bash
 ./build/toy_quant l2_replay \
-  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
   BTC-PERPETUAL 0 active_l2 1
 ```
 
@@ -172,8 +172,8 @@ which makes every PnL a few cents and the inventory logic unreachable.
 
 ```bash
 ./build/toy_quant l2_replay \
-  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
   BTC-PERPETUAL 0 active_l2 1 conservative --order-size=10 --inventory-limit=100
 ```
 
@@ -187,8 +187,8 @@ broker's faults `--broker-reject-every=N`, `--broker-partial-every=N`, `--broker
 binary replays:
 
 ```bash
-./build/toy_quant l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv BTC-PERPETUAL 0 active_l2 1 \
+./build/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv BTC-PERPETUAL 0 active_l2 1 \
   --fast-validation --record=out/lat/recording
 ./build/toy_quant l2_replay out/lat/recording_trades.csv out/lat/recording_depth.csv \
   BTC-PERPETUAL 0 active_l2 1 --fast-validation
@@ -214,8 +214,8 @@ event over to the strategy finishing with it, each as a mean, a p50, a p99 and a
 how deep the ring got and how often the feed found it full:
 
 ```bash
-./build/toy_quant l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv BTC-PERPETUAL 0 active_l2 1 \
+./build/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv BTC-PERPETUAL 0 active_l2 1 \
   --fast-validation --feed-thread --ring-capacity=8192
 ```
 
@@ -244,7 +244,7 @@ every call and every report — `bash tools/verify_l2.sh fast` asserts that a br
 numbers of the same run without it — and then prints two lines of its own:
 
 ```bash
-./out/build/linux-debug/toy_quant l2_replay data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+./out/build/linux-debug/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --paper-broker
 ```
 
@@ -299,7 +299,7 @@ which is what makes one micro E-mini S&P 500 unit worth five times the index pri
 worth 1.25 USD rather than 0.25, so a commission of about sixty cents a contract is half a tick a side:
 
 ```bash
-./build/toy_quant l2_replay data/v2/glbx_MESZ6_trades.csv.gz data/v2/glbx_MESZ6_depth.csv.gz \
+./build/toy_quant l2_replay data/v2/futures/glbx_MESZ6_trades.csv.gz data/v2/futures/glbx_MESZ6_depth.csv.gz \
   MESZ6 0 active_l2 1 conservative --order-size=5 --inventory-limit=20 --base-spread-ticks=1
 ```
 
@@ -378,8 +378,8 @@ not sufficient. Use `analyze_l2_windows.py` for repeated 15-minute windows:
 ```bash
 python3 tools/analyze_l2_windows.py \
   --binary build/toy_quant \
-  --trades data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  --depth data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
   --symbol BTC-PERPETUAL \
   --start-ts 1585699200000000 \
   --end-ts 1585715400000000 \
@@ -445,8 +445,8 @@ arrives as a file instead of in the event stream:
 
 ```bash
 ./out/build/linux-debug/toy_quant replay \
-  data/v2/test_aggTrades_5k.csv data/v2/test_bookTicker_5k.csv BTCUSDT 0 l1 1000000 \
-  --funding-rates=data/v2/BTCUSDT-fundingRate-2024-03.csv
+  data/v2/fixtures/test_aggTrades_5k.csv data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 0 l1 1000000 \
+  --funding-rates=data/v2/funding/BTCUSDT-fundingRate-2024-03.csv
 ```
 
 Two free formats are recognised by their header: an OKX daily funding archive
@@ -520,8 +520,8 @@ For a side-by-side replay comparison, use the benchmark target:
 
 ```bash
 ./out/build/linux-debug/strategy_benchmark \
-  data/v2/test_aggTrades_5k.csv \
-  data/v2/test_bookTicker_5k.csv BTCUSDT 1000000
+  data/v2/fixtures/test_aggTrades_5k.csv \
+  data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 1000000
 ```
 
 To keep one continuous strategy state while recording hourly checkpoints, append the optional
@@ -529,8 +529,8 @@ timeline path after the parameter list:
 
 ```bash
 ./out/build/linux-debug/strategy_benchmark \
-  data/v2/BTCUSDT-aggTrades-2024-03-30.csv \
-  data/v2/BTCUSDT-bookTicker-2024-03-30.csv BTCUSDT 1000000 \
+  data/v2/crypto/BTCUSDT-aggTrades-2024-03-30.csv \
+  data/v2/crypto/BTCUSDT-bookTicker-2024-03-30.csv BTCUSDT 1000000 \
   0.6 0.4 0.06 0.08 0.20 1 0.60 2.5 0.10 0.40 \
   reports/strategy_timeline.csv
 ```
@@ -585,8 +585,8 @@ funding and what it pays is a round trip of fees. The mode states the position a
 
 ```bash
 ./out/build/linux-debug/toy_quant carry \
-  data/v2/BTCUSDT-fundingRate-2024-03.csv \
-  data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv \
+  data/v2/funding/BTCUSDT-fundingRate-2024-03.csv \
+  data/v2/funding/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv \
   --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000
 ```
 

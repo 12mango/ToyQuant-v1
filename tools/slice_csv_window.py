@@ -6,7 +6,7 @@ replay is holding a position when the settlement arrives. `head` cannot express 
 in a shell script cannot be read back from the document that quotes the result, so this is the one-line form.
 
 Usage:
-    python3 tools/slice_csv_window.py --input data/v2/BTCUSDT-bookTicker-2024-03-28.csv \\
+    python3 tools/slice_csv_window.py --input data/v2/crypto/BTCUSDT-bookTicker-2024-03-28.csv \\
         --column 6 --from 1711612500000 --to 1711613100000 --output /tmp/btc_bbo_settle.csv
 
 Reading is streamed and gzip is chosen by suffix, so a slice of a 1.2 GB file is one pass and no memory. The

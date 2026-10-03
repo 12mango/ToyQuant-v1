@@ -26,8 +26,8 @@ workload every latency number below refers to.
 
 ```bash
 ./out/build/linux-debug/toy_quant l2_replay \
-  data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-  data/v2/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
   BTC-PERPETUAL 0 active_l2 1 conservative --no-output --fast-validation
 ```
 
@@ -56,7 +56,7 @@ could and could not answer, and why the queue model moved to the L2 path — is 
 
 ```bash
 ./out/build/linux-debug/toy_quant replay \
-  data/v2/test_aggTrades_5k.csv data/v2/test_bookTicker_5k.csv BTCUSDT 0 optimized 1000000
+  data/v2/fixtures/test_aggTrades_5k.csv data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 0 optimized 1000000
 ```
 
 ### W3: Legacy CSV plus backtest (regression)
@@ -71,7 +71,7 @@ could and could not answer, and why the queue model moved to the L2 path — is 
 
 ```bash
 /usr/bin/time -f '%e' ./out/build/linux-debug/strategy_benchmark \
-  data/v2/test_aggTrades_5k.csv data/v2/test_bookTicker_5k.csv BTCUSDT 1000000
+  data/v2/fixtures/test_aggTrades_5k.csv data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 1000000
 ```
 
 ## 2. Environment

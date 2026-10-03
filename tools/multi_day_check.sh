@@ -12,8 +12,8 @@
 # every gate run, and a hand-copied row is exactly how a number drifts.
 #
 # Place the two free Tardis samples for a day under data/v2/, both named after the day and the instrument:
-#   data/v2/deribit_book_snapshot_25_YYYY-MM-DD_BTC-PERPETUAL.csv.gz
-#   data/v2/deribit_trades_YYYY-MM-DD_BTC-PERPETUAL.csv.gz
+#   data/v2/crypto/deribit_book_snapshot_25_YYYY-MM-DD_BTC-PERPETUAL.csv.gz
+#   data/v2/crypto/deribit_trades_YYYY-MM-DD_BTC-PERPETUAL.csv.gz
 #
 # Usage:
 #   tools/multi_day_check.sh                  # every day found under data/v2/
@@ -49,7 +49,7 @@ if [ "$#" -gt 0 ]; then
   days=("$@")
 else
   days=()
-  for f in data/v2/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv data/v2/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv.gz; do
+  for f in data/v2/crypto/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv data/v2/crypto/deribit_book_snapshot_25_*_BTC-PERPETUAL.csv.gz; do
     [ -e "$f" ] || continue
     day=$(day_of "$f")
     [ -n "$day" ] && days+=("$day")
@@ -61,7 +61,7 @@ else
 fi
 
 if [ "${#days[@]}" -eq 0 ]; then
-  echo "no day found: expected data/v2/deribit_book_snapshot_25_YYYY-MM-DD_BTC-PERPETUAL.csv.gz"
+  echo "no day found: expected data/v2/crypto/deribit_book_snapshot_25_YYYY-MM-DD_BTC-PERPETUAL.csv.gz"
   exit 1
 fi
 
@@ -70,10 +70,10 @@ printf '%-12s %-9s %8s %6s %8s %12s %12s %9s %9s %11s\n' \
 
 rc=0
 for day in "${days[@]}"; do
-  snapshot="data/v2/deribit_book_snapshot_25_${day}_BTC-PERPETUAL.csv.gz"
+  snapshot="data/v2/crypto/deribit_book_snapshot_25_${day}_BTC-PERPETUAL.csv.gz"
   # The control day is stored uncompressed in this repository, so a day is any pair of files named after it.
-  [ -f "$snapshot" ] || snapshot="data/v2/deribit_book_snapshot_25_${day}_BTC-PERPETUAL.csv"
-  trades="data/v2/deribit_trades_${day}_BTC-PERPETUAL.csv.gz"
+  [ -f "$snapshot" ] || snapshot="data/v2/crypto/deribit_book_snapshot_25_${day}_BTC-PERPETUAL.csv"
+  trades="data/v2/crypto/deribit_trades_${day}_BTC-PERPETUAL.csv.gz"
   slice="/tmp/snap_$(printf '%s' "$day" | tr -d -)_200k.csv"
 
   missing=0

@@ -75,7 +75,7 @@ does not load the source file into memory. Deribit snapshot timestamps are in mi
 
 ```bash
 python3 tools/slice_l2_snapshot.py \
-	data/v2/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+	data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
 	/tmp/l2_tiny.csv \
 	--max-rows 100
 ```
@@ -92,7 +92,7 @@ without first extracting the full file:
 
 ```bash
 python3 tools/slice_l2_snapshot.py \
-	data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+	data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
 	/tmp/trades_tiny.csv --max-rows 1000
 ```
 
@@ -128,7 +128,7 @@ which integer columns are timestamps and in what unit, whether they move forward
 JSON level column:
 
 ```bash
-python3 tools/inspect_source.py data/v2/bitmex_trades_2020-06-01_XBTUSD.csv.gz
+python3 tools/inspect_source.py data/v2/crypto/bitmex_trades_2020-06-01_XBTUSD.csv.gz
 ```
 
 The column summary is the anatomy half of accepting a source, and the implied top of book is the book half, which
@@ -197,10 +197,10 @@ python3 tools/fetch_databento.py --cost --dataset GLBX.MDP3 --schema mbp-10 --sy
   --start 2026-09-29T13:30 --end 2026-09-29T15:30
 python3 tools/fetch_databento.py --download --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
   --start 2026-09-29T13:30 --end 2026-09-29T15:30 --pretty-px \
-  --output data/v2/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv
-python3 tools/fetch_databento.py --convert --input data/v2/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv \
-  --symbol MESZ6 --exchange glbx --depth-out data/v2/glbx_MESZ6_depth.csv.gz \
-  --trades-out data/v2/glbx_MESZ6_trades.csv.gz
+  --output data/v2/futures/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv
+python3 tools/fetch_databento.py --convert --input data/v2/futures/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv \
+  --symbol MESZ6 --exchange glbx --depth-out data/v2/futures/glbx_MESZ6_depth.csv.gz \
+  --trades-out data/v2/futures/glbx_MESZ6_trades.csv.gz
 ```
 
 What the route is, read on 2026-09-30 from the API itself rather than from a page: the endpoints take their
@@ -254,8 +254,8 @@ export DATABENTO_API_KEY=db-...
 python3 tools/screen_spread.py --cost --symbols SPY,QQQ,IWM --start 2026-09-29T13:30 --end 2026-09-29T15:30
 python3 tools/screen_spread.py --download --max-cost-usd=5 --symbols SPY,QQQ,IWM \
   --start 2026-09-29T13:30 --end 2026-09-29T15:30
-python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
-python3 tools/screen_spread.py --input data/v2/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \
+python3 tools/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
+python3 tools/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \
   --min-trades-per-second=2.8
 ```
 
@@ -342,7 +342,7 @@ it over as a `.data` member inside a `tar.gz`, and every line is a JSON object:
   and multiplies by the contract value before the quantity reaches the engine.
 
 ```bash
-tar -xzOf data/v2/BTC-USDT-SWAP-L2orderbook-400lv-2026-01-07.tar.gz | head -n 300000 > /tmp/okx_l2_300k.jsonl
+tar -xzOf data/v2/crypto/BTC-USDT-SWAP-L2orderbook-400lv-2026-01-07.tar.gz | head -n 300000 > /tmp/okx_l2_300k.jsonl
 ./out/build/linux-debug/toy_quant l2_replay <okx trades csv> /tmp/okx_l2_300k.jsonl BTC-USDT-SWAP 0 \
   active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --order-size=100000
 ```
@@ -362,10 +362,10 @@ python3 tools/fetch_funding_rates.py --source okx --from 2024-03-01 --to 2024-03
 python3 tools/fetch_funding_rates.py --source binance --month 2024-03 --symbol BTCUSDT
 ```
 
-That produces `data/v2/okx_funding_2026-01-07_BTC-USDT-SWAP.csv` (3 settlements,
-`instrument_name,funding_rate,funding_time`), `data/v2/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv`
+That produces `data/v2/funding/okx_funding_2026-01-07_BTC-USDT-SWAP.csv` (3 settlements,
+`instrument_name,funding_rate,funding_time`), `data/v2/funding/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv`
 (93 settlements, one file day cut and concatenated per day of the range) and
-`data/v2/BTCUSDT-fundingRate-2024-03.csv` (93 settlements, `calc_time,funding_interval_hours,last_funding_rate`).
+`data/v2/funding/BTCUSDT-fundingRate-2024-03.csv` (93 settlements, `calc_time,funding_interval_hours,last_funding_rate`).
 The March 2024 pair is what the acceptance number is measured on, because a carry needs two histories that cover
 the same window and Binance publishes monthly while OKX publishes daily. Six properties decide how a series joins
 a run:

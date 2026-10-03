@@ -14,8 +14,8 @@
 #   python3 tools/fetch_databento.py --download --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
 #     --start 2026-09-29T13:30 --end 2026-09-29T15:30 --pretty-px --output /tmp/mes.csv
 #   python3 tools/fetch_databento.py --convert --input /tmp/mes.csv --symbol MESZ6 --exchange glbx \
-#     --depth-out data/v2/glbx_MESZ6_depth_2026-09-29_1330_1530.csv.gz \
-#     --trades-out data/v2/glbx_MESZ6_trades_2026-09-29_1330_1530.csv.gz
+#     --depth-out data/v2/futures/glbx_MESZ6_depth_2026-09-29_1330_1530.csv.gz \
+#     --trades-out data/v2/futures/glbx_MESZ6_trades_2026-09-29_1330_1530.csv.gz
 #
 # and the same pair for a US share, with --dataset XNAS.ITCH, --exchange xnas and --pretty-px, which is not
 # optional: without it the price column is the vendor's 1e-9 scaled integer and the run dies with std::bad_alloc.
@@ -30,17 +30,17 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 BIN=${1:-out/build/linux-debug/toy_quant}
-MES_T=data/v2/glbx_MESZ6_trades_2026-09-29_1330_1530.csv.gz
-MES_D=data/v2/glbx_MESZ6_depth_2026-09-29_1330_1530.csv.gz
-SPY_T=data/v2/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz
-SPY_D=data/v2/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz
+MES_T=data/v2/futures/glbx_MESZ6_trades_2026-09-29_1330_1530.csv.gz
+MES_D=data/v2/futures/glbx_MESZ6_depth_2026-09-29_1330_1530.csv.gz
+SPY_T=data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz
+SPY_D=data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz
 # The two symbols the pre-registered screen passed, from the same session, downloaded with --pretty-px so the
 # price column is decimal rather than the vendor's 1e-9 scaled integer: an integer price makes the engine's
 # ladder index overflow and the run dies with bad_alloc, which is what the first attempt at these two did.
-AAPL_T=data/v2/xnas_AAPL_trades_2026-09-29_1330_1530.csv.gz
-AAPL_D=data/v2/xnas_AAPL_depth_2026-09-29_1330_1530.csv.gz
-TSLA_T=data/v2/xnas_TSLA_trades_2026-09-29_1330_1530.csv.gz
-TSLA_D=data/v2/xnas_TSLA_depth_2026-09-29_1330_1530.csv.gz
+AAPL_T=data/v2/equities/xnas_AAPL_trades_2026-09-29_1330_1530.csv.gz
+AAPL_D=data/v2/equities/xnas_AAPL_depth_2026-09-29_1330_1530.csv.gz
+TSLA_T=data/v2/equities/xnas_TSLA_trades_2026-09-29_1330_1530.csv.gz
+TSLA_D=data/v2/equities/xnas_TSLA_depth_2026-09-29_1330_1530.csv.gz
 for file in "$MES_T" "$MES_D" "$SPY_T" "$SPY_D" "$AAPL_T" "$AAPL_D" "$TSLA_T" "$TSLA_D"; do
   if [ ! -f "$file" ]; then
     echo "missing $file: this window re-derives from a paid download, see tools/fetch_databento.py" >&2

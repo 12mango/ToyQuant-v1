@@ -21,7 +21,7 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 BIN="${BIN:-out/build/linux-debug/toy_quant}"
-TRADES=data/v2/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
+TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 DEPTH="${DEPTH:-/tmp/depth_200k_base.csv}"
 WHICH="${WHICH:-filled}"
 
