@@ -37,6 +37,7 @@ FORBIDDEN = [
     "market/funding_rate.h",
     "market/csv_feed.h",
     "market/udp_feed.h",
+    "market/market_event.h",
     "accounting/carry_ledger",
     "exchange/paper_broker",
 ]

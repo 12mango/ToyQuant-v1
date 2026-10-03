@@ -11,7 +11,7 @@
 #include "common/types.h"
 #include "common/instrument_spec.h"
 #include "execution_report.h"
-#include "market/market_event.h"
+#include "common/market_event.h"
 #include "order.h"
 
 // Every draw in QueueModel::Lumpy comes from a generator seeded with the date of the recorded window,

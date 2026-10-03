@@ -5,7 +5,7 @@
 
 #include "common/types.h"
 #include "exchange/execution_report.h"
-#include "market/market_event.h"
+#include "common/market_event.h"
 #include "orderbook/l2_market_view.h"
 #include "orderbook/orderbook.h"
 

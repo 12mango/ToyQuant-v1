@@ -4,7 +4,7 @@
 
 #include "common/tick.h"
 #include "common/types.h"
-#include "market/market_event.h"
+#include "common/market_event.h"
 
 struct TopOfBook
 {

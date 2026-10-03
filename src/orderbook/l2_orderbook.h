@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "common/types.h"
-#include "market/market_event.h"
+#include "common/market_event.h"
 #include "orderbook/l2_market_view.h"
 #include "orderbook/orderbook.h"
 #include "orderbook/tick_ladder.h"

@@ -11,7 +11,7 @@
 #include "app/run_summary.h"
 #include "common/funding.h"
 #include "exchange/matching_engine.h"
-#include "market/market_event.h"
+#include "common/market_event.h"
 #include "orderbook/orderbook.h"
 #include "strategy/strategy.h"
 #include "utils/stage_profiler.h"
