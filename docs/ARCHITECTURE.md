@@ -307,7 +307,7 @@ one, and tier 1 of `tools/verify_l2.sh` asserts that by comparing every number e
 line itself.
 
 The broker layer is a decorator over that engine rather than a second execution model. `PaperBroker`
-(`src/exchange/paper_broker.*`) implements `IMatchingEngine`, takes over the venue's report callback and
+(`src/lines/paper_broker.*`) implements `IMatchingEngine`, takes over the venue's report callback and
 forwards every call and every report, so the pipeline, the strategy, the book and the portfolio are
 unchanged and a broker with no faults configured produces the run without it. What it adds is what a venue
 does not do: refusals for reasons a strategy cannot see in the price, each counted because a refusal emits
@@ -318,7 +318,7 @@ execution; and an outage that holds orders and delivers them in submission order
 answering a cancel for an order still held because that order is gone for good. Each fault is a count of
 orders or fills rather than a drawn probability, so a faulted run is reproducible from its command line.
 The broker also keeps a statement of its own, symbol by symbol, and `reconcile_positions`
-(`src/accounting/reconciliation.h`) compares it against the portfolio's positions, gross traded quantity,
+(`src/lines/reconciliation.h`) compares it against the portfolio's positions, gross traded quantity,
 fill count and fees, which is the check the strategy already runs against the engine extended one layer
 out. Cash is deliberately outside that comparison: the broker's USD arithmetic would be a second
 implementation of the instrument model, and a copy that agrees because it was copied is not a check.
@@ -1245,7 +1245,7 @@ the output it produced before this input existed. A settlement reached before th
 position is counted and moves nothing: the line therefore reports two different things, and a window
 that begins after a settlement is the case where they disagree.
 
-The two legs are then the carry mode itself, `src/accounting/carry_ledger.*`. A leg is a stated USD
+The two legs are then the carry mode itself, `src/lines/carry_ledger.*`. A leg is a stated USD
 notional rather than a contract count, so one quantity unit is one dollar: the venue's taker rate
 applies to the number the command states, the funding accrues on the same number, and neither needs a
 price feed. What that leaves out is stated rather than hidden — a fixed-contract position's notional

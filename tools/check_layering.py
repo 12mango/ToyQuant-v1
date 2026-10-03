@@ -18,18 +18,13 @@ import sys
 from pathlib import Path
 
 CORE_DIRS = ["src/common", "src/orderbook", "src/strategy", "src/exchange", "src/accounting", "src/utils"]
+# The line files live in src/lines/ now, so a core directory holds the core and nothing else.
 # The core's own positive list: what `app/pipeline.cpp` and the L2 book are allowed to be part of.
 CORE_EXTRA = ["src/app/pipeline.cpp", "src/app/run_summary.h", "src/orderbook/l2_orderbook.cpp"]
-# Three files are lines that happen to live in a core directory: the carry ledger, the paper broker and the
-# reconciliation that reads its statement. They are excluded rather than moved because moving them means touching
-# every include that names them, and this tool exists to keep an accidental coupling out rather than to reorganise a
-# directory. A `lines/` tree is the structural fix if the exclusion ever grows.
-EXCLUDE = ["src/accounting/carry_ledger.h", "src/accounting/carry_ledger.cpp",
-           "src/accounting/reconciliation.h", "src/accounting/reconciliation.cpp",
-           "src/exchange/paper_broker.h", "src/exchange/paper_broker.cpp"]
 # Headers that belong to a feed family, to the frozen legacy line, or to the carry ledger.
 FORBIDDEN = [
     "legacy/",
+    "lines/",
     "market/binance_readers",
     "market/deribit_readers",
     "market/okx_readers",
@@ -38,8 +33,6 @@ FORBIDDEN = [
     "market/csv_feed.h",
     "market/udp_feed.h",
     "market/market_event.h",
-    "accounting/carry_ledger",
-    "exchange/paper_broker",
 ]
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"([^"]+)"')
 
@@ -51,7 +44,7 @@ def core_files():
     for directory in CORE_DIRS:
         for suffix in ("*.h", "*.cpp"):
             files.extend(sorted(Path(directory).glob(suffix)))
-    return [path for path in files if path.is_file() and str(path) not in EXCLUDE]
+    return [path for path in files if path.is_file()]
 
 
 def main():

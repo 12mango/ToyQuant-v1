@@ -8,14 +8,14 @@
 #include <string>
 #include <type_traits>
 
-#include "accounting/carry_ledger.h"
+#include "lines/carry_ledger.h"
 #include "accounting/portfolio.h"
-#include "accounting/reconciliation.h"
+#include "lines/reconciliation.h"
 #include "app/pipeline.h"
 #include "app/strategy_factory.h"
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
-#include "exchange/paper_broker.h"
+#include "lines/paper_broker.h"
 #include "legacy/tick.h"
 #include "legacy/tick_pipeline.h"
 #include "market/csv_feed.h"

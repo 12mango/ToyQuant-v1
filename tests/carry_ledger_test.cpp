@@ -4,7 +4,7 @@
 #undef NDEBUG
 #endif
 
-#include "accounting/carry_ledger.h"
+#include "lines/carry_ledger.h"
 #include "common/instrument_spec.h"
 
 #include <cassert>

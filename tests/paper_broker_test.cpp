@@ -14,9 +14,9 @@
 #include <vector>
 
 #include "accounting/portfolio.h"
-#include "accounting/reconciliation.h"
+#include "lines/reconciliation.h"
 #include "exchange/matching_engine.h"
-#include "exchange/paper_broker.h"
+#include "lines/paper_broker.h"
 
 namespace
 {

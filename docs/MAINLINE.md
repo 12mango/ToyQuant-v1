@@ -52,10 +52,10 @@ removing it would make a claim in the documents unreproducible.
 | `src/legacy/*`, where `l1_market_maker.h` alone is 1,285 | ~1,900 | **candidate to delete, with its tests and the tier 1 L1 invariants** | The frozen `v1.0-demo` tag already preserves this line, so the repository does not have to carry it, and nothing on the main line calls it |
 | The legacy CSV and UDP modes and the `Tick` model | ~700 | **candidate to delete** | Unreachable from the L2 path, and kept only for compatibility with a tag that exists |
 | `src/market/deribit_readers.*`, `okx_readers.*` and the crypto market code | ~1,500 | **keep, marked as evidence** | The data files are the record of closed lines and one fetch tool still reads the funding history, but this is not reading for the main line |
-| `src/market/funding_rate.*`, `src/accounting/carry_ledger.*` | ~470 | **keep, marked as evidence** | A marked and checked block in [Performance History](PERFORMANCE_HISTORY.md) re-runs this on every gate: deleting it would either break the gate or turn the sharpest number here into a copied one |
+| `src/market/funding_rate.*`, `src/lines/carry_ledger.*` | ~470 | **keep, marked as evidence** | A marked and checked block in [Performance History](PERFORMANCE_HISTORY.md) re-runs this on every gate: deleting it would either break the gate or turn the sharpest number here into a copied one |
 | `src/bench/ring_bench_main.cpp` | 560 | keep | The ring benchmark is quoted in a checked block |
 | `src/backtest/*`, `src/app/strategy_benchmark*` | ~900 | keep, off the reading path | Drivers rather than lessons; they are how the tables were produced |
-| `src/exchange/paper_broker.*`, `src/accounting/reconciliation.*` | ~700 | keep, off the reading path | The machinery the roadmap's Stage B needs, exercised by tests |
+| `src/lines/paper_broker.*`, `src/lines/reconciliation.*` | ~700 | keep, off the reading path | The machinery the roadmap's Stage B needs, exercised by tests |
 
 **The deletions are a separate and gated step rather than a part of this document**, because tier 1 compares the L1
 invariants and the legacy replay: removing the legacy line means removing those checks in the same change, and a change

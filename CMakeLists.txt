@@ -50,7 +50,6 @@ set(MARKET_READER_SOURCES
 # fact a tool can read rather than a convention a reader has to trust.
 set(CORE_SOURCES
     src/accounting/portfolio.cpp
-    src/accounting/reconciliation.cpp
     src/backtest/performance.cpp
     src/exchange/matching_engine.cpp
     src/market/l2_replay_feed.cpp
@@ -65,8 +64,9 @@ set(CORE_SOURCES
     src/utils/stage_profiler.cpp)
 
 set(LINE_SOURCES
-    src/accounting/carry_ledger.cpp
-    src/exchange/paper_broker.cpp
+    src/lines/reconciliation.cpp
+    src/lines/carry_ledger.cpp
+    src/lines/paper_broker.cpp
     src/legacy/tick_csv_parser.cpp
     src/market/csv_feed.cpp
     src/market/funding_rate.cpp
@@ -179,8 +179,8 @@ target_link_libraries(threaded_replay_test PRIVATE Threads::Threads ZLIB::ZLIB)
 add_test(NAME threaded_replay_test COMMAND threaded_replay_test)
 
 add_executable(paper_broker_test tests/paper_broker_test.cpp
-    src/exchange/paper_broker.cpp src/exchange/matching_engine.cpp
-    src/accounting/reconciliation.cpp src/accounting/portfolio.cpp)
+    src/lines/paper_broker.cpp src/exchange/matching_engine.cpp
+    src/lines/reconciliation.cpp src/accounting/portfolio.cpp)
 target_include_directories(paper_broker_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME paper_broker_test COMMAND paper_broker_test)
 
@@ -217,7 +217,7 @@ add_executable(portfolio_test tests/portfolio_test.cpp src/accounting/portfolio.
 target_include_directories(portfolio_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME portfolio_test COMMAND portfolio_test)
 
-add_executable(carry_ledger_test tests/carry_ledger_test.cpp src/accounting/carry_ledger.cpp
+add_executable(carry_ledger_test tests/carry_ledger_test.cpp src/lines/carry_ledger.cpp
     src/accounting/portfolio.cpp src/market/funding_rate.cpp src/market/line_reader.cpp)
 target_include_directories(carry_ledger_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(carry_ledger_test PRIVATE ZLIB::ZLIB)

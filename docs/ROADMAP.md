@@ -1051,12 +1051,12 @@ it is one of the two places this chain can stop for reasons outside the reposito
   broker, logs and metrics, alerting, and a written runbook.
 
 **Skeleton, built without an account**: the parts of the four bullets above that a replay can host are in
-`PaperBroker` (`src/exchange/paper_broker.*`), a decorator over the matching engine that refuses orders,
+`PaperBroker` (`src/lines/paper_broker.*`), a decorator over the matching engine that refuses orders,
 splits fills, withholds an execution report and takes the venue away for a while, each fault a count of
 orders or fills so a faulted run is reproducible from its command line (`--paper-broker` with
 `--broker-reject-every=N`, `--broker-partial-every=N`, `--broker-drop-every=N`, and
 `--broker-outage-after=N` with `--broker-outage-holds=M`). It keeps its own statement of what the venue
-executed, and `reconcile_positions` (`src/accounting/reconciliation.*`) compares that against the portfolio,
+executed, and `reconcile_positions` (`src/lines/reconciliation.*`) compares that against the portfolio,
 reported as a `[RECON]` line: net position and gross traded quantity per symbol, the fills the strategy was
 sent against the ones it booked, and fees. Not built, because a paper account is what is missing rather than
 the code: the gateway's own transport, idempotent client order ids with a retry path (nothing in this path
