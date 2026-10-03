@@ -433,35 +433,7 @@ void Pipeline::process_event(const MarketEvent& event)
                 const auto top = order_book_.market_top(value.symbol);
                 last_mid_ = (value.bid_price + value.ask_price) / 2.0;
                 ++quote_cycle_;
-                while (!pending_markouts_.empty() &&
-                       quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
-                {
-                    const auto observation = pending_markouts_.front();
-                    pending_markouts_.pop_front();
-                    const double markout = observation.side == Side::Buy
-                                               ? observation.price - last_mid_
-                                               : last_mid_ - observation.price;
-                    execution_quality_.adverse_selection += markout;
-                    execution_quality_.markout_quantity +=
-                        static_cast<double>(observation.quantity);
-                    execution_quality_.markout_ticks_quantity +=
-                        markout / std::max(tick_size_, PRICE_TICK_SIZE) *
-                        static_cast<double>(observation.quantity);
-                    const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, multiplier_, last_mid_);
-                    execution_quality_.markout_usd +=
-                        static_cast<double>(observation.quantity) /
-                        static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
-                        std::max(last_mid_, 1e-9);
-                    ++execution_quality_.markout_count;
-                    const std::size_t bucket =
-                        observation.bucket >= 0 ? static_cast<std::size_t>(observation.bucket) : 0;
-                    execution_quality_.markout_ticks_quantity_by_bucket[bucket] +=
-                        markout / std::max(tick_size_, PRICE_TICK_SIZE) *
-                        static_cast<double>(observation.quantity);
-                    execution_quality_.markout_quantity_by_bucket[bucket] +=
-                        static_cast<double>(observation.quantity);
-                    ++execution_quality_.markout_count_by_bucket[bucket];
-                }
+                drain_mature_markouts();
                 const double abs_inventory = static_cast<double>(std::abs(position_));
                 ++inventory_samples_;
                 execution_quality_.average_abs_inventory +=
@@ -518,33 +490,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
         // The report callback above pushes a markout for every fill, but only the L1 path drained
         // them, so on this path adverse selection stayed at zero however many fills there were. Same
         // five cycle horizon as the L1 branch.
-        while (!pending_markouts_.empty() &&
-               quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
-        {
-            const auto observation = pending_markouts_.front();
-            pending_markouts_.pop_front();
-            const double markout = observation.side == Side::Buy ? observation.price - last_mid_
-                                                                 : last_mid_ - observation.price;
-            execution_quality_.adverse_selection += markout;
-            execution_quality_.markout_quantity += static_cast<double>(observation.quantity);
-            execution_quality_.markout_ticks_quantity +=
-                markout / std::max(tick_size_, PRICE_TICK_SIZE) *
-                static_cast<double>(observation.quantity);
-            const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, multiplier_, last_mid_);
-            execution_quality_.markout_usd +=
-                static_cast<double>(observation.quantity) /
-                static_cast<double>(quantity_scale_) * unit_value_at_mark * markout /
-                std::max(last_mid_, 1e-9);
-            ++execution_quality_.markout_count;
-            const std::size_t bucket =
-                observation.bucket >= 0 ? static_cast<std::size_t>(observation.bucket) : 0;
-            execution_quality_.markout_ticks_quantity_by_bucket[bucket] +=
-                markout / std::max(tick_size_, PRICE_TICK_SIZE) *
-                static_cast<double>(observation.quantity);
-            execution_quality_.markout_quantity_by_bucket[bucket] +=
-                static_cast<double>(observation.quantity);
-            ++execution_quality_.markout_count_by_bucket[bucket];
-        }
+        drain_mature_markouts();
         // The market's own prints, resolved by the same five cycle horizon. A print at or through a price is
         // what a resting quote there would have traded with, so its markout is the adverse selection a quote at
         // that distance would have suffered, and unlike our own fills it exists from the first event rather than
@@ -619,6 +565,36 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
     engine_.process_market_trade(trade);
     record_trace_sample("trade", trade.ts);
     sample_resting_queues();
+}
+
+void Pipeline::drain_mature_markouts()
+{
+    // The observations are queued in cycle order, so the front is the oldest and the loop stops at the
+    // first one whose horizon has not closed yet. Same five cycles on every path, and the arithmetic is
+    // kept in the order it had when this was written twice, because the stdout hash is exact.
+    while (!pending_markouts_.empty() &&
+           quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
+    {
+        const auto observation = pending_markouts_.front();
+        pending_markouts_.pop_front();
+        const double markout =
+            observation.side == Side::Buy ? observation.price - last_mid_ : last_mid_ - observation.price;
+        execution_quality_.adverse_selection += markout;
+        execution_quality_.markout_quantity += static_cast<double>(observation.quantity);
+        execution_quality_.markout_ticks_quantity +=
+            markout / std::max(tick_size_, PRICE_TICK_SIZE) * static_cast<double>(observation.quantity);
+        const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, multiplier_, last_mid_);
+        execution_quality_.markout_usd +=
+            static_cast<double>(observation.quantity) / static_cast<double>(quantity_scale_) *
+            unit_value_at_mark * markout / std::max(last_mid_, 1e-9);
+        ++execution_quality_.markout_count;
+        const std::size_t bucket =
+            observation.bucket >= 0 ? static_cast<std::size_t>(observation.bucket) : 0;
+        execution_quality_.markout_ticks_quantity_by_bucket[bucket] +=
+            markout / std::max(tick_size_, PRICE_TICK_SIZE) * static_cast<double>(observation.quantity);
+        execution_quality_.markout_quantity_by_bucket[bucket] += static_cast<double>(observation.quantity);
+        ++execution_quality_.markout_count_by_bucket[bucket];
+    }
 }
 
 void Pipeline::publish_markout_estimate()

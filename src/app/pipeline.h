@@ -237,6 +237,10 @@ class Pipeline
 
     // Recomputes the four quantity-weighted averages and hands them to the strategy, which is the only way the
     // decision can know what being passive at a distance has actually cost in this window.
+    // Drains the fill observations whose five-cycle window has closed, adding each to the execution
+    // quality buckets. Every path that advances the quote cycle calls this, so the L1 and the L2 paths
+    // measure markout through one body rather than through a copy each.
+    void drain_mature_markouts();
     void publish_markout_estimate();
     struct FillObservation
     {
