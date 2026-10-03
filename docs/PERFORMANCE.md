@@ -208,6 +208,23 @@ Reading the output:
   figure.
 - Repeating a stage measurement three times and taking the median of the p50 values costs seconds and
   removes most of the run-to-run spread. Section 4 does exactly that.
+- **The probe is larger than some of the stages it reports, and the tool prints the figure it used.**
+  Every run says `[PROFILE] clock overhead 45 ns per region, already subtracted` on its own line. Three
+  runs of the 2M slice in one session gave 45, 46 and 54 ns, so the correction moves by about 20% between
+  runs — as large as the whole reported value of `queue-acct` (1-10 ns on those runs), and a tenth of
+  `validate` (68-78) and `book-apply` (76-91). `queue-acct` and `top-booking` (14-32) are therefore **at
+  or below the instrument's resolution**: their p50 is the residual after subtracting a quantity of the
+  same size as itself, and it should be read as "approximately zero, not resolvable at this interval"
+  rather than as a cost. What the instrument does resolve is `read+parse` (717-731) and `engine` (136-144);
+  `validate`, `book-apply`, `market-view` and `strategy` sit at two to three times the floor, so their
+  ranking is stable while their p50 carries a large relative error.
+  Note that those figures are one session's, and the drift §2 warns about applies: they are not comparable
+  with section 4's table, which was taken on a different one. The relationship is the point, not the
+  values.
+  The floor could be lowered — `rdtscp` costs a fraction of a `steady_clock` read, and a region timed once
+  per block of N events amortises one read over N — and neither is done here on purpose: every paired row
+  in the ledger was measured through this instrument, and replacing it would make the record incomparable
+  with itself.
 
 ### 3.6 Why isolation benchmarks mislead
 
@@ -420,6 +437,10 @@ the same unchanged binary measured `read+parse` at 581 ns in one session and 834
 later, a 1.4x spread, while every stage's share stayed within a percentage point. Absolute values here
 describe a session, and only the paired deltas in the ledger travel between them.
 
+The two smallest rows are below the instrument's resolution, not small in the way the others are: see
+[§3.5](#35-stage-timing), where `queue-acct` and `top-booking` are explained as approximately zero rather
+than as costs. The Share column is what they are good for, and it is the column this table is written for.
+
 ## 5. Optimization ledger
 
 One row per attempt, including the ones that did not pay. "Effect" is a paired measurement unless
@@ -520,6 +541,27 @@ and further tuning there has now been tried twice and paid nothing.
    a `TickLadder` there too, but order flow is 406 orders per 117,288 batches on W1, so a workload
    with real order flow is needed before that can show anything.
 4. **`validate` (5%) and `strategy` (4%)** stay out of scope until the three above are settled.
+
+Those four are the whole of what is left, and each is stated with the measurement that would settle it,
+because that is the only thing that would move any of them. Two of the four are closed rather than open.
+
+**The reader is at its floor.** The number conversions were the two real levers in `read+parse` and both are
+gone (the ledger above); the field split measures within 12% of a hand-tuned word-at-a-time scan; and the
+three candidates for a hidden cost — syscalls, page faults and library calls — were counted directly and
+ruled out in §3.8. What remains there is our own code doing its own work, so the only shape change that
+could still matter is reading the block in bulk rather than a row at a time, and that is a question about
+reordering work rather than about waste.
+
+**The instrument cannot resolve the small stages, and it now says so.** §3.5 states the probe cost and the
+rows it is larger than, so `queue-acct` and `top-booking` are read as approximately zero rather than as
+costs. That closes the last loose end in this document: the numbers that could not be trusted carry their
+caveat, and the two that can be trusted up here are named.
+
+What is left for a later session is therefore a choice rather than a search. The two candidates worth the
+next measurement are the 1024-slot growth margin (one constant, never measured) and `MEOrderBook`'s
+`std::map` per level, which the ledger's book-container row argues for measuring but which needs a workload
+with real order flow before it can show anything. Both are measurements, not hunches, which is the state
+this document is meant to be left in.
 
 
 
