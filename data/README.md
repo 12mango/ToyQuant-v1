@@ -426,20 +426,20 @@ The generated built-in scenarios contain 1,000 ticks each, which is enough for a
 The application's default paths follow this directory layout.
 ## What is in `data/v2` now, and what was removed
 
-The directory is deliberately **not** split into family subdirectories: every file below is named by an exact path in
-the gate, in a checked run block, or in this document's own provenance table, and moving one would silently break the
-reference that keeps it honest. What it gets instead is this map.
+The top level is grouped by family: `crypto/`, `equities/`, `futures/`, `funding/`, `fixtures/`, and `screen/` for the
+cached top-of-book files. The grouping is a directory fact rather than a comment, and it was done as one change with
+every reference in it — the gate, the checked run blocks, the tools, the tests and this document — because those blocks
+are re-run on every gate pass and a path left behind fails tier 1 and names itself.
 
 | family | files | size | what it is | regenerable |
 |---|---:|---:|---|---|
-| `deribit_*` | 8 | 4.6 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on | yes, from the Tardis samples |
-| `BTCUSDT-*` | 15 | 1.4 GB | Binance aggTrades, bookTicker and funding archives for March 2024 | yes, from Binance Vision |
-| `xnas_*` | 29 | 1.8 GB | the US equity windows: depth and trades per symbol and session | yes, from Databento, about two dollars a session |
-| `glbx_*` | 3 | 2.0 GB | the micro E-mini session, raw and converted | yes, from Databento |
-| `BTC-USDT-SWAP-*` | 1 | 415 MB | the OKX book archive for one day | yes, from the OKX archive |
+| `crypto/` | 12 | 4.6 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on, plus the Binance and OKX archives of a closed line | yes, from the Tardis samples and the venue archives |
+| `equities/` | 29 | 1.8 GB | the US equity windows: depth and trades per symbol and session | yes, from Databento, about two dollars a session |
+| `futures/` | 3 | 2.0 GB | the micro E-mini session, raw and converted | yes, from Databento |
+| `funding/` | 25 | 148 KB | both venues' funding histories for 2024, which closed the carry line | yes, and they are free |
+| `fixtures/` | 2 | 2.7 MB | the small pinned inputs the replay tests use | no, they are fixtures |
 | `screen/` | 60 | 1.2 GB | the top-of-book files of the thirty symbol screen, cached so the rule can be re-measured for nothing | yes, but it is the cache that makes the re-measurement free |
-| `*funding*` | 25 | 148 KB | both venues' funding histories for 2024, which closed the carry line | yes, and they are free |
-| `test_*_5k.csv` | 2 | 2.7 MB | the small pinned inputs the replay tests use | no, they are fixtures |
+
 
 **Removed, and why**: eighteen `*:Zone.Identifier` files (Windows alternate-data-stream metadata rather than data), an
 empty `v2/carry/` directory, and four archives no gate or checked block names — `BTCUSDT-bookTicker-2024-03-30` and the
