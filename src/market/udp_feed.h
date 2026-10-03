@@ -3,7 +3,7 @@
 #include <thread>
 #include <vector>
 
-#include "legacy/tick.h"
+#include "common/tick.h"
 
 class UdpFeed
 {

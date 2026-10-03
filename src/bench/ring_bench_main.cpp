@@ -52,7 +52,7 @@ Build:  cmake --build --preset linux-relwithdebinfo --target ring_bench
 #include <vector>
 
 #include "concurrency/spsc_ring.h"
-#include "market/market_event.h"
+#include "common/market_event.h"
 
 namespace
 {

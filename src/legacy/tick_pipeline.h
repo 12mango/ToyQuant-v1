@@ -2,7 +2,7 @@
 
 #include "app/pipeline.h"
 #include "exchange/matching_engine.h"
-#include "legacy/tick.h"
+#include "common/tick.h"
 #include "orderbook/orderbook.h"
 
 namespace legacy

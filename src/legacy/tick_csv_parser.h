@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "legacy/tick.h"
+#include "common/tick.h"
 
 namespace legacy::tick_csv
 {

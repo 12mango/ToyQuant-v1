@@ -2,8 +2,7 @@
 
 // The v2 event the feeds produce and the pipeline consumes. It is a **core type**: the order book, the strategies and
 // the matching engine all name it, so it lives here rather than beside the venue readers that construct it, which is
-// what keeps `common <- core <- lines <- app` readable in one direction. `market/market_event.h` remains as a shim for
-// the readers and the benchmark that still include it by its old path.
+// what keeps `common <- core <- lines <- app` readable in one direction.
 
 #include <algorithm>
 #include <array>

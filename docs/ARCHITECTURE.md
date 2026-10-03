@@ -93,7 +93,7 @@ The source map is:
 
 | Responsibility | Main files | Key types or functions |
 |---|---|---|
-| Shared data | `src/common/types.h`, `src/market/market_event.h` | `Side`, `ExecType`, `MarketEvent` |
+| Shared data | `src/common/types.h`, `src/common/market_event.h` | `Side`, `ExecType`, `MarketEvent` |
 | Instrument rules | `src/common/instrument_spec.h` | `InstrumentSpec`, `btc_usdt_spec` |
 | Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
 | Market replay | `src/market/market_data_adapter.*` is the router, and each venue has its own file beside it: `binance_readers.*`, `deribit_readers.*`, `okx_readers.*`, sharing `field_parser.h`; plus `replay_feed.*`, `market_event_recorder.*`, `threaded_l2_replay.*` | `IMarketEventReader`, `ReplayFeed::run`, `MarketEventRecorder`, `ThreadedReplayFeed` |
@@ -107,7 +107,7 @@ The source map is:
 
 ## 2. Shared Types and Input Boundary
 
-**Files:** `src/market/market_event.h`, `src/legacy/tick.h`, `src/legacy/tick_csv_parser.*`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
+**Files:** `src/common/market_event.h`, `src/common/tick.h`, `src/legacy/tick_csv_parser.*`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
 
 The legacy CSV and UDP feeds produce the original `Tick` contract:
 

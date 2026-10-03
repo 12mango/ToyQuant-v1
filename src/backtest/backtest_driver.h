@@ -7,7 +7,7 @@
 #include "accounting/portfolio.h"
 #include "common/types.h"
 #include "exchange/execution_report.h"
-#include "legacy/tick.h"
+#include "common/tick.h"
 
 class Logger;
 

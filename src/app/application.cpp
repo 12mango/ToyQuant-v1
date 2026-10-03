@@ -16,7 +16,7 @@
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
 #include "lines/paper_broker.h"
-#include "legacy/tick.h"
+#include "common/tick.h"
 #include "legacy/tick_pipeline.h"
 #include "market/csv_feed.h"
 #include "market/funding_rate.h"

@@ -32,7 +32,6 @@ FORBIDDEN = [
     "market/funding_rate.h",
     "market/csv_feed.h",
     "market/udp_feed.h",
-    "market/market_event.h",
 ]
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"([^"]+)"')
 

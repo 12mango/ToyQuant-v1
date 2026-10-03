@@ -6,7 +6,7 @@
 #include <string>
 
 #include "common/instrument_spec.h"
-#include "market/market_event.h"
+#include "common/market_event.h"
 
 class IMarketEventReader
 {
