@@ -246,7 +246,7 @@ The default backtest log is `logs/backtest.log`.
 
 ## Visual Report
 
-Generate a static report with the market price, strategy quotes, executions, net inventory, and run summary:
+Generate a static report with the market price, the strategy's quotes and executions, the net inventory, the equity (PnL) path, and a run summary:
 
 ```bash
 python3 -m venv .venv
@@ -258,7 +258,9 @@ python3 -m venv .venv
   --output reports/synthetic_ticks_optimized.png
 ```
 
-The generated PNG is designed for quick inspection and README screenshots. Runtime CSV files are overwritten by the next simulation, so generate or copy the report before starting another run.
+The generated PNG is designed for quick inspection and README screenshots. The last panel is the same
+quantity as the summary's `Current Equity`, drawn as a path over the run rather than as one number. Runtime
+CSV files are overwritten by the next simulation, so generate or copy the report before starting another run.
 
 ![ToyQuant simulation report](reports/synthetic_ticks_optimized.png)
 

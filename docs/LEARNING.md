@@ -1,10 +1,12 @@
 # Learning Path
 
 This document is the market-making side of the project: the mechanisms the simulator exists to show, in the
-order they matter, each with the measurement that supports it. It is short on purpose and it points at two
-places for depth. [Design Review](DESIGN_REVIEW.md) explains why the simulator is built the way it is and
-lists what the evidence cannot yet support; [Performance History](PERFORMANCE_HISTORY.md) holds the
-measurements themselves.
+order they matter, each with the measurement that supports it. It is short on purpose and it points at four
+places. [Design Review](DESIGN_REVIEW.md) explains why the simulator is built the way it is and lists what
+the evidence cannot yet support; [Performance History](PERFORMANCE_HISTORY.md) holds the measurements
+themselves; [Main Line](MAINLINE.md) is the order to read the source in, with the result each step produced;
+and [Retrospective](RETROSPECTIVE.md) is where these mechanisms were taken to market, one market at a time,
+and what closed each one.
 
 Sections 1, 6 and 7 are one thread and are best read together: section 1 claims that a fill is a queue
 statement rather than a price statement, section 6 shows that claim as a single order's trace, and section 7

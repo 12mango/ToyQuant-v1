@@ -673,11 +673,14 @@ production trading performance.
 
 ## Generate a Visual Report
 
-After running a scenario, create a static report with the three main views:
+After running a scenario, create a static report with the four main views:
 
 - `Quotes & Executions`: reference tick price, buy/sell quote bands, and execution markers.
 - `Quote Distance to Reference Mid`: quote displacement from the reference price in ticks.
 - `Net Inventory Profile`: signed inventory and the configured `+/-1000` inventory boundary.
+- `Equity (PnL) Path`: the portfolio marked to market at every tick, with the starting capital as the
+  reference line. It is the path whose end is the summary's `Current Equity` and whose worst drop is
+  its `Max Drawdown`.
 
 The report also includes a right-side summary panel with order count, executions, traded quantity,
 fill rate, initial capital, current equity, max drawdown, inventory peak, and unexecuted orders.

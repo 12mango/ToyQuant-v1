@@ -152,6 +152,7 @@ def equity_metrics(tick_rows, trade_rows):
     last_prices = {}
     realized_pnl = 0.0
     equity_curve = []
+    equity_timestamps = []
     trade_index = 0
 
     for tick in tick_rows:
@@ -161,15 +162,18 @@ def equity_metrics(tick_rows, trade_rows):
             realized_pnl += apply_trade(positions, trade_rows[trade_index])
             trade_index += 1
         equity_curve.append(current_equity(realized_pnl, positions, last_prices))
+        equity_timestamps.append(tick_ts)
 
     while trade_index < len(trade_rows):
         realized_pnl += apply_trade(positions, trade_rows[trade_index])
         trade_index += 1
         equity_curve.append(current_equity(realized_pnl, positions, last_prices))
+        equity_timestamps.append(int(trade_rows[trade_index - 1]["ts"]))
 
     if not equity_curve:
         equity_curve.append(current_equity(realized_pnl, positions, last_prices))
-    return equity_curve[-1], max_drawdown(equity_curve)
+        equity_timestamps.append(0)
+    return equity_curve[-1], max_drawdown(equity_curve), equity_timestamps, equity_curve
 
 
 def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
@@ -230,7 +234,8 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
     order_ids = {row["order_id"] for row in order_rows}
     traded_ids = {row["order_id"] for row in trade_rows}
     unexecuted_orders = len(order_ids - traded_ids)
-    final_equity, report_max_drawdown = equity_metrics(tick_rows, trade_rows)
+    final_equity, report_max_drawdown, equity_timestamps, equity_values = equity_metrics(tick_rows, trade_rows)
+    equity_x = [(ts - start_ts) / 1000.0 for ts in equity_timestamps]
 
     plt.style.use("dark_background")
     plt.rcParams.update({
@@ -239,13 +244,14 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
         "axes.titleweight": "bold"
     })
 
-    fig = plt.figure(figsize=(15, 10), facecolor=COLORS["bg"])
-    layout = fig.add_gridspec(3, 5, width_ratios=(1, 1, 1, 1, 0.92),
-                              height_ratios=(2.0, 1.15, 1.15), hspace=0.35, wspace=0.18)
+    fig = plt.figure(figsize=(15, 12), facecolor=COLORS["bg"])
+    layout = fig.add_gridspec(4, 5, width_ratios=(1, 1, 1, 1, 0.92),
+                              height_ratios=(2.0, 1.0, 1.0, 1.0), hspace=0.35, wspace=0.18)
 
     price_ax = fig.add_subplot(layout[0, :4], facecolor=COLORS["panel"])
     distance_ax = fig.add_subplot(layout[1, :4], sharex=price_ax, facecolor=COLORS["panel"])
     inventory_ax = fig.add_subplot(layout[2, :4], sharex=price_ax, facecolor=COLORS["panel"])
+    equity_ax = fig.add_subplot(layout[3, :4], sharex=price_ax, facecolor=COLORS["panel"])
     kpi_ax = fig.add_subplot(layout[:, 4], facecolor=COLORS["card_bg"])
 
     # --- 1. Price Chart ---
@@ -301,10 +307,18 @@ def build_report(tick_rows, order_rows, trade_rows, output, max_inventory):
 
     inventory_ax.set_title("Net Inventory Profile", loc="left", color=COLORS["text"], fontsize=12)
     inventory_ax.set_ylabel("Position", color=COLORS["muted"], fontsize=9)
-    inventory_ax.set_xlabel("Seconds from First Tick", color=COLORS["muted"], fontsize=9)
+
+    # --- 4. Equity (PnL) Chart ---
+    # The quantity the summary reports as Current Equity, drawn as a path rather than as one number:
+    # the portfolio marked to market at every tick, with the starting capital as the reference line.
+    equity_ax.axhline(INITIAL_CAPITAL, color=COLORS["muted"], linewidth=0.8, linestyle="--")
+    equity_ax.plot(equity_x, equity_values, color=COLORS["inventory"], linewidth=1.8, zorder=3)
+    equity_ax.set_title("Equity (PnL) Path", loc="left", color=COLORS["text"], fontsize=12)
+    equity_ax.set_ylabel("Equity", color=COLORS["muted"], fontsize=9)
+    equity_ax.set_xlabel("Seconds from First Tick", color=COLORS["muted"], fontsize=9)
 
     # Apply consistent grid and border styling.
-    for axis in (price_ax, distance_ax, inventory_ax):
+    for axis in (price_ax, distance_ax, inventory_ax, equity_ax):
         axis.grid(True, color=COLORS["grid"], linestyle=":", linewidth=0.6, alpha=0.7)
         axis.spines["top"].set_visible(False)
         axis.spines["right"].set_visible(False)

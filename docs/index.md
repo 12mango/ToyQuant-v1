@@ -10,6 +10,7 @@ project that is a mechanical answer: most of the claims here are re-derived by t
 | evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
 | understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the evidence |
 | read the code | [Main Line](MAINLINE.md) | the module reference in [Architecture](ARCHITECTURE.md) |
+| see why the search ended | [Retrospective](RETROSPECTIVE.md) | [Main Line](MAINLINE.md) for what to keep and what to drop |
 | run it | [User Guide](USER_GUIDE.md) | the [Data Files](https://github.com/12mango/ToyQuant-v1/blob/main/data/README.md) note for the input contracts |
 | know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](LATENCY_DESIGN.md) for why each change is faster |
 | see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the section named in whichever document quoted it |
@@ -25,6 +26,8 @@ for talking about it out loud.
 |---|---|---|---|
 | [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way, the C++ decisions with code anchors and measured effects, the headline results, the limitations, and the interview versions | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked for flags, queue models and tool paths by `tools/lint_prose.py` |
 | [Roadmap](ROADMAP.md) | The phases from this demo to a personal execution system, what each one buys, and what is deliberately not planned | what exists today, or how to run it | prose linted with the rest |
+| [Main Line](MAINLINE.md) | The order to read the source in, the measured result each step produced, and the per-part verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result (`LEARNING`) | prose linted |
+| [Retrospective](RETROSPECTIVE.md) | The closing document: the eight markets this project closed, the number that closed each one, and the rules that came out of it | what exists in the code, or how to run it | prose linted |
 | [Architecture](ARCHITECTURE.md) | What each module is, the data contracts between them, and the matching rules | the rationale and trade-offs (`DESIGN_REVIEW`) | marked blocks re-run by `tools/check_docs.py`; prose linted |
 | [Learning Path](LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference | engineering decisions, or how to run anything | prose linted |
 | [User Guide](USER_GUIDE.md) | Every mode, every flag, and the failure modes that waste an afternoon | why anything is designed the way it is (`DESIGN_REVIEW`) | prose linted, so a flag it forgets or invents fails the build |
