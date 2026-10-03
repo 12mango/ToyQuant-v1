@@ -67,7 +67,7 @@ set(LINE_SOURCES
     src/lines/reconciliation.cpp
     src/lines/carry_ledger.cpp
     src/lines/paper_broker.cpp
-    src/legacy/tick_csv_parser.cpp
+    src/lines/legacy/tick_csv_parser.cpp
     src/market/csv_feed.cpp
     src/market/funding_rate.cpp
     ${MARKET_READER_SOURCES})
@@ -189,7 +189,7 @@ target_include_directories(matching_engine_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(matching_engine_test PRIVATE ZLIB::ZLIB)
 add_test(NAME matching_engine_test COMMAND matching_engine_test)
 
-add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp src/legacy/tick_csv_parser.cpp)
+add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp src/lines/legacy/tick_csv_parser.cpp)
 target_include_directories(tick_csv_parser_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME tick_csv_parser_test COMMAND tick_csv_parser_test)
 

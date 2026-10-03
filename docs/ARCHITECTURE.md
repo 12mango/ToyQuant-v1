@@ -95,19 +95,19 @@ The source map is:
 |---|---|---|
 | Shared data | `src/common/types.h`, `src/common/market_event.h` | `Side`, `ExecType`, `MarketEvent` |
 | Instrument rules | `src/common/instrument_spec.h` | `InstrumentSpec`, `btc_usdt_spec` |
-| Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
+| Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/lines/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
 | Market replay | `src/market/market_data_adapter.*` is the router, and each venue has its own file beside it: `binance_readers.*`, `deribit_readers.*`, `okx_readers.*`, sharing `field_parser.h`; plus `replay_feed.*`, `market_event_recorder.*`, `threaded_l2_replay.*` | `IMarketEventReader`, `ReplayFeed::run`, `MarketEventRecorder`, `ThreadedReplayFeed` |
 | Hand-off between threads | `src/concurrency/spsc_ring.h` | `SpscRing::try_push`, `SpscRing::try_pop`, `LatencyHistogram` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*`, `tick_ladder.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook`, `TickLadder` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
-| Strategy | `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, active L2 family |
+| Strategy | `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/lines/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, active L2 family |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
 ## 2. Shared Types and Input Boundary
 
-**Files:** `src/common/market_event.h`, `src/common/tick.h`, `src/legacy/tick_csv_parser.*`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
+**Files:** `src/common/market_event.h`, `src/common/tick.h`, `src/lines/legacy/tick_csv_parser.*`, `src/market/csv_feed.*`, `src/market/udp_feed.*`
 
 The legacy CSV and UDP feeds produce the original `Tick` contract:
 
@@ -344,7 +344,7 @@ at the bid. Execution is capped by the displayed BBO quantity, which is consumed
 orders until the next BBO update. Any unfilled remainder enters the existing local limit-order book.
 
 `CsvFeed::run` reads rows, converts them into `Tick`, and invokes `cb_(t)`. The parser lives under
-`src/legacy`, and `legacy::TickPipeline` is the explicit compatibility boundary before the old
+`src/lines/legacy`, and `legacy::TickPipeline` is the explicit compatibility boundary before the old
 Tick processing path. Malformed rows are reported and skipped.
 
 `UdpFeed` has a different transport but the same legacy output contract. On Linux, `recvmmsg` receives
@@ -668,7 +668,7 @@ mechanism and records the measured effect on the `engine` stage.
 
 ## 6. Strategy: The Main Decision Module
 
-**Files:** `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/legacy/l1_market_maker.h`
+**Files:** `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/lines/legacy/l1_market_maker.h`
 
 The strategy is the decision layer, not the matching layer. It sees `TopOfBook`, keeps its own working-order and position state, and returns candidate `StrategyOrder` values. The pipeline later assigns IDs and converts them to `exchange::Order`.
 
@@ -792,7 +792,7 @@ quantities and position, and stale quotes are cancelled before replacement.
 
 L1 strategies are frozen compatibility implementations. Their CLI names remain available for
 reproducing earlier L1 replay and benchmark results; new strategy work belongs to the L2 path.
-The archived implementations are in `src/legacy/l1_market_maker.h`. Their behaviour is pinned rather than described: `bash tools/verify_l2.sh fast` checks the L1
+The archived implementations are in `src/lines/legacy/l1_market_maker.h`. Their behaviour is pinned rather than described: `bash tools/verify_l2.sh fast` checks the L1
 invariants on every edit and `bash tools/verify_l2.sh all` compares a full-file run byte for byte,
 so a change in those makers that moves the numbers is a change to a recorded result. Execution
 quality is not computed inside them; `ExecutionQualityMetrics` in the pipeline owns edge, markout,

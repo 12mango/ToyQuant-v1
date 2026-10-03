@@ -5,7 +5,7 @@
 #include <iostream>
 #include <thread>
 
-#include "legacy/tick_csv_parser.h"
+#include "lines/legacy/tick_csv_parser.h"
 #include "utils/logger.h"
 
 CsvFeed::CsvFeed(const std::string& path, legacy::TickCallback cb, int ms_delay, Logger* logger)

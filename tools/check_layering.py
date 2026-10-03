@@ -21,9 +21,10 @@ CORE_DIRS = ["src/common", "src/orderbook", "src/strategy", "src/exchange", "src
 # The line files live in src/lines/ now, so a core directory holds the core and nothing else.
 # The core's own positive list: what `app/pipeline.cpp` and the L2 book are allowed to be part of.
 CORE_EXTRA = ["src/app/pipeline.cpp", "src/app/run_summary.h", "src/orderbook/l2_orderbook.cpp"]
-# Headers that belong to a feed family, to the frozen legacy line, or to the carry ledger.
+# Headers that belong to a feed family, to a closed line -- the carry ledger, or the frozen legacy line that
+# lives under `lines/legacy/` -- or to the legacy CSV and UDP feeds. A bare `legacy/` prefix went away with the
+# move, so `lines/` is the guard that covers the frozen line now.
 FORBIDDEN = [
-    "legacy/",
     "lines/",
     "market/binance_readers",
     "market/deribit_readers",

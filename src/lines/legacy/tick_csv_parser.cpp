@@ -1,4 +1,4 @@
-#include "legacy/tick_csv_parser.h"
+#include "lines/legacy/tick_csv_parser.h"
 
 #include <sstream>
 #include <stdexcept>

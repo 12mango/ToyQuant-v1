@@ -4,7 +4,7 @@
 #include <stdexcept>
 
 #include "common/types.h"
-#include "legacy/l1_market_maker.h"
+#include "lines/legacy/l1_market_maker.h"
 #include "strategy/active_l2_market_maker.h"
 #include "strategy/inventory_aware_l2_market_maker.h"
 #include "strategy/l2_market_maker.h"

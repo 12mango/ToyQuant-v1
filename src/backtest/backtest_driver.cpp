@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "backtest/performance.h"
-#include "legacy/tick_csv_parser.h"
+#include "lines/legacy/tick_csv_parser.h"
 #include "utils/logger.h"
 
 namespace

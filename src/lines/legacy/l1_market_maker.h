@@ -30,7 +30,7 @@
 #include <unordered_map>
 
 #include "exchange/execution_report.h"
-#include "legacy/l1_market_maker_config.h"
+#include "lines/legacy/l1_market_maker_config.h"
 #include "orderbook/orderbook.h"
 #include "strategy/strategy.h"
 

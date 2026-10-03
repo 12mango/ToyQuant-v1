@@ -4,7 +4,7 @@
 #include <string>
 
 #include "common/instrument_spec.h"
-#include "legacy/l1_market_maker_config.h"
+#include "lines/legacy/l1_market_maker_config.h"
 #include "strategy/strategy.h"
 
 // Everything make_strategy can be told. These used to be eleven positional arguments, seven of them

@@ -4,7 +4,7 @@
 #undef NDEBUG
 #endif
 
-#include "legacy/tick_csv_parser.h"
+#include "lines/legacy/tick_csv_parser.h"
 
 #include <cassert>
 #include <stdexcept>

@@ -71,7 +71,7 @@ outcome by an order of magnitude.**
 
 ## What this cleanup did not delete, and why
 
-Nothing in `src/`, `tools/` or `tests/` is unused. `src/legacy/` holds the L1 market maker family that
+Nothing in `src/`, `tools/` or `tests/` is unused. `src/lines/legacy/` holds the L1 market maker family that
 `src/app/strategy_factory.cpp`, `src/app/strategy_benchmark.h`, `src/backtest/` and the CSV and UDP feeds all
 include; and each of the six tools that look unreferenced from `docs/` -- `fetch_okx_trades.py`,
 `multi_day_check.sh`, `inspect_source.py`, `check_okx_book.py`, `benchmark_replay_windows.py` and `trace_order.sh` --
