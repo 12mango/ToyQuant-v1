@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "app/order_ledger.h"
 #include "app/run_summary.h"
 #include "common/funding.h"
 #include "exchange/matching_engine.h"
@@ -135,7 +136,7 @@ class Pipeline
     // mechanism rather than of its sum, and it is what makes the queue model legible instead of asserted.
     void set_trace_order(uint64_t order_id)
     {
-        trace_order_id_ = order_id;
+        ledger_.set_trace_order(order_id);
     }
 
    private:
@@ -153,13 +154,7 @@ class Pipeline
     void submit_strategy_actions(const std::string& symbol, uint64_t ts,
                                  std::vector<StrategyOrder> orders);
 
-    // The queue the traced order is waiting behind, sampled after an event that could have changed it.
-    // Consecutive samples that do not move are dropped, so a row means the queue actually changed.
-    void record_trace_sample(const char* event, uint64_t ts);
-    void record_trace_report(const ExecutionReport& report);
-
-    std::ofstream& orders_out_;
-    std::ofstream& trades_out_;
+    OrderLedger ledger_;
     IOrderBook& order_book_;
     Strategy& strategy_;
     IMatchingEngine& engine_;
@@ -300,19 +295,10 @@ class Pipeline
     void handle_rejected_order(const exchange::Order& exchange_order, const StrategyOrder& strategy_order,
                                uint64_t ts);
     std::unordered_set<uint64_t> pending_cancel_orders_;
-    // Trace state. The level stays unknown until the traced order has been submitted, because until then
-    // there is no price to look up and a trace that guessed one would be worse than no trace.
-    uint64_t trace_order_id_{0};
     // The clock of the event being processed. An order's own reports carry the order's timestamp, so a
     // trace that read report.ts would print a cancel at the moment the order was submitted and the
     // sequence would read backwards. The row has to be timed by the event that caused it.
     uint64_t current_ts_{0};
-    bool trace_level_known_{false};
-    std::string trace_symbol_;
-    Side trace_side_{Side::Unknown};
-    double trace_price_{0.0};
-    uint64_t trace_last_queue_{0};
-    std::vector<TraceRow> trace_rows_;
     // Which orders turned out to be worth tracing. A reader cannot know an id before the run, and the
     // first few orders are hostile samples: they die in the same millisecond they arrive. These are the
     // orders that actually waited, so a second run can name one of them.

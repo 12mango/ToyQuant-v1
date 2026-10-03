@@ -9,44 +9,6 @@
 
 namespace
 {
-std::string side_to_csv(Side side)
-{
-    return side == Side::Buy ? "B" : side == Side::Sell ? "S" : "N";
-}
-
-exchange::Order to_exchange_order(const StrategyOrder& strategy_order, uint64_t ts,
-                                  const std::string& owner)
-{
-    exchange::Order order{};
-    order.id = strategy_order.order_id;
-    order.symbol = strategy_order.symbol;
-    order.side = strategy_order.side == Side::Buy ? exchange::Side::Buy : exchange::Side::Sell;
-    order.type = exchange::OrderType::Limit;
-    order.price = strategy_order.price;
-    order.qty = strategy_order.quantity;
-    order.remaining = strategy_order.quantity;
-    order.ts = ts;
-    order.owner = owner;
-    return order;
-}
-
-void write_order_csv_row(std::ofstream& out, uint64_t ts, const StrategyOrder& order)
-{
-    out << ts << "," << order.symbol << "," << side_to_csv(order.side) << "," << order.price << ","
-        << order.quantity << "," << order.order_id << "\n";
-}
-
-void write_trade_csv_row(std::ofstream& out, const ExecutionReport& report)
-{
-    if (report.exec_type != ExecType::Trade || report.owner != "MarketMaker") return;
-    const char* role = report.liquidity_role == LiquidityRole::Maker   ? "maker"
-                       : report.liquidity_role == LiquidityRole::Taker ? "taker"
-                                                                       : "unknown";
-    out << report.ts << "," << report.symbol << ","
-        << (report.side == exchange::Side::Buy ? "B" : "S") << "," << report.price << ","
-        << report.quantity << "," << report.order_id << "," << role << "," << report.fee << "\n";
-}
-
 // Nearest-rank percentile over a copy. One entry per order, so a sort per call is cheaper than anything
 // clever, and the rank is rounded to the nearest entry rather than interpolated because the values are
 // ratios between two integers and inventing intermediate values would suggest a precision they do not have.
@@ -79,8 +41,7 @@ std::size_t fill_size_bucket(uint64_t quantity)
 Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
                    Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio,
                    double tick_size)
-    : orders_out_(orders_out),
-      trades_out_(trades_out),
+    : ledger_(orders_out, trades_out),
       order_book_(order_book),
       strategy_(strategy),
       engine_(engine),
@@ -90,7 +51,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
     engine_.set_report_callback(
         [this](const ExecutionReport& report)
         {
-            record_trace_report(report);
+            ledger_.trace_report(report, current_ts_, engine_);
             if (report.exec_type == ExecType::Resting)
             {
                 const auto resting_audit = order_audit_.find(report.order_id);
@@ -303,51 +264,8 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                 ++trade_reports_;
                 trade_report_quantity_ += report.executed_quantity();
             }
-            write_trade_csv_row(trades_out_, report);
+            ledger_.write_trade(report);
         });
-}
-
-void Pipeline::record_trace_sample(const char* event, uint64_t ts)
-{
-    if (trace_order_id_ == 0 || !trace_level_known_) return;
-    const uint64_t queue = engine_.queue_ahead_at(trace_symbol_, trace_side_, trace_price_);
-    if (queue == trace_last_queue_) return;
-    // A positive change means the queue shrank, which is the direction that leads to a fill.
-    trace_rows_.push_back(TraceRow{.ts = ts,
-                                   .event = event,
-                                   .side = trace_side_,
-                                   .price = trace_price_,
-                                   .change = static_cast<int64_t>(trace_last_queue_) -
-                                             static_cast<int64_t>(queue),
-                                   .queue_ahead = queue});
-    trace_last_queue_ = queue;
-}
-
-void Pipeline::record_trace_report(const ExecutionReport& report)
-{
-    if (trace_order_id_ == 0 || report.order_id != trace_order_id_) return;
-    const char* event = report.exec_type == ExecType::Trade       ? "fill"
-                        : report.exec_type == ExecType::Resting    ? "rest"
-                        : report.exec_type == ExecType::Cancelled  ? "cancel"
-                        : report.exec_type == ExecType::Filled     ? "fully_filled"
-                                                                   : "report";
-    const Side side = trace_level_known_
-                          ? trace_side_
-                          : (report.side == exchange::Side::Buy ? Side::Buy : Side::Sell);
-    // For a rest this reads the queue the engine just made the order join behind, which is the number the
-    // whole trace is about: a quote's fill depends on it, not only on its price.
-    const uint64_t queue =
-        trace_level_known_ ? engine_.queue_ahead_at(trace_symbol_, trace_side_, trace_price_) : 0;
-    const uint64_t trace_ts = current_ts_ != 0 ? current_ts_ : report.ts;
-    trace_rows_.push_back(TraceRow{.ts = trace_ts,
-                                   .event = event,
-                                   .side = side,
-                                   .price = report.price,
-                                   .change = static_cast<int64_t>(report.executed_quantity()),
-                                   .queue_ahead = queue});
-    trace_last_queue_ = queue;
-    if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
-        trace_level_known_ = false;
 }
 
 void Pipeline::sample_resting_queues()
@@ -537,7 +455,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
 
     // Sampled last, so the row describes the queue the way this event left it: the engine has already
     // applied whatever quantity changes the view implied.
-    record_trace_sample("view", view.ts);
+    ledger_.trace_sample("view", view.ts, engine_);
     sample_resting_queues();
 }
 
@@ -563,7 +481,7 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
     }
     strategy_.on_market_trade(trade);
     engine_.process_market_trade(trade);
-    record_trace_sample("trade", trade.ts);
+    ledger_.trace_sample("trade", trade.ts, engine_);
     sample_resting_queues();
 }
 
@@ -735,7 +653,7 @@ RunSummary Pipeline::summary() const
                      .markout_gate_skips = strategy_.markout_gate_skips(),
                      .flatten_orders = strategy_.flatten_orders(),
                      .flatten_quantity = strategy_.flatten_quantity()},
-            .trace_requested = trace_order_id_ != 0,
+            .trace_requested = ledger_.trace_requested(),
             .first_fill_order_id = first_fill_order_id_,
             .longest_wait_filled_order_id = longest_wait_filled_order_id_,
             .longest_wait_filled_cycles = longest_wait_filled_cycles_,
@@ -746,7 +664,7 @@ RunSummary Pipeline::summary() const
             .queue_min_fraction_p50 = percentile(queue_min_fractions_, 0.50),
             .queue_min_fraction_p10 = percentile(queue_min_fractions_, 0.10),
             .queue_end_fraction_p50 = percentile(queue_end_fractions_, 0.50),
-            .queue_trace = trace_rows_};
+            .queue_trace = ledger_.trace_rows()};
 }
 
 void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top)
@@ -840,7 +758,7 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
                 pending_sell_quantity_ += static_cast<int64_t>(order.quantity);
         }
         order.order_id = next_order_id_++;
-        auto exchange_order = to_exchange_order(order, ts, "MarketMaker");
+        auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
         ++submitted_orders_;
         submitted_quantity_ += order.quantity;
         const auto quote_it = latest_quotes_.find(order.symbol);
@@ -865,29 +783,12 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
             else
                 ++execution_quality_.quote_behind_touch_orders;
         }
-        write_order_csv_row(orders_out_, ts, order);
+        ledger_.write_order(ts, order);
         strategy_.on_order_submitted(order);
         order_start_cycles_.insert_or_assign(order.order_id, quote_cycle_);
         order_audit_.insert_or_assign(order.order_id, OrderAudit{.start_cycle = quote_cycle_});
         ++execution_quality_.audited_orders;
-        if (order.order_id == trace_order_id_)
-        {
-            // The level is learned here so that the reports the engine is about to emit for this order can
-            // already name the queue they are about. The submit row records the intent, with the queue the
-            // venue was displaying at that price before our order joined it; the rest row that follows
-            // records the queue the model actually made us join behind.
-            trace_symbol_ = order.symbol;
-            trace_side_ = order.side;
-            trace_price_ = order.price;
-            trace_level_known_ = true;
-            trace_last_queue_ = engine_.queue_ahead_at(trace_symbol_, trace_side_, trace_price_);
-            trace_rows_.push_back(TraceRow{.ts = ts,
-                                           .event = "submit",
-                                           .side = trace_side_,
-                                           .price = trace_price_,
-                                           .change = static_cast<int64_t>(order.quantity),
-                                           .queue_ahead = trace_last_queue_});
-        }
+        ledger_.trace_submit(order, ts, engine_);
         const uint64_t rejected_before = engine_.rejected_orders();
         engine_.send_order(exchange_order);
         if (engine_.rejected_orders() != rejected_before)
