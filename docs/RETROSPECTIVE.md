@@ -94,6 +94,15 @@ one a number rather than an opinion.
 | funding rate carry, BTC, two venues, twelve months | 0 of 12 months clear the level and payback gates, and no run of a positive differential in any month earns the 36 USD round trip |
 | a low turnover reversion rule | the sign does not replicate: 4 of MU's 8 windows positive, median net -23.34 cents a share, and the best window earned 149.76 while the worst lost 980.38, so it wins small and loses big |
 
+**Those eight rows are data now, not prose.** `tools/viability.py` re-derives every quotient from the inputs the
+rows carry, checks that the first gate to fire is the one each line is recorded as binding on, and prints what each
+gate rested on. Two things in it are there because the alternative is a lie: a gate that was not measured prints as
+`not measured` rather than as a pass, and a bound taken on the most favourable case -- the widest spread, the smallest
+position move -- may close a line and is refused if it is ever read as an opening, because the best case passing
+proves nothing about the rest. The inputs are in `tests/fixtures/verdicts.json`, tier 1 of `tools/verify_l2.sh` runs
+it on every edit, and re-deriving the inputs themselves from the archives is the layer that needs the data.
+
+
 **Three things survive all of them.** The engine: a market data handler, a matching engine, an order state machine, a
 queue model and a fee model, re-derived by four gate tiers on every commit. The criteria, which turned out to be the
 same three in a fixed order -- **the fee, then the position's own move, then the number of actions a window contains**

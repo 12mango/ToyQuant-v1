@@ -37,6 +37,7 @@ DOC_CHECK_LOG="$(mktemp)"
 FIELD_CHECK_LOG="$(mktemp)"
 PROSE_CHECK_LOG="$(mktemp)"
 TOOL_CHECK_LOG="$(mktemp)"
+VERDICT_CHECK_LOG="$(mktemp)"
 TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 L1_TRADES=data/v2/fixtures/test_aggTrades_5k.csv
 L1_BBO=data/v2/fixtures/test_bookTicker_5k.csv
@@ -135,6 +136,12 @@ tier1() {
       docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md docs/LATENCY_DESIGN.md docs/index.md \
       docs/ROADMAP.md docs/RETROSPECTIVE.md docs/MAINLINE.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   python3 tools/check_layering.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+  # The eight closed lines are claims about arithmetic too, and a copied number drifts the way a copied claim does.
+  # This re-derives every quotient from the recorded inputs, checks that the first gate to fire is the one the line
+  # is recorded as binding on, and refuses an optimistic bound read as an opening. Source-level and data-free, so it
+  # costs nothing and runs on every edit.
+  local verdict_check=0
+  python3 tools/viability.py > "$VERDICT_CHECK_LOG" 2>&1 || verdict_check=1
   l2=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 conservative \
         --fast-validation 2>&1 | grep -oE 'incremental_batches=117288|submitted_orders=406|trade_reports=1|queue_ahead_consumed=55460|realized_pnl=-0.002|equity=1000' | tokens)
   l1=$("$BIN" replay "$L1_TRADES" "$L1_BBO" BTCUSDT 0 optimized 1000000 2>&1 |
@@ -209,7 +216,8 @@ tier1() {
   python3 tools/fetch_iex_hist.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
-     [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ]; then
+     [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
+     [ $verdict_check -eq 0 ]; then
     echo "tier1 OK"
     return 0
   fi
@@ -220,6 +228,7 @@ tier1() {
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"
+  [ $verdict_check -eq 0 ] || grep -v '^     also:' "$VERDICT_CHECK_LOG" | sed 's/^/  verdict: /'
   [ "$l2" = "$L2_WANT" ] || { echo "  L2 want: $L2_WANT"; echo "  L2 got : $l2"; }
   [ "$l1" = "$L1_WANT" ] || { echo "  L1 want: $L1_WANT"; echo "  L1 got : $l1"; }
   [ $doc_check -eq 0 ] || sed 's/^/  doc: /' "$DOC_CHECK_LOG"
