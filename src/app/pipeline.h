@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "app/order_ledger.h"
+#include "app/run_accounting.h"
 #include "app/run_summary.h"
 #include "common/funding.h"
 #include "exchange/matching_engine.h"
@@ -111,7 +112,7 @@ class Pipeline
     // the mark is the nearest causal one, since the settlement instant itself is not in the event stream.
     void set_funding_rates(FundingRateSeries* series)
     {
-        funding_rates_ = series;
+        accounting_.set_funding_rates(series);
     }
 
     // Turn on the measurement the adverse-selection gate needs: what the market's own prints were worth to a
@@ -119,7 +120,7 @@ class Pipeline
     // that does not ask for the gate must behave and print exactly as it did before.
     void set_markout_cover(bool enabled)
     {
-        measure_market_markouts_ = enabled;
+        accounting_.set_markout_cover(enabled);
     }
 
     // Print the [GATE] line: the measured markouts and the counters the decision layer keeps about what it
@@ -207,47 +208,11 @@ class Pipeline
     // which cannot be answered from the fee itself once a fee of zero is one of the cases.
     double maker_notional_usd_{0.0};
 
-    // The market's own prints, measured as if we had been the passive side. A maker cannot measure its own
-    // adverse selection before it has fills of its own, and by then the decision that mattered is taken, so the
-    // estimate comes from the prints: for every venue trade, a passive fill at that price on the opposite side
-    // is resolved after the same five cycles the fill markouts use. Only when a run asks for the gate.
-    struct PassivePrint
-    {
-        Side side{Side::Unknown};
-        double price{0.0};
-        uint64_t quantity{0};
-        uint64_t start_cycle{0};
-        int bucket{-1};
-    };
-    std::deque<PassivePrint> pending_prints_;
-    std::array<double, ExecutionQualityMetrics::kMarkoutBucketCount> print_markout_ticks_quantity_{};
-    std::array<double, ExecutionQualityMetrics::kMarkoutBucketCount> print_markout_quantity_{};
-    // Quantity-weighted averages of the arrays above, recomputed when the estimate is published so the summary
-    // can report them without dividing by hand.
-    std::array<double, ExecutionQualityMetrics::kMarkoutBucketCount> print_markout_average_ticks_{};
-    uint64_t print_samples_{0};
-    MarkoutEstimate markout_estimate_{};
-    bool measure_market_markouts_{false};
+    // The run's own measurements: the funding series, and the markout of our fills and of the venue's
+    // prints. Both are measured over the clock rather than per order, so they hold a queue of what is not
+    // resolved yet and the horizon it is drained on.
+    RunAccounting accounting_;
     bool gate_diagnostics_{false};
-
-    // Recomputes the four quantity-weighted averages and hands them to the strategy, which is the only way the
-    // decision can know what being passive at a distance has actually cost in this window.
-    // Drains the fill observations whose five-cycle window has closed, adding each to the execution
-    // quality buckets. Every path that advances the quote cycle calls this, so the L1 and the L2 paths
-    // measure markout through one body rather than through a copy each.
-    void drain_mature_markouts();
-    void publish_markout_estimate();
-    struct FillObservation
-    {
-        Side side;
-        double price;
-        uint64_t quantity{0};
-        uint64_t start_cycle;
-        // The condition at the fill, recorded here rather than derived when the markout resolves, because a
-        // condition read five cycles late would be the future.
-        int bucket{-1};
-    };
-    std::deque<FillObservation> pending_markouts_;
 
     // Unwinds the pipeline's own bookkeeping for an order the engine refused. Nothing rests, so no report
     // will ever arrive for it, and the strategy is told what a venue would tell it rather than left quoting
@@ -259,24 +224,4 @@ class Pipeline
     // sequence would read backwards. The row has to be timed by the event that caused it.
     uint64_t current_ts_{0};
     StageProfiler* profiler_{nullptr};
-
-    // Funding state. The series is the caller's; this only remembers how far the replay has consumed it and
-    // what the settlements did to the account. `funding_flow_usd_` is the amount credited to cash, which is
-    // zero over a window whose settlements fall on a flat account, and `funding_settlements_` counts the
-    // settlements the replay passed, including those, so the two answer different questions.
-    FundingRateSeries* funding_rates_{nullptr};
-    uint64_t funding_settlements_{0};
-    double funding_flow_usd_{0.0};
-
-    // Applies every settlement at or before `ts` that the replay has not applied yet. Called at the start of
-    // each event, so the account at the settlement is the one the previous event left, and the mark is the
-    // last price seen at or before that event. A settlement reached before any price exists for the
-    // instrument is applied to an account that holds nothing yet, which is a no-op rather than an error.
-    void apply_due_funding(uint64_t ts);
-
-    // The account's result, split into what completed and what is still open, and into what it was before
-    // the venue was paid. The formulas live here rather than in the summary literal so that the fields and
-    // their definitions are read together: `closed_pnl_usd` is the portfolio's realized PnL, `net_pnl_usd`
-    // adds the open position's mark, and the gross pair adds the fees back to each.
-    PnlSummary pnl_summary() const;
 };

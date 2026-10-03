@@ -81,7 +81,7 @@ find_package(ZLIB REQUIRED)
 
 # ==================== toy_quant Executable ====================
 add_executable(toy_quant src/main.cpp src/app/app_config.cpp src/app/application.cpp
-    src/app/pipeline.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp src/market/udp_feed.cpp
+    src/app/pipeline.cpp src/app/run_accounting.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp src/market/udp_feed.cpp
     src/orderbook/l2_orderbook.cpp ${COMMON_SOURCES})
 target_include_directories(toy_quant PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(toy_quant PRIVATE Threads::Threads)
@@ -90,7 +90,7 @@ set_target_properties(toy_quant PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAK
 
 if(NOT MSVC)
     add_executable(toy_quant_profile EXCLUDE_FROM_ALL src/main.cpp src/app/app_config.cpp
-        src/app/application.cpp src/app/pipeline.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp
+        src/app/application.cpp src/app/pipeline.cpp src/app/run_accounting.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp
         src/market/udp_feed.cpp src/orderbook/l2_orderbook.cpp ${COMMON_SOURCES})
     target_include_directories(toy_quant_profile PRIVATE ${COMMON_INCLUDE_DIRS})
     target_link_libraries(toy_quant_profile PRIVATE Threads::Threads ZLIB::ZLIB)
@@ -109,7 +109,7 @@ set_target_properties(backtest_main PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${
 
 # ==================== Strategy benchmark ====================
 add_executable(strategy_benchmark src/app/strategy_benchmark_main.cpp
-    src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp ${COMMON_SOURCES})
+    src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/run_accounting.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp ${COMMON_SOURCES})
 target_include_directories(strategy_benchmark PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(strategy_benchmark PRIVATE Threads::Threads)
 target_link_libraries(strategy_benchmark PRIVATE ZLIB::ZLIB)
@@ -230,13 +230,13 @@ target_link_libraries(funding_rate_test PRIVATE ZLIB::ZLIB)
 add_test(NAME funding_rate_test COMMAND funding_rate_test)
 
 add_executable(pipeline_accounting_test tests/pipeline_accounting_test.cpp
-    src/app/pipeline.cpp src/app/order_ledger.cpp ${COMMON_SOURCES})
+    src/app/pipeline.cpp src/app/run_accounting.cpp src/app/order_ledger.cpp ${COMMON_SOURCES})
 target_include_directories(pipeline_accounting_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(pipeline_accounting_test PRIVATE ZLIB::ZLIB)
 add_test(NAME pipeline_accounting_test COMMAND pipeline_accounting_test)
 
 add_executable(strategy_benchmark_test tests/strategy_benchmark_test.cpp
-    src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp
+    src/app/strategy_benchmark.cpp src/app/pipeline.cpp src/app/run_accounting.cpp src/app/order_ledger.cpp src/app/strategy_factory.cpp
     ${COMMON_SOURCES})
 target_include_directories(strategy_benchmark_test PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(strategy_benchmark_test PRIVATE ZLIB::ZLIB)

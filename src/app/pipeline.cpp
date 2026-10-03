@@ -111,9 +111,9 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                     std::abs(report.price - last_mid_) >= std::max(tick_size_, PRICE_TICK_SIZE);
                 const int markout_bucket =
                     (report.side == exchange::Side::Buy ? 0 : 2) + (at_least_a_tick_away ? 0 : 1);
-                pending_markouts_.push_back(
-                    {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
-                     report.executed_quantity(), quote_cycle_, markout_bucket});
+                accounting_.note_fill(report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
+                                      report.price, report.executed_quantity(), quote_cycle_,
+                                      markout_bucket);
             }
             strategy_.on_order_update(report);
             // The strategy keeps its own position from the same reports. A divergence is silent drift
@@ -168,7 +168,8 @@ void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
 
 void Pipeline::process_event(const MarketEvent& event)
 {
-    apply_due_funding(std::visit([](const auto& value) { return value.ts; }, event));
+    accounting_.apply_due_funding(std::visit([](const auto& value) { return value.ts; }, event),
+                                  portfolio_, last_mid_);
     const auto exchange = std::visit([](const auto& value) { return value.exchange; }, event);
     if (!exchange.empty())
     {
@@ -209,7 +210,7 @@ void Pipeline::process_event(const MarketEvent& event)
                 const auto top = order_book_.market_top(value.symbol);
                 last_mid_ = (value.bid_price + value.ask_price) / 2.0;
                 ++quote_cycle_;
-                drain_mature_markouts();
+                accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_, multiplier_, quantity_scale_, execution_quality_);
                 const double abs_inventory = static_cast<double>(std::abs(position_));
                 ++inventory_samples_;
                 execution_quality_.average_abs_inventory +=
@@ -227,7 +228,7 @@ void Pipeline::process_event(const MarketEvent& event)
 
 void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top)
 {
-    apply_due_funding(ts);
+    accounting_.apply_due_funding(ts, portfolio_, last_mid_);
     current_ts_ = ts;
     submit_strategy_actions(symbol, ts, top);
     // The L1 path has no depth view to sample on, so it samples on its own updates; without this the
@@ -238,7 +239,7 @@ void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const
 
 void Pipeline::process_l2_market_view(const L2MarketView& view)
 {
-    apply_due_funding(view.ts);
+    accounting_.apply_due_funding(view.ts, portfolio_, last_mid_);
     current_ts_ = view.ts;
     if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
     {
@@ -266,28 +267,15 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
         // The report callback above pushes a markout for every fill, but only the L1 path drained
         // them, so on this path adverse selection stayed at zero however many fills there were. Same
         // five cycle horizon as the L1 branch.
-        drain_mature_markouts();
+        accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_, multiplier_, quantity_scale_, execution_quality_);
         // The market's own prints, resolved by the same five cycle horizon. A print at or through a price is
         // what a resting quote there would have traded with, so its markout is the adverse selection a quote at
         // that distance would have suffered, and unlike our own fills it exists from the first event rather than
         // from the first one we win.
-        if (measure_market_markouts_)
+        if (accounting_.market_markouts_enabled())
         {
-            while (!pending_prints_.empty() && quote_cycle_ >= pending_prints_.front().start_cycle + 5)
-            {
-                const PassivePrint print = pending_prints_.front();
-                pending_prints_.pop_front();
-                const double print_markout =
-                    print.side == Side::Buy ? last_mid_ - print.price : print.price - last_mid_;
-                const std::size_t print_bucket =
-                    print.bucket < 0 ? 0 : static_cast<std::size_t>(print.bucket);
-                print_markout_ticks_quantity_[print_bucket] +=
-                    print_markout / std::max(tick_size_, PRICE_TICK_SIZE) *
-                    static_cast<double>(print.quantity);
-                print_markout_quantity_[print_bucket] += static_cast<double>(print.quantity);
-                ++print_samples_;
-            }
-            publish_markout_estimate();
+            accounting_.drain_mature_prints(quote_cycle_, last_mid_, tick_size_);
+            accounting_.publish_markout_estimate(execution_quality_, strategy_);
         }
         profiler_end(Stage::TopBookKeeping);
     }
@@ -319,9 +307,10 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
 
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 {
-    apply_due_funding(trade.ts);
+    accounting_.apply_due_funding(trade.ts, portfolio_, last_mid_);
     current_ts_ = trade.ts;
-    if (measure_market_markouts_ && trade.aggressor_side != Side::Unknown && last_mid_ > 0.0)
+    if (accounting_.market_markouts_enabled() && trade.aggressor_side != Side::Unknown &&
+        last_mid_ > 0.0)
     {
         // The passive side of an aggressive sell is a resting bid, and a quote of ours there is exactly what the
         // print would have traded with. The distance is measured the way the fill buckets measure it, so the two
@@ -329,107 +318,14 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
         const bool at_least_a_tick_away =
             std::abs(trade.price - last_mid_) >= std::max(tick_size_, PRICE_TICK_SIZE);
         const Side passive_side = trade.aggressor_side == Side::Sell ? Side::Buy : Side::Sell;
-        pending_prints_.push_back(
-            PassivePrint{.side = passive_side,
-                         .price = trade.price,
-                         .quantity = trade.quantity,
-                         .start_cycle = quote_cycle_,
-                         .bucket = (passive_side == Side::Buy ? 0 : 2) +
-                                   (at_least_a_tick_away ? 0 : 1)});
+        accounting_.note_market_print(passive_side, trade.price, trade.quantity, quote_cycle_,
+                                      (passive_side == Side::Buy ? 0 : 2) +
+                                          (at_least_a_tick_away ? 0 : 1));
     }
     strategy_.on_market_trade(trade);
     engine_.process_market_trade(trade);
     ledger_.trace_sample("trade", trade.ts, engine_);
     ledger_.sample_resting(engine_);
-}
-
-void Pipeline::drain_mature_markouts()
-{
-    // The observations are queued in cycle order, so the front is the oldest and the loop stops at the
-    // first one whose horizon has not closed yet. Same five cycles on every path, and the arithmetic is
-    // kept in the order it had when this was written twice, because the stdout hash is exact.
-    while (!pending_markouts_.empty() &&
-           quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
-    {
-        const auto observation = pending_markouts_.front();
-        pending_markouts_.pop_front();
-        const double markout =
-            observation.side == Side::Buy ? observation.price - last_mid_ : last_mid_ - observation.price;
-        execution_quality_.adverse_selection += markout;
-        execution_quality_.markout_quantity += static_cast<double>(observation.quantity);
-        execution_quality_.markout_ticks_quantity +=
-            markout / std::max(tick_size_, PRICE_TICK_SIZE) * static_cast<double>(observation.quantity);
-        const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, multiplier_, last_mid_);
-        execution_quality_.markout_usd +=
-            static_cast<double>(observation.quantity) / static_cast<double>(quantity_scale_) *
-            unit_value_at_mark * markout / std::max(last_mid_, 1e-9);
-        ++execution_quality_.markout_count;
-        const std::size_t bucket =
-            observation.bucket >= 0 ? static_cast<std::size_t>(observation.bucket) : 0;
-        execution_quality_.markout_ticks_quantity_by_bucket[bucket] +=
-            markout / std::max(tick_size_, PRICE_TICK_SIZE) * static_cast<double>(observation.quantity);
-        execution_quality_.markout_quantity_by_bucket[bucket] += static_cast<double>(observation.quantity);
-        ++execution_quality_.markout_count_by_bucket[bucket];
-    }
-}
-
-void Pipeline::publish_markout_estimate()
-{
-    // Our own fills are what the gate has to be built on. The venue's prints were tried first as a proxy, and
-    // on the mainline window the two disagree in sign in the far bucket, which is recorded in
-    // docs/PERFORMANCE_HISTORY.md: a print at a distance is not the same event as a quote at that distance being
-    // hit, so the measured cost of the second has to come from the second.
-    markout_estimate_.buy_far_ticks = markout_bucket_ticks(execution_quality_, 0);
-    markout_estimate_.buy_near_ticks = markout_bucket_ticks(execution_quality_, 1);
-    markout_estimate_.sell_far_ticks = markout_bucket_ticks(execution_quality_, 2);
-    markout_estimate_.sell_near_ticks = markout_bucket_ticks(execution_quality_, 3);
-    markout_estimate_.samples = execution_quality_.markout_count;
-    for (std::size_t bucket = 0; bucket < print_markout_average_ticks_.size(); ++bucket)
-        print_markout_average_ticks_[bucket] = print_markout_quantity_[bucket] > 0.0
-                                                   ? print_markout_ticks_quantity_[bucket] /
-                                                         print_markout_quantity_[bucket]
-                                                   : 0.0;
-    strategy_.on_markout_estimate(markout_estimate_);
-}
-
-void Pipeline::apply_due_funding(uint64_t ts)
-{
-    if (funding_rates_ == nullptr) return;
-    FundingRatePoint point;
-    while (funding_rates_->next_settlement(ts, point))
-    {
-        ++funding_settlements_;
-        // A settlement before the first price is applied to an account that holds nothing yet, so there is
-        // no notional to charge and nothing to do; the settlement is still consumed, because the replay has
-        // passed it and a later event must not apply it again.
-        if (last_mid_ <= 0.0) continue;
-        // The published rate is what longs pay; the accounting takes the rate a long earns on the notional,
-        // so the sign is flipped once here and each position's own side then decides who pays whom.
-        funding_flow_usd_ +=
-            portfolio_.accrue_interval_flow(funding_rates_->symbol(), -point.rate, last_mid_);
-    }
-}
-
-PnlSummary Pipeline::pnl_summary() const
-{
-    const auto metrics = portfolio_.metrics();
-    PnlSummary pnl;
-    pnl.closed_pnl_usd = metrics.realized_pnl;
-    pnl.net_pnl_usd = metrics.realized_pnl + metrics.unrealized_pnl;
-    pnl.gross_closed_pnl_usd = pnl.closed_pnl_usd + metrics.fees_paid;
-    pnl.gross_pnl_usd = pnl.net_pnl_usd + metrics.fees_paid;
-    pnl.maker_notional_usd = maker_notional_usd_;
-    if (trade_reports_ > 0)
-    {
-        const double fills = static_cast<double>(trade_reports_);
-        pnl.net_per_fill_usd = pnl.net_pnl_usd / fills;
-        pnl.gross_closed_per_fill_usd = pnl.gross_closed_pnl_usd / fills;
-    }
-    // The maker rate that would have made the run exactly flat, on the notional its maker fills traded. A
-    // negative answer is the statement the fee question is really asking about: no fee at all would still
-    // lose money, and a rebate of that size would be needed to break even.
-    if (maker_notional_usd_ > 0.0) pnl.breakeven_maker_rate = pnl.gross_pnl_usd / maker_notional_usd_;
-    return pnl;
 }
 
 RunSummary Pipeline::summary() const
@@ -438,7 +334,7 @@ RunSummary Pipeline::summary() const
     // close, and `unrealized_pnl` is the position it was still holding when the input ended: the first is
     // the quoting result and the second is the bet the run left open, and the two are worth different
     // conclusions, so both are reported and neither is called "the PnL".
-    PnlSummary pnl = pnl_summary();
+    PnlSummary pnl = RunAccounting::pnl_summary(portfolio_, maker_notional_usd_, trade_reports_);
     // The longest waiting order that is still in the book: the audit map holds the open orders, so the
     // maximum over it names the quote whose queue is worth watching. It has survived every requote the run
     // made.
@@ -477,27 +373,26 @@ RunSummary Pipeline::summary() const
             .pnl = pnl,
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
-            .funding_requested = funding_rates_ != nullptr,
+            .funding_requested = accounting_.funding_requested(),
             // A settlement the replay never reached leaves the consumed count short of the file, which is
             // visible here and is the honest reading: the series is longer than the window.
-            .funding = {.points = funding_rates_ != nullptr ? funding_rates_->size() : 0,
-                        .span_hours = funding_rates_ != nullptr ? funding_rates_->span_ms() / 3600000 : 0,
-                        .sum_rate = funding_rates_ != nullptr ? funding_rates_->sum_rate() : 0.0,
-                        .annualized_rate =
-                            funding_rates_ != nullptr ? funding_rates_->annualized_rate() : 0.0,
-                        .settlements = funding_settlements_,
-                        .flow_usd = funding_flow_usd_},
+            .funding = {.points = accounting_.funding_points(),
+                        .span_hours = accounting_.funding_span_hours(),
+                        .sum_rate = accounting_.funding_sum_rate(),
+                        .annualized_rate = accounting_.funding_annualized_rate(),
+                        .settlements = accounting_.funding_settlements(),
+                        .flow_usd = accounting_.funding_flow_usd()},
             .gate_diagnostics_requested = gate_diagnostics_,
-            .gate = {.fill_buy_near_ticks = markout_estimate_.buy_near_ticks,
-                     .fill_buy_far_ticks = markout_estimate_.buy_far_ticks,
-                     .fill_sell_near_ticks = markout_estimate_.sell_near_ticks,
-                     .fill_sell_far_ticks = markout_estimate_.sell_far_ticks,
-                     .fill_samples = markout_estimate_.samples,
-                     .market_buy_near_ticks = print_markout_average_ticks_[1],
-                     .market_buy_far_ticks = print_markout_average_ticks_[0],
-                     .market_sell_near_ticks = print_markout_average_ticks_[3],
-                     .market_sell_far_ticks = print_markout_average_ticks_[2],
-                     .market_samples = print_samples_,
+            .gate = {.fill_buy_near_ticks = accounting_.markout_estimate().buy_near_ticks,
+                     .fill_buy_far_ticks = accounting_.markout_estimate().buy_far_ticks,
+                     .fill_sell_near_ticks = accounting_.markout_estimate().sell_near_ticks,
+                     .fill_sell_far_ticks = accounting_.markout_estimate().sell_far_ticks,
+                     .fill_samples = accounting_.markout_estimate().samples,
+                     .market_buy_near_ticks = accounting_.print_markout_average_ticks()[1],
+                     .market_buy_far_ticks = accounting_.print_markout_average_ticks()[0],
+                     .market_sell_near_ticks = accounting_.print_markout_average_ticks()[3],
+                     .market_sell_far_ticks = accounting_.print_markout_average_ticks()[2],
+                     .market_samples = accounting_.print_samples(),
                      .markout_gate_skips = strategy_.markout_gate_skips(),
                      .flatten_orders = strategy_.flatten_orders(),
                      .flatten_quantity = strategy_.flatten_quantity()},
