@@ -459,6 +459,7 @@ noted otherwise. The mechanism behind each accepted row is explained in
 | **Integer-plus-scale price parse** | parse the price with integer arithmetic instead of the out-of-line `std::from_chars<double>` in libstdc++ | `read+parse` p50 **-65.5 ns (-11.3%)**, 5/5 pairs, t=-5.9, reproduced at -71 ns in a second session; end-to-end wall clock **-7.6%**, t=-2.83; output byte-identical over 11,403,032 batches | kept |
 | Fixed-point price parsing | integer-only price path in the reader | rejected on an isolation comparison (17 ns vs 10 ns) whose in-context cost is about 48 ns per call | **superseded** by the row above |
 | Removing the book mutex | drop the lock from `L2OrderBook` | 4.2 ns of a ~1200 ns event (0.7%) | **rejected**, lock kept |
+| Growth margin 1024 to 256 in `TickLadder` | how many slots a growth adds at each end of the covered tick range | **not resolvable**: 5 ABBA blocks with a null control moved `book-apply` +16.7% (t=1.44) and `market-view` +13.2% (t=1.46), which the margin can touch, and also `validate` +15.7% (t=1.53) and `read+parse` +9.2% (t=1.13), which read a file and cannot be touched by it; the null pair was positive on every stage (+2% to +16%) and no t-statistic reached the 2.8 this ledger uses. The knob was checked for capacity-only first: both margins print byte-identical stdout on the 200k slice (2947 bytes), and `tools/count_libc_calls.c` reports identical counts in every bucket, so neither instrument can see a growth on this workload. | **rejected**, kept at 1024 |
 | **SPSC ring for the feed hand-off** | bounded single-producer ring: one release store paired with an acquire load, indices on separate cache lines, values placement-newed into slots | isolation bench ([§3.9](#39-the-hand-off-between-two-threads)), **not** a paired run: 2.26 ns for a push+pop round trip, 18.29 ns/message for a two-thread uint64 stream, and 1.8x the mutex + condition variable hand-off for the event it carries (169.92 against 301.35 ns/message) | kept |
 | Hand-off through a mutex + condition variable | `std::deque` behind a mutex, one wake-up per message | 301.35 ns/message for the same payload and the same per-message construction, 1.8x the ring | **rejected** |
 | Hand-off through a mutex with the consumer spinning | the same queue with no sleeping, to separate the wake-up from the mutual exclusion | 320.52 ns/message: the exclusion is the cost, not the wake-up | **rejected** |
@@ -489,9 +490,9 @@ cumulative measurement settles the total.**
 
 ### What the ledger says
 
-Of nine attempts, six moved a stage by at least 8%, one changed no measurable number at all, and two
-were rejected — one of them wrongly, which is now recorded as superseded. Six predictions were made and
-five of them were wrong:
+Of ten attempts, six moved a stage by at least 8%, one changed no measurable number at all, one could
+not be resolved, and two were rejected — one of them wrongly, which is now recorded as superseded. Six
+predictions were made and five of them were wrong:
 
 | Prediction | Measured |
 |---|---|
@@ -533,8 +534,11 @@ and further tuning there has now been tried twice and paid nothing.
    longer doing anything obviously wasteful.
 2. **`market-view`: done, and the stage is now about 8% of the event.** The single-pass walk landed
    (ledger above). What remains inside the stage is two `price_from_tick` conversions, a `std::string`
-   copy of the symbol per view, and the imbalance arithmetic. The 1024-slot growth margin is still an
-   untuned knob: it sets how many empty slots a walk crosses, and it has never been measured.
+   copy of the symbol per view, and the imbalance arithmetic. The 1024-slot growth margin was the fourth
+   candidate here, and it has been measured: the margin is capacity only — both values print byte-identical
+   stdout on the 200k slice — and on this workload neither the ABBA harness nor the libc shim can see a
+   growth, so what would settle it is a workload with more ladder growths rather than a better clock (the
+   ledger row above).
 3. **`engine`, 13%.** What remains is not lookups. Each batch copies a `BboQuote` (two SSO strings)
    into `latest_quotes_`, `l2_top_bbo_` and `external_bbo_`, and `MEOrderBook` still uses a
    `std::map` per price level. The book-container result in the ledger is the argument for measuring
@@ -557,11 +561,15 @@ rows it is larger than, so `queue-acct` and `top-booking` are read as approximat
 costs. That closes the last loose end in this document: the numbers that could not be trusted carry their
 caveat, and the two that can be trusted up here are named.
 
-What is left for a later session is therefore a choice rather than a search. The two candidates worth the
-next measurement are the 1024-slot growth margin (one constant, never measured) and `MEOrderBook`'s
-`std::map` per level, which the ledger's book-container row argues for measuring but which needs a workload
-with real order flow before it can show anything. Both are measurements, not hunches, which is the state
-this document is meant to be left in.
+What is left for a later session is therefore a choice rather than a search. The one candidate worth the
+next measurement is `MEOrderBook`'s `std::map` per level, which the ledger's book-container row argues for
+measuring but which needs a workload with real order flow before it can show anything — 406 orders per
+117,288 batches on W1 will not.
+
+The growth margin was the other, and it has now been measured and could not be resolved. That is a result
+of a different kind from the ones above and worth keeping in the same place: the knob is inert enough that
+this workload cannot price it, which is more useful to a later session than leaving it as an untuned
+constant with a plausible story attached.
 
 
 
