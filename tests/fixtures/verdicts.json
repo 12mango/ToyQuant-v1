@@ -60,9 +60,11 @@
         "capture_usd": 941,
         "sigma_usd": 10588
       },
+      "separation": {"sigma": "sigma_usd", "capture": "capture_usd", "windows": 506},
       "also": [
         "docs/MAINLINE.md:38 -- the fee floor binds on 79 percent of order instances, a second kill that is recorded here and not a quotient",
-        "docs/RETROSPECTIVE.md:91 -- pairs the ratio with 506 windows to separate, which is what a test statistician would have asked for",
+        "docs/RETROSPECTIVE.md:48 -- the capture is 940.59 USD a window averaged over the sixteen rows, and :50 gives the position term's standard deviation as 10,588 USD",
+        "this tool, not a document -- the 506 is (2 x 10,588 / 941)^2 at the two standard deviations the row names, so it is read off the same two inputs the gate uses and not carried as a number of its own",
         "owner, not a document -- a strict test would have wanted tens of thousands of windows and measuring past five hundred was already unnecessary, so the verdict was taken from the ratio rather than from the sample"
       ]
     },
@@ -95,6 +97,7 @@
         "r_max": 56,
         "reference_prints": 71
       },
+      "derive": {"source": "venue_ratio_options", "input": "r_max"},
       "also": [
         "docs/ROADMAP.md:936 -- across twenty to forty five days the best R_max in any of them is 56 against the reference of 71",
         "this tool, not a document -- the fee gate holds here on a recorded claim: the two ticks behind 'the fee axis passed' are not recorded, so the run prints it as recorded rather than as derived"
@@ -131,6 +134,7 @@
         "best_cents": 149.76,
         "worst_cents": -980.38
       },
+      "derive": {"source": "lowturnover", "input": "median_net_cents"},
       "also": [
         "docs/ROADMAP.md:982 -- the median gross is -20.38 against a median net of -23.34, so the schedule added 2.96 cents and the sign was already wrong before it was charged",
         "docs/ROADMAP.md:986 -- the line is closed by payoff asymmetry rather than by a cost",

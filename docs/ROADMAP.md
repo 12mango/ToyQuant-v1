@@ -935,6 +935,13 @@ and the measurement says it prints the same**: 5 to 246 prints in two hours agai
 XSP, so the flow in these names lives in the one day expiry and nowhere else. Eight classes have now been measured at
 twenty to forty five days and the best R_max in any of them is **56** against the reference of 71.
 
+**The five series above were bought again on 2026-10-03 for 0.011938 USD and now sit in `data/v2/options/`**, because
+the first copy lived in `/tmp` and nothing behind it could be rebuilt once it was gone. `tools/venue_ratio.py
+--input 'data/v2/options/*.csv' --multiplier 100 --fee-per-unit 0.65 --min-commission 1.00 --clip 1,2` reproduces the
+prints, the median spreads, the sigmas and the R_max of every row, which is what `python3 tools/viability.py
+--derive` compares the recorded 56 against.
+
+
 **So the options line is closed, and the reason is no longer the fee** -- that axis passed, first time in this project
 -- **but the number of times a monthly series trades**, which is a few times a minute at best, against its own price
 moving tens of dollars a contract over the same two hours. Spend on this venue to date: **1.27 USD**.

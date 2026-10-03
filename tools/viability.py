@@ -31,18 +31,24 @@ zero. The same failure is available here, so every gate reports one of three sta
     held           the numbers clear the bar
     not measured   no numbers are recorded for it, which is *not* a pass and never determines a binding
 
-What this tool does not do is re-measure. The numbers are copied from the documents, each case names where from, and
-this is the second of two layers: this one checks that the quotients follow from the inputs, that the binding gate is
-the one the arithmetic names, and that no optimistic bound was read as an opening. Re-deriving the *inputs* from the
-archives is the other layer, and it needs the data.
+What this tool does not do is re-measure, unless it is asked to. The numbers are copied from the documents, each case
+names where from, and the checkable half is two layers. Without `--derive` it is the first: the quotients follow from
+the inputs, the binding gate is the one the arithmetic names, and no optimistic bound was read as an opening.
+`--derive` is the second and it does re-measure, by running the tools that produced two of the inputs -- the low
+turnover rule's median, and the option series' R_max -- against the archives on disk, and comparing what comes back
+with what the fixture recorded, so a recorded figure and a measured one have to stay the same number. It needs the
+data and takes minutes, so it is not in the gate.
 
 Usage:
     python3 tools/viability.py
     python3 tools/viability.py --fixture tests/fixtures/verdicts.json
+    python3 tools/viability.py --derive       # layer two: re-measures, needs the archives, not in the gate
 """
 
 import argparse
 import json
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -136,10 +142,27 @@ def evaluate(case):
     return outcomes, binding
 
 
+def separation_of(case):
+    """The windows a two sigma separation needs: (2 sigma / capture)^2, from the same two inputs the gate reads."""
+    spec = case.get("separation")
+    if not spec:
+        return None
+    return (2.0 * case["inputs"][spec["sigma"]] / case["inputs"][spec["capture"]]) ** 2
+
+
 def check(case):
     """The claims a recorded line makes, each of which the arithmetic has to support."""
     outcomes, binding = evaluate(case)
     problems = []
+    spec = case.get("separation")
+    if spec:
+        needed = separation_of(case)
+        if abs(needed - spec["windows"]) > 1.0:
+            problems.append(f"a two sigma separation needs {needed:.0f} windows, and the line records "
+                            f"{spec['windows']}")
+        else:
+            outcomes.append({"gate": "separation", "state": "held", "detail":
+                             f"{needed:.0f} windows at two sigma", "source": "derived"})
     if case["bound"] != "optimistic":
         problems.append(f"bound is {case['bound']}, and only an optimistic bound may close a line here")
     if case["verdict"] == "closed" and binding is None:
@@ -162,10 +185,93 @@ def render(outcomes):
     return " ".join(parts)
 
 
+# Layer two: the inputs themselves, re-derived from the data and the tools that produced them. This is deliberately
+# not part of tier 1. It needs the archives and it takes minutes, where the gate runs on every edit. What it buys is
+# that the fixture's numbers stop being copies: a derivation that disagrees with the fixture is a mismatch and not a
+# footnote, so the recorded figure and the measured one have to stay the same number.
+SOURCES = {
+    # The eight MU windows the low turnover rule was run on, which is the table its median came from.
+    "lowturnover": {
+        "cmd": ["python3", "tools/lowturnover_test.py", "--glob",
+                "data/v2/equities/xnas_MU_depth_*.csv.gz"],
+        "needs": "data/v2/equities",
+        "read": r"median net a share a round trip ([+-]?\d+\.?\d*) cents",
+    },
+    # The option series bought for the fifteen day line, through the same quotient `tools/venue_ratio.py` reports:
+    # R_max = prints x (half spread - cost a unit) / sigma, read against the 71 reference. The tool prints `highest:`
+    # only when something clears that reference, and here nothing does -- that is the finding -- so the number comes
+    # off the first row of the table instead, which is the highest because the table is sorted by best R_max, and
+    # from its clip of one column, which is the one the fixture records.
+    "venue_ratio_options": {
+        "cmd": ["python3", "tools/venue_ratio.py", "--input", "data/v2/options/*.csv",
+                "--multiplier", "100", "--fee-per-unit", "0.65", "--min-commission", "1.00",
+                "--clip", "1,2", "--label", "options"],
+        "needs": "data/v2/options",
+        "read": r"\n\| [^|\n]+ \|\s*\d+ \|\s*[\d.]+ \|\s*[\d.]+ \|\s*[\d.]+ \|\s*(\d+) \|",
+    },
+    # The same quotient over the sixty equity windows. It feeds no gate: the documents record the one lot ratio as a
+    # necessary condition and not the engine's position term, which is a different quantity, so it is reported here
+    # as a reading and never compared against a gate input.
+    "venue_ratio_equities": {
+        "cmd": ["python3", "tools/venue_ratio.py", "--input", "data/v2/screen/*.csv",
+                "--clip", "1,100", "--label", "equities"],
+        "needs": "data/v2/screen",
+        "read": r"\n\| [^|\n]+ \|\s*\d+ \|\s*[\d.]+ \|\s*[\d.]+ \|\s*[\d.]+ \|\s*(\d+) \|",
+    },
+}
+
+
+def derive(source, cache):
+    """Run one tool that produced an input, and take back the number. Cached, because a source serves one line."""
+    if source in cache:
+        return cache[source]
+    spec = SOURCES[source]
+    if not list(Path(spec["needs"]).glob("*")):
+        cache[source] = (None, f"{spec['needs']} holds no file")
+        return cache[source]
+    try:
+        done = subprocess.run(spec["cmd"], capture_output=True, text=True, timeout=3600)
+    except (OSError, subprocess.SubprocessError) as problem:
+        cache[source] = (None, f"{spec['cmd'][1]} would not run ({problem})")
+        return cache[source]
+    found = re.search(spec["read"], done.stdout)
+    if done.returncode != 0 or not found:
+        cache[source] = (None, f"{spec['cmd'][1]} exited {done.returncode} without the line it is read for")
+        return cache[source]
+    cache[source] = (float(found.group(1)), None)
+    return cache[source]
+
+
+def derive_all(cases):
+    """Every derivation a case declares, against the input it is supposed to reproduce."""
+    cache = {}
+    mismatched = 0
+    for case in cases:
+        declaration = case.get("derive")
+        if not declaration:
+            continue
+        measured, problem = derive(declaration["source"], cache)
+        recorded = case["inputs"][declaration["input"]]
+        if problem:
+            # A derivation that could not run leaves the number where it was, which is recorded rather than
+            # measured, and it says so rather than printing the recorded value back as if it had been reproduced.
+            print(f"SKIP -- {case['line']}: {declaration['input']} stays recorded at {recorded} -- {problem}")
+            continue
+        agree = abs(measured - recorded) <= 0.5
+        mismatched += 0 if agree else 1
+        print(f"{'OK  ' if agree else 'FAIL'} derive {case['line']:<34} {declaration['input']} "
+              f"recorded={recorded:g} measured={measured:g}")
+    print(f"derivations from {len(cache)} source(s), {mismatched} mismatch")
+    return mismatched
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--fixture", type=Path, default=Path("tests/fixtures/verdicts.json"))
+    parser.add_argument("--derive", action="store_true",
+                        help="also re-derive the inputs from the data on disk; needs the archives and takes "
+                             "minutes, so it is not part of the tier 1 gate")
     args = parser.parse_args()
 
     cases = json.loads(args.fixture.read_text())["cases"]
@@ -193,6 +299,9 @@ def main():
     print(f"checked {len(cases)} recorded verdicts, {mismatched} mismatch")
     print(f"gates derived={tally['derived']} recorded={tally['recorded']} not measured={tally['none']}")
     print("binding gate, in the order the lines were closed: " + " ".join(one or "none" for one in progression))
+    if args.derive:
+        print()
+        mismatched += derive_all(cases)
     return 1 if mismatched else 0
 
 

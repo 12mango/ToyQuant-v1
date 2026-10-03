@@ -1991,6 +1991,9 @@ US share pays 0.0035 USD against a tick of one cent.
 | SPY, one tick, flattening above 1000 shares | 832 | 34618 | 121.163 | 0.241161 | 0.114406 | 282.58 | 161.417 | 0.194011 | 1.07956e-05 |
 
 <!-- toyquant:check
+run: l2_replay data/v2/futures/glbx_MESZ6_trades_2026-09-29_1330_1530.csv.gz data/v2/futures/glbx_MESZ6_depth_2026-09-29_1330_1530.csv.gz MESZ6 0 active_l2 1 conservative --order-size=5 --inventory-limit=20 --base-spread-ticks=1
+then: trade_reports=1675 trade_report_quantity=3934 fees_paid=2439.08 captured_edge_per_unit_ticks=0.013091 markout_per_unit_ticks=0.157092 gross_pnl_usd=-387.5 closed_pnl_usd=-2841.98 net_pnl_usd=-2826.58 net_per_fill_usd=-1.68751 breakeven_maker_rate=-2.54567e-06 max_abs_inventory=18
+
 run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
 then: trade_reports=799 trade_report_quantity=33352 fees_paid=116.732 captured_edge_per_unit_ticks=0.267855 markout_per_unit_ticks=0.0919135 gross_pnl_usd=379.24 closed_pnl_usd=330.519 net_pnl_usd=262.508 net_per_fill_usd=0.328546 breakeven_maker_rate=1.48655e-05 max_abs_inventory=1099
 run: l2_replay data/v2/equities/xnas_AAPL_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_AAPL_depth_2026-09-29_1330_1530.csv.gz AAPL 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
@@ -2000,10 +2003,11 @@ then: trade_reports=1894 trade_report_quantity=50753 fees_paid=177.635 captured_
 -->
 
 The whole table is re-derived by `tools/f4_windows.sh`, which needs the four converted file pairs and says so
-rather than printing numbers without them. The pinned rows are the three claims the per-edit gate keeps true, one
-per market: SPY, which put the fee question in play, and AAPL and TSLA, whose capture is the first to cover the fee
-at every queue model. Each costs about three seconds, which is affordable inside the loop that runs on every edit;
-the other nineteen rows cost about a minute together, which is not, so the script is their re-derivation instead.
+rather than printing numbers without them. The pinned rows are the four claims the per-edit gate keeps true, one
+per market: SPY, which put the fee question in play; AAPL and TSLA, whose capture is the first to cover the fee
+at every queue model; and the micro E-mini, which is the row `tools/viability.py` reads the screen's fee gate for.
+Each costs about three seconds, which is affordable inside the loop that runs on every edit; the other eighteen
+rows cost about a minute together, which is not, so the script is their re-derivation instead.
 
 Three of the rows are the same finding the perpetuals produced, so they are read the same way. Widening the quote
 multiplies the capture and cuts the fills — on SPY from 799 fills to 263, and on the micro E-mini from 1,675 to 57

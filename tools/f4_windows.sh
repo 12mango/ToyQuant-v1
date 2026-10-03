@@ -74,10 +74,11 @@ WINDOWS=(
   "tsla_derived|TSLA|$TSLA_T|$TSLA_D|conservative|--order-size=100 --base-spread-ticks=1"
 )
 # The rows the per-edit gate re-derives: one per market, because each is a claim that has to stay true -- the
-# window that put the fee question in play, and the two whose capture is the first to cover the fee. Each pinned
-# row costs about three seconds, so the three of them are affordable inside the loop that runs on every edit;
-# the other fifteen are one command away through this script.
-PINNED="spy_1tick aapl_conservative tsla_conservative"
+# window that put the fee question in play, the two whose capture is the first to cover the fee, and the micro
+# E-mini, which is the row `tools/viability.py` reads the fee gate for. Each pinned row costs about three
+# seconds, so the four of them are affordable inside the loop that runs on every edit; the other eighteen are
+# one command away through this script.
+PINNED="spy_1tick aapl_conservative tsla_conservative mes_1tick"
 
 field_of() {
   printf '%s' "$1" | grep -oE "(^| )$2=[^ ]+" | head -n 1 | sed 's/^ //; s/^[A-Za-z_][A-Za-z0-9_]*=//'

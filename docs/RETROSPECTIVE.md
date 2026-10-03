@@ -99,8 +99,18 @@ rows carry, checks that the first gate to fire is the one each line is recorded 
 gate rested on. Two things in it are there because the alternative is a lie: a gate that was not measured prints as
 `not measured` rather than as a pass, and a bound taken on the most favourable case -- the widest spread, the smallest
 position move -- may close a line and is refused if it is ever read as an opening, because the best case passing
-proves nothing about the rest. The inputs are in `tests/fixtures/verdicts.json`, tier 1 of `tools/verify_l2.sh` runs
-it on every edit, and re-deriving the inputs themselves from the archives is the layer that needs the data.
+proves nothing about the rest. The MU row's 506 windows is not carried as a number of its own either: it is
+`(2 x 10,588 / 941)^2`, at the two standard deviations the row names, so it falls out of the same two inputs the gate
+is read from. The inputs are in `tests/fixtures/verdicts.json` and tier 1 of `tools/verify_l2.sh` runs it on every
+edit.
+
+**Two of those inputs are no longer copies.** `python3 tools/viability.py --derive` runs the tools that produced them
+and compares what comes back with what the fixture recorded: the low turnover rule over MU's eight windows returns a
+median of -23.34 cents a share either way, and `tools/venue_ratio.py` over the option series returns 56 prints a fill
+as the best of them either way. The option series that second measurement needs were bought again into
+`data/v2/options/`, because the first copy lived in `/tmp` and nothing behind it could be re-derived once it was
+gone; it cost 0.011938 USD and its print counts and R_max reproduce the table in `docs/ROADMAP.md` row for row. The
+campaign is not in the gate, because it needs the archives and takes minutes where the gate runs on every edit.
 
 
 **Three things survive all of them.** The engine: a market data handler, a matching engine, an order state machine, a
