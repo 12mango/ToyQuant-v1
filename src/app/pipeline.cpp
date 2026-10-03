@@ -22,20 +22,6 @@ double percentile(std::vector<double> values, double fraction)
     return values[index];
 }
 
-// Which bucket a filled order belongs in, by how many shares it filled in total. The bounds are where the
-// two share schedules this repository has read stop charging a minimum per order: 100 shares is 0.35 at a
-// 0.0035 share rate, and 200 shares is 1.00 at 0.005. Both thresholds therefore fall on a boundary, so a
-// commission under either convention is computable exactly from the counts and the quantity sums.
-std::size_t fill_size_bucket(uint64_t quantity)
-{
-    if (quantity <= 50) return 0;
-    if (quantity <= 99) return 1;
-    if (quantity <= 199) return 2;
-    if (quantity <= 499) return 3;
-    if (quantity <= 999) return 4;
-    return 5;
-}
-
 }  // namespace
 
 Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
@@ -52,24 +38,7 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
         [this](const ExecutionReport& report)
         {
             ledger_.trace_report(report, current_ts_, engine_);
-            if (report.exec_type == ExecType::Resting)
-            {
-                const auto resting_audit = order_audit_.find(report.order_id);
-                if (resting_audit != order_audit_.end())
-                {
-                    OrderAudit& audit = resting_audit->second;
-                    audit.profiling = true;
-                    audit.symbol = report.symbol;
-                    audit.side = report.side == exchange::Side::Buy ? Side::Buy : Side::Sell;
-                    audit.price = report.price;
-                    // The queue this order joined behind. The engine has just created the level, and the
-                    // level exists only while one of our orders rests in it, which is why both ends of the
-                    // measurement are taken while the order is still there.
-                    audit.queue_at_rest =
-                        engine_.queue_ahead_at(audit.symbol, audit.side, audit.price);
-                    audit.min_queue_ahead = audit.queue_at_rest;
-                }
-            }
+            if (report.exec_type == ExecType::Resting) ledger_.mark_resting(report, engine_);
             if (report.owner == "MarketMaker") portfolio_.apply(report);
             // The notional a maker fill traded, which is what its fee was charged on. The breakeven fee rate
             // needs it, and it cannot be recovered from the fee itself once the rate is zero, which is
@@ -146,20 +115,6 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                     {report.side == exchange::Side::Buy ? Side::Buy : Side::Sell, report.price,
                      report.executed_quantity(), quote_cycle_, markout_bucket});
             }
-            if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
-            {
-                const auto start = order_start_cycles_.find(report.order_id);
-                if (start != order_start_cycles_.end())
-                {
-                    const uint64_t lifetime = quote_cycle_ >= start->second
-                                                  ? quote_cycle_ - start->second
-                                                  : 0;
-                    execution_quality_.total_quote_lifetime += lifetime;
-                    execution_quality_.max_quote_lifetime =
-                        std::max(execution_quality_.max_quote_lifetime, lifetime);
-                    order_start_cycles_.erase(start);
-                }
-            }
             strategy_.on_order_update(report);
             // The strategy keeps its own position from the same reports. A divergence is silent drift
             // in every quote it sizes, so it is counted here rather than assumed away.
@@ -172,114 +127,18 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderB
                     pending_buy_quantity_ -= std::min(pending_buy_quantity_, remaining);
                 else
                     pending_sell_quantity_ -= std::min(pending_sell_quantity_, remaining);
-                pending_cancel_orders_.erase(report.order_id);
             }
-            auto audit = order_audit_.find(report.order_id);
-            if (audit != order_audit_.end())
-            {
-                if (report.exec_type == ExecType::Trade) audit->second.filled = true;
-                if (report.exec_type == ExecType::Trade)
-                    audit->second.filled_quantity += report.executed_quantity();
-                if (report.exec_type == ExecType::Trade && commission_per_unit_ > 0.0)
-                {
-                    // The broker's own commission, accumulated per order so that the floor can be applied to
-                    // the order's total when it ends. The venue's rate is not part of it: a broker's floor is
-                    // a floor on its commission.
-                    const double units =
-                        quantity_scale_ > 0 ? static_cast<double>(report.executed_quantity()) /
-                                                  static_cast<double>(quantity_scale_)
-                                            : static_cast<double>(report.executed_quantity());
-                    audit->second.commission += units * commission_per_unit_;
-                }
-                if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
-                {
-                    const uint64_t lifetime = quote_cycle_ >= audit->second.start_cycle
-                                                  ? quote_cycle_ - audit->second.start_cycle
-                                                  : 0;
-                    execution_quality_.total_order_lifetime_cycles += lifetime;
-                    if (audit->second.filled && lifetime > longest_wait_filled_cycles_)
-                    {
-                        longest_wait_filled_cycles_ = lifetime;
-                        longest_wait_filled_order_id_ = report.order_id;
-                    }
-                    if (report.exec_type == ExecType::Cancelled && audit->second.filled)
-                    {
-                        ++execution_quality_.cancelled_after_fill_orders;
-                    }
-                    else if (report.exec_type == ExecType::Cancelled)
-                    {
-                        ++execution_quality_.cancelled_before_fill_orders;
-                    }
-                    if (report.exec_type == ExecType::Filled)
-                        ++execution_quality_.audited_filled_orders;
-                    else
-                        ++execution_quality_.audited_cancelled_orders;
-                    if (audit->second.profiling && audit->second.queue_at_rest > 0)
-                    {
-                        const double at_rest = static_cast<double>(audit->second.queue_at_rest);
-                        queue_min_fractions_.push_back(
-                            static_cast<double>(audit->second.min_queue_ahead) / at_rest);
-                        queue_end_fractions_.push_back(
-                            static_cast<double>(audit->second.queue_at_end) / at_rest);
-                        ++queue_profile_orders_;
-                        if (audit->second.min_queue_ahead == 0) ++queue_zero_orders_;
-                    }
-                    // The order instance, not the fill, is what a broker's minimum per order is charged
-                    // on, so it is counted once here, when the order ends, and bucketed by how much it
-                    // filled. A modification or a cancel and replace makes a new instance, which is why
-                    // this counter and the fill count are not the same number.
-                    if (audit->second.filled)
-                    {
-                        ++execution_quality_.orders_that_filled;
-                        const std::size_t bucket = fill_size_bucket(audit->second.filled_quantity);
-                        ++execution_quality_.filled_order_count_by_size[bucket];
-                        execution_quality_.filled_order_quantity_by_size[bucket] +=
-                            audit->second.filled_quantity;
-                        // The floor, which is why this counter exists: an order that filled less than the
-                        // floor's worth of shares owes the difference, and the order ending is the only
-                        // moment the total is known.
-                        const double shortfall =
-                            min_commission_shortfall(min_commission_per_order_, audit->second.commission);
-                        if (shortfall > 0.0)
-                        {
-                            portfolio_.charge_fee(shortfall);
-                            ++execution_quality_.min_commission_orders;
-                            execution_quality_.min_commission_paid += shortfall;
-                        }
-                    }
-                    order_audit_.erase(audit);
-                }
-            }
+            const double owed =
+                ledger_.on_report(report, quote_cycle_, execution_quality_, quantity_scale_,
+                                  commission_per_unit_, min_commission_per_order_);
+            if (owed > 0.0) portfolio_.charge_fee(owed);
             if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
             {
-                if (first_fill_order_id_ == 0) first_fill_order_id_ = report.order_id;
-                // A fill means the queue in front of this order reached zero, which is the fact the whole
-                // distribution is built on: the order was first in line and someone traded with it.
-                const auto fill_audit = order_audit_.find(report.order_id);
-                if (fill_audit != order_audit_.end() && fill_audit->second.profiling)
-                {
-                    fill_audit->second.min_queue_ahead = 0;
-                    fill_audit->second.queue_at_end = 0;
-                }
                 ++trade_reports_;
                 trade_report_quantity_ += report.executed_quantity();
             }
             ledger_.write_trade(report);
         });
-}
-
-void Pipeline::sample_resting_queues()
-{
-    // The map holds open orders only, so this costs a handful of lookups per event. It is the difference
-    // between knowing one order's wait and knowing the distribution of waits, and it runs whether or not a
-    // trace was asked for, because the distribution is the claim and the trace is the illustration.
-    for (auto& entry : order_audit_)
-    {
-        OrderAudit& audit = entry.second;
-        if (!audit.profiling) continue;
-        const uint64_t queue = engine_.queue_ahead_at(audit.symbol, audit.side, audit.price);
-        if (queue < audit.min_queue_ahead) audit.min_queue_ahead = queue;
-    }
 }
 
 void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
@@ -296,8 +155,7 @@ void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
     else if (strategy_order.side == Side::Sell)
         pending_sell_quantity_ -=
             std::min(pending_sell_quantity_, static_cast<int64_t>(strategy_order.quantity));
-    order_audit_.erase(strategy_order.order_id);
-    order_start_cycles_.erase(strategy_order.order_id);
+    ledger_.forget_order(strategy_order.order_id);
     strategy_.on_order_update(ExecutionReport{.order_id = strategy_order.order_id,
                                               .side = exchange_order.side,
                                               .exec_type = ExecType::Cancelled,
@@ -375,7 +233,7 @@ void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const
     // The L1 path has no depth view to sample on, so it samples on its own updates; without this the
     // profile would report that no L1 quote ever moved toward the front, which would be an absence of
     // measurement rather than a fact.
-    sample_resting_queues();
+    ledger_.sample_resting(engine_);
 }
 
 void Pipeline::process_l2_market_view(const L2MarketView& view)
@@ -456,7 +314,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
     // Sampled last, so the row describes the queue the way this event left it: the engine has already
     // applied whatever quantity changes the view implied.
     ledger_.trace_sample("view", view.ts, engine_);
-    sample_resting_queues();
+    ledger_.sample_resting(engine_);
 }
 
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)
@@ -482,7 +340,7 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
     strategy_.on_market_trade(trade);
     engine_.process_market_trade(trade);
     ledger_.trace_sample("trade", trade.ts, engine_);
-    sample_resting_queues();
+    ledger_.sample_resting(engine_);
 }
 
 void Pipeline::drain_mature_markouts()
@@ -581,21 +439,11 @@ RunSummary Pipeline::summary() const
     // the quoting result and the second is the bet the run left open, and the two are worth different
     // conclusions, so both are reported and neither is called "the PnL".
     PnlSummary pnl = pnl_summary();
-    // The longest waiting order that is still in the book. The audit map holds the open orders, and their
-    // lifetime is the one measure of patience this project has, so the maximum over it names the quote
-    // whose queue is worth watching: it has survived every requote the run made.
-    uint64_t longest_working_id = 0;
-    uint64_t longest_working_cycles = 0;
-    for (const auto& [order_id, audit] : order_audit_)
-    {
-        const uint64_t lifetime =
-            quote_cycle_ >= audit.start_cycle ? quote_cycle_ - audit.start_cycle : 0;
-        if (lifetime > longest_working_cycles)
-        {
-            longest_working_cycles = lifetime;
-            longest_working_id = order_id;
-        }
-    }
+    // The longest waiting order that is still in the book: the audit map holds the open orders, so the
+    // maximum over it names the quote whose queue is worth watching. It has survived every requote the run
+    // made.
+    const auto [longest_working_id, longest_working_cycles] =
+        ledger_.longest_working_order(quote_cycle_);
     return {.submitted_orders = submitted_orders_,
             .submitted_quantity = submitted_quantity_,
             .cancel_requests = cancel_requests_,
@@ -654,16 +502,16 @@ RunSummary Pipeline::summary() const
                      .flatten_orders = strategy_.flatten_orders(),
                      .flatten_quantity = strategy_.flatten_quantity()},
             .trace_requested = ledger_.trace_requested(),
-            .first_fill_order_id = first_fill_order_id_,
-            .longest_wait_filled_order_id = longest_wait_filled_order_id_,
-            .longest_wait_filled_cycles = longest_wait_filled_cycles_,
+            .first_fill_order_id = ledger_.first_fill_order_id(),
+            .longest_wait_filled_order_id = ledger_.longest_wait_filled_order_id(),
+            .longest_wait_filled_cycles = ledger_.longest_wait_filled_cycles(),
             .longest_wait_working_order_id = longest_working_id,
             .longest_wait_working_cycles = longest_working_cycles,
-            .queue_profile_orders = queue_profile_orders_,
-            .queue_zero_orders = queue_zero_orders_,
-            .queue_min_fraction_p50 = percentile(queue_min_fractions_, 0.50),
-            .queue_min_fraction_p10 = percentile(queue_min_fractions_, 0.10),
-            .queue_end_fraction_p50 = percentile(queue_end_fractions_, 0.50),
+            .queue_profile_orders = ledger_.queue_profile_orders(),
+            .queue_zero_orders = ledger_.queue_zero_orders(),
+            .queue_min_fraction_p50 = percentile(ledger_.queue_min_fractions(), 0.50),
+            .queue_min_fraction_p10 = percentile(ledger_.queue_min_fractions(), 0.10),
+            .queue_end_fraction_p50 = percentile(ledger_.queue_end_fractions(), 0.50),
             .queue_trace = ledger_.trace_rows()};
 }
 
@@ -679,19 +527,8 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
 
     for (uint64_t order_id : strategy_.cancel_requests())
     {
-        if (!pending_cancel_orders_.insert(order_id).second) continue;
+        if (!ledger_.begin_cancel(order_id, engine_)) continue;
         ++cancel_requests_;
-        const auto cancelled_audit = order_audit_.find(order_id);
-        if (cancelled_audit != order_audit_.end() && cancelled_audit->second.profiling)
-        {
-            // Read before the cancel and not from the Cancelled report: the engine erases a price level once
-            // no order rests in it, so a reading taken after the order is gone would report an empty queue
-            // for a level that was not empty. This is the number that says how much queue was still in front
-            // of a quote when the strategy gave up on it.
-            cancelled_audit->second.queue_at_end = engine_.queue_ahead_at(
-                cancelled_audit->second.symbol, cancelled_audit->second.side,
-                cancelled_audit->second.price);
-        }
         engine_.cancel_order(order_id);
     }
 
@@ -785,9 +622,7 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         }
         ledger_.write_order(ts, order);
         strategy_.on_order_submitted(order);
-        order_start_cycles_.insert_or_assign(order.order_id, quote_cycle_);
-        order_audit_.insert_or_assign(order.order_id, OrderAudit{.start_cycle = quote_cycle_});
-        ++execution_quality_.audited_orders;
+        ledger_.open_order(order.order_id, quote_cycle_, execution_quality_);
         ledger_.trace_submit(order, ts, engine_);
         const uint64_t rejected_before = engine_.rejected_orders();
         engine_.send_order(exchange_order);

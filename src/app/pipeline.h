@@ -248,63 +248,16 @@ class Pipeline
         int bucket{-1};
     };
     std::deque<FillObservation> pending_markouts_;
-    std::unordered_map<uint64_t, uint64_t> order_start_cycles_;
-    struct OrderAudit
-    {
-        uint64_t start_cycle{0};
-        bool filled{false};
-        // What the order filled in total, which is not the same quantity as any single fill. A share
-        // commission is charged per share, but a broker's minimum is charged per order and a modification
-        // makes a new order, so the quantity that decides a fee is the size of the order instance that
-        // filled. It is accumulated here and bucketed when the order ends.
-        uint64_t filled_quantity{0};
-        // The broker's own share commission charged to this order so far, which is what its floor is measured
-        // against when the order ends. It is not `fee`: the venue's rate and the fees on a sale are not what
-        // a commission floor applies to.
-        double commission{0.0};
-        // Queue profile. The level belongs to our order while it rests, so the queue behind it is measured
-        // when the order arrives and again before any cancel, never after it leaves: the engine erases a
-        // level once no order rests in it, and a reading taken after that would report an empty queue for a
-        // level that was not empty. `min_queue_ahead` is sampled after every event, which is what turns one
-        // order's trace into a distribution over all of them.
-        bool profiling{false};
-        Side side{Side::Unknown};
-        // Braced like every other member, because GCC's -Wmissing-field-initializers exempts members that
-        // have a default initializer and reports the one that does not.
-        std::string symbol{};
-        double price{0.0};
-        uint64_t queue_at_rest{0};
-        uint64_t min_queue_ahead{0};
-        uint64_t queue_at_end{0};
-    };
-    std::unordered_map<uint64_t, OrderAudit> order_audit_;
-    // One entry per order that rested and died, holding the two ratios worth aggregating: how close the
-    // queue in front came, and how much of it was still there when the order left.
-    std::vector<double> queue_min_fractions_;
-    std::vector<double> queue_end_fractions_;
-    uint64_t queue_profile_orders_{0};
-    uint64_t queue_zero_orders_{0};
-
-    // Samples the queue in front of every order we are resting. Called after each event that could have
-    // changed such a level; the map holds only open orders, so this is a handful of lookups per event.
-    void sample_resting_queues();
 
     // Unwinds the pipeline's own bookkeeping for an order the engine refused. Nothing rests, so no report
     // will ever arrive for it, and the strategy is told what a venue would tell it rather than left quoting
     // around a level it is not in.
     void handle_rejected_order(const exchange::Order& exchange_order, const StrategyOrder& strategy_order,
                                uint64_t ts);
-    std::unordered_set<uint64_t> pending_cancel_orders_;
     // The clock of the event being processed. An order's own reports carry the order's timestamp, so a
     // trace that read report.ts would print a cancel at the moment the order was submitted and the
     // sequence would read backwards. The row has to be timed by the event that caused it.
     uint64_t current_ts_{0};
-    // Which orders turned out to be worth tracing. A reader cannot know an id before the run, and the
-    // first few orders are hostile samples: they die in the same millisecond they arrive. These are the
-    // orders that actually waited, so a second run can name one of them.
-    uint64_t first_fill_order_id_{0};
-    uint64_t longest_wait_filled_order_id_{0};
-    uint64_t longest_wait_filled_cycles_{0};
     StageProfiler* profiler_{nullptr};
 
     // Funding state. The series is the caller's; this only remembers how far the replay has consumed it and
