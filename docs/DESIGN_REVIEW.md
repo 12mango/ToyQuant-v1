@@ -27,13 +27,17 @@ the boundaries between the documents are listed in the [documentation index](ind
 
 ## 1. The loop, in code
 
-Three interfaces carry the design, each with one production implementation:
+Two interfaces carry the design, each with one production implementation:
 
 | Interface | Implementation | Why it is an interface |
 |---|---|---|
 | `Strategy` — `src/strategy/strategy.h` | one class per strategy name, built by `make_strategy` | the pipeline drives any decision module without knowing which |
 | `IMatchingEngine` — `src/exchange/matching_engine.h` | `MatchingEngine` | reports arrive through a callback, so the pipeline never reaches into the engine |
-| `IOrderBook` — `src/orderbook/orderbook.h` | `OrderBook`, `L2OrderBook` | the L1 and L2 paths share one pipeline |
+
+`IOrderBook` was the third, and the coordinator no longer takes one. It was there for the single branch
+that turns a `BboQuote` into a top of book, which made every caller supply a book, and the L2 path
+supplied one it never read. That conversion belongs to the pipeline, so the interface now belongs to the
+frozen line alone.
 
 One L2 event, top to bottom. `Pipeline::process_l2_market_view` (`src/app/pipeline.cpp`), trimmed:
 

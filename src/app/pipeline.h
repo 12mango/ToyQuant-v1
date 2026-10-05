@@ -14,16 +14,18 @@
 #include "common/funding.h"
 #include "exchange/matching_engine.h"
 #include "common/market_event.h"
-#include "orderbook/orderbook.h"
+#include "orderbook/top_of_book.h"
 #include "strategy/strategy.h"
 #include "utils/stage_profiler.h"
 
 class Pipeline
 {
    public:
-    Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-             Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio,
-             double tick_size = PRICE_TICK_SIZE);
+    // The coordinator takes what it drives and nothing else. It used to take an `IOrderBook&` as well,
+    // for the one branch that turns a `BboQuote` into a top of book, which made every caller build a book:
+    // the L2 path built one it never touched. The conversion is the pipeline's own now.
+    Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, Strategy& strategy,
+             IMatchingEngine& engine, Portfolio& portfolio, double tick_size = PRICE_TICK_SIZE);
 
     void process_event(const MarketEvent& event);
     void process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top);
@@ -156,7 +158,6 @@ class Pipeline
                                  std::vector<StrategyOrder> orders);
 
     OrderLedger ledger_;
-    IOrderBook& order_book_;
     Strategy& strategy_;
     IMatchingEngine& engine_;
     Portfolio& portfolio_;

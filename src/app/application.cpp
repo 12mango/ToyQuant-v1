@@ -162,8 +162,7 @@ void Application::run_legacy_csv_mode() const
     auto strategy = make_strategy(cfg_.strategy_name);
     MatchingEngine engine;
     Portfolio portfolio;
-    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      portfolio);
+    Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
     pipeline.set_position_limit(cfg_.position_limit);
@@ -202,7 +201,6 @@ void Application::run_replay_mode() const
                                ";taker_fee=" + std::to_string(instrument.taker_fee_rate);
 
     auto output_files = open_output_files(source, "source_market_data");
-    OrderBook order_book(instrument.tick_size);
     // The L1 tuning knobs keep their defaults here; only the sizing is settable from the command
     // line, because the instrument's quantity scale is not an economic scale for a contract.
     auto strategy = make_strategy(cfg_.strategy_name,
@@ -224,8 +222,8 @@ void Application::run_replay_mode() const
                           instrument.min_order_quantity);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
-    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      portfolio, instrument.tick_size);
+    Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio,
+                      instrument.tick_size);
     // The replay path reports the same collateral and quantity scale as the L2 path, so its exposure
     // and edge figures are in dollars rather than in raw instrument units.
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
@@ -330,7 +328,6 @@ void Application::run_l2_replay_mode() const
                                ";symbol=" + cfg_.symbol +
                                ";tick_size=" + std::to_string(instrument.tick_size);
     auto output_files = open_output_files(source, "source_l2_market_data");
-    OrderBook execution_book(instrument.tick_size);
     L2OrderBook l2_book(instrument.tick_size);
     auto strategy = make_strategy(cfg_.strategy_name,
                                   StrategyFactoryConfig{
@@ -368,8 +365,8 @@ void Application::run_l2_replay_mode() const
         broker ? static_cast<IMatchingEngine&>(*broker) : static_cast<IMatchingEngine&>(engine);
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
-    Pipeline pipeline(output_files.orders, output_files.trades, execution_book, *strategy, venue,
-                      portfolio, instrument.tick_size);
+    Pipeline pipeline(output_files.orders, output_files.trades, *strategy, venue, portfolio,
+                      instrument.tick_size);
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
     // enforced. 0, the default, reports the ceiling without blocking anything.
@@ -534,8 +531,7 @@ void Application::run_legacy_udp_mode() const
     auto strategy = make_strategy(cfg_.strategy_name);
     MatchingEngine engine;
     Portfolio portfolio;
-    Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine,
-                      portfolio);
+    Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
     pipeline.set_position_limit(cfg_.position_limit);

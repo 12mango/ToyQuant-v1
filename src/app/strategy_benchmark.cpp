@@ -14,7 +14,7 @@
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
 #include "market/replay_feed.h"
-#include "orderbook/orderbook.h"
+#include "common/market_event.h"
 
 std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& trades_path,
                                                             const std::string& quotes_path,
@@ -66,7 +66,6 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
                                                  .minimum_stress_quantity_ratio =
                                                      l1_minimum_stress_quantity_ratio,
                                                  .fee_spread_multiplier = l1_fee_spread_multiplier}});
-        OrderBook order_book(instrument.tick_size);
         MatchingEngine engine(instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                           .taker_rate = instrument.taker_fee_rate,
@@ -83,8 +82,7 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
                               instrument.lot_size, instrument.min_order_quantity);
         Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
-        Pipeline pipeline(orders, trades, order_book, *strategy, engine, portfolio,
-                  instrument.tick_size);
+        Pipeline pipeline(orders, trades, *strategy, engine, portfolio, instrument.tick_size);
 
         double final_mid = 0.0;
         uint64_t last_event_ts = 0;

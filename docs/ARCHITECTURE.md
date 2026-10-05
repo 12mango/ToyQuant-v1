@@ -229,9 +229,10 @@ kept answering with 2.5 ticks of fee against 0.1 ticks of capture.
 
 BBO events update the external top of book and trigger quoting. Trade events carry aggressor side
 and drive matching. External Tick/BBO state is stored separately from local strategy orders.
-`market_top()` exposes only venue prices through `IOrderBook`. Strategy orders are owned only by
-`MatchingEngine`; there is intentionally no local or combined view in `OrderBook`, so strategy code
-cannot accidentally include its own orders in the market reference.
+`market_top()` exposes only venue prices, and the coordinator no longer holds a book to ask: a `BboQuote`
+is converted where it arrives. Strategy orders are owned only by `MatchingEngine`; there is intentionally
+no local or combined view in `OrderBook`, so strategy code cannot accidentally include its own orders in
+the market reference.
 
 `L2OrderBook` is a separate multi-level view for `MarketDepthSnapshot` events. It replaces the
 snapshot atomically, validates ordering and sequence, and derives an `L2MarketView`. The L2 replay
@@ -444,26 +445,25 @@ OrderBook order_book;
 auto strategy = make_strategy(cfg.strategy_name);
 Logger logger(to_abs_path("logs/toy_quant.log"));
 MatchingEngine engine(&logger);
-Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine, logger);
+Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
 ```
 
 The constructor receives the domain collaborators through their interfaces and stores references to them:
 
 ```cpp
-Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-                 Strategy& strategy, IMatchingEngine& engine, Logger& logger)
-    : orders_out_(orders_out),
-      trades_out_(trades_out),
-      order_book_(order_book),
+Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, Strategy& strategy,
+         IMatchingEngine& engine, Portfolio& portfolio, double tick_size = PRICE_TICK_SIZE)
+    : ledger_(orders_out, trades_out),
       strategy_(strategy),
-            engine_(engine),
-            logger_(logger)
+      engine_(engine),
+      portfolio_(portfolio),
+      tick_size_(tick_size)
 {
     // Install the report boundary after the collaborators are available.
 }
 ```
 
-This is constructor injection: the `Pipeline` declares what it needs, while the caller chooses the concrete implementations. `IOrderBook` and `IMatchingEngine` make the coordinator depend on behavior rather than on `OrderBook` and `MatchingEngine` details. The strategy is injected through the `Strategy` base class, so the same pipeline can run `NaiveMarketMaker`, `OptimizedMarketMaker`, or `L1MarketMaker`:
+This is constructor injection: the `Pipeline` declares what it needs, while the caller chooses the concrete implementations. `IMatchingEngine` makes the coordinator depend on behaviour rather than on `MatchingEngine` details, and the strategy arrives through the `Strategy` base class, so the same pipeline can run `NaiveMarketMaker`, `OptimizedMarketMaker`, or `L1MarketMaker`. There is no book among the collaborators: a `BboQuote` already carries its own top of book, so the coordinator converts it where it arrives instead of handing it to an `OrderBook` and asking for it back, which is what the L2 path used to pay for with a book it never read:
 
 ```cpp
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name)
@@ -497,7 +497,7 @@ OrderBook order_book;
 auto strategy = make_strategy(cfg.strategy_name);
 Logger logger(to_abs_path("logs/toy_quant.log"));
 MatchingEngine engine(&logger);
-Pipeline pipeline(output_files.orders, output_files.trades, order_book, *strategy, engine, logger);
+Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
 legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
 CsvFeed feed(csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick, true); }, cfg.delay,
              &logger);
@@ -592,8 +592,11 @@ struct SideBook
 ```
 
 For legacy input, the comparators make the first bid the highest price and the first ask the lowest.
-For v2 replay, `market_top()` directly returns the latest valid `external_bbo`. The mutex protects
-market updates and snapshots. Local strategy orders do not enter this object.
+`market_top()` returns the stored `external_bbo` when one is valid and the Tick maps otherwise, and since the
+coordinator stopped holding a book, the stored-BBO half is reached only by
+`tests/orderbook_state_test.cpp`: the one production caller left, `legacy::TickPipeline`, fills the Tick
+maps and reads them back. The mutex protects market updates and snapshots. Local strategy orders do not
+enter this object.
 
 ### 4.1 Single ownership of strategy orders
 

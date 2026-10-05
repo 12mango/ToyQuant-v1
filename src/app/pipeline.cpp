@@ -24,11 +24,9 @@ double percentile(std::vector<double> values, double fraction)
 
 }  // namespace
 
-Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, IOrderBook& order_book,
-                   Strategy& strategy, IMatchingEngine& engine, Portfolio& portfolio,
-                   double tick_size)
+Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, Strategy& strategy,
+                   IMatchingEngine& engine, Portfolio& portfolio, double tick_size)
     : ledger_(orders_out, trades_out),
-      order_book_(order_book),
       strategy_(strategy),
       engine_(engine),
       portfolio_(portfolio),
@@ -205,9 +203,18 @@ void Pipeline::process_event(const MarketEvent& event)
             else if constexpr (std::is_same_v<Event, BboQuote>)
             {
                 latest_quotes_[value.symbol] = value;
-                order_book_.on_bbo(value);
                 engine_.process_bbo(value);
-                const auto top = order_book_.market_top(value.symbol);
+                // A quote is already a top of book, and this used to prove it by writing the quote into an
+                // `OrderBook` and reading it straight back out. What that round trip added was one test,
+                // the book's own rule for a quote it can use: both sides positive and not crossed. Doing
+                // the conversion here is what lets this class describe its own input without being handed
+                // a book, and what lets the L2 path stop building one it never reads.
+                const bool usable_quote = value.bid_price > 0.0 && value.ask_price > 0.0 &&
+                                          value.bid_price <= value.ask_price;
+                const TopOfBook top = usable_quote
+                                          ? TopOfBook{value.bid_price, value.bid_quantity,
+                                                      value.ask_price, value.ask_quantity}
+                                          : TopOfBook{};
                 last_mid_ = (value.bid_price + value.ask_price) / 2.0;
                 ++quote_cycle_;
                 accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_, multiplier_, quantity_scale_, execution_quality_);

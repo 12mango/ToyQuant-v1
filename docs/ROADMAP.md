@@ -4,8 +4,8 @@ Two goals, one codebase: a demo that shows the engineering, and the option of a 
 **The demo comes first**, so the phases are ordered by what a reader can see, and each step is chosen so that
 it also keeps the later path open instead of paying for it now.
 
-The seam that makes both possible already exists: `Strategy`, `IMatchingEngine` and `IOrderBook` are the only
-things the pipeline knows about, and `src/market/` holds one reader per input format. A live feed is another
+The seam that makes both possible already exists: `Strategy` and `IMatchingEngine` are the only interfaces
+the pipeline knows about, and `src/market/` holds one reader per input format. A live feed is another
 reader, and paper trading is the existing book and matching engine against that feed.
 
 ## Where the project stands

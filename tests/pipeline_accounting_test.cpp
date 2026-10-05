@@ -13,7 +13,7 @@
 #include "app/pipeline.h"
 #include "exchange/matching_engine.h"
 #include "market/funding_rate.h"
-#include "orderbook/orderbook.h"
+#include "orderbook/top_of_book.h"
 #include "strategy/l2_market_maker_base.h"
 #include "strategy/baseline_market_makers.h"
 #include "utils/logger.h"
@@ -23,14 +23,13 @@ int main()
     std::ofstream orders("/tmp/pipeline_accounting_orders.csv");
     std::ofstream trades("/tmp/pipeline_accounting_trades.csv");
     NaiveMarketMaker strategy(10, 0.1, 1.0);
-    OrderBook order_book(1.0);
     MatchingEngine engine(1.0,
                           FeeSchedule{.maker_rate = 0.001,
                                       .taker_rate = 0.002,
                                       .quantity_scale = 1000});
     Portfolio portfolio(1000, 1000.0);
     Logger logger;
-    Pipeline pipeline(orders, trades, order_book, strategy, engine, portfolio);
+    Pipeline pipeline(orders, trades, strategy, engine, portfolio);
 
     pipeline.process_event(BboQuote{1, "TEST", 99.0, 100, 101.0, 100, 1, "binance"});
     pipeline.process_event(MarketTrade{2, "TEST", 100.0, 10, Side::Sell, 2, "binance"});
@@ -44,12 +43,12 @@ int main()
     assert(std::abs(metrics.fees_paid - 0.001) < 1e-12);
     assert(pipeline.summary().trade_reports == 1);
 
-    Pipeline filtered_pipeline(orders, trades, order_book, strategy, engine, portfolio);
+    Pipeline filtered_pipeline(orders, trades, strategy, engine, portfolio);
     filtered_pipeline.process_event(MarketTrade{3, "TEST", 110.0, 10, Side::Sell, 3, "binance"});
     assert(filtered_pipeline.summary().trade_reports == 0);
     assert(filtered_pipeline.summary().filtered_market_trades == 1);
 
-    Pipeline isolated_pipeline(orders, trades, order_book, strategy, engine, portfolio);
+    Pipeline isolated_pipeline(orders, trades, strategy, engine, portfolio);
     isolated_pipeline.process_event(BboQuote{4, "TEST", 99.0, 100, 101.0, 100, 4, "binance"});
     bool rejected_mixed_exchange = false;
     try
@@ -76,11 +75,9 @@ int main()
                                                    .inventory_limit = 100,
                                                    .tick_size = 1.0,
                                                    .signal_mode = L2SignalMode::Baseline});
-    OrderBook l2_execution_book(1.0);
     MatchingEngine l2_engine(1.0);
     Portfolio l2_portfolio;
-    Pipeline l2_pipeline(l2_orders, l2_trades, l2_execution_book, l2_strategy, l2_engine,
-                         l2_portfolio);
+    Pipeline l2_pipeline(l2_orders, l2_trades, l2_strategy, l2_engine, l2_portfolio);
     l2_pipeline.set_trace_order(1);
     l2_pipeline.process_l2_market_view(L2MarketView{.symbol = "L2",
                                                     .ts = 10,
@@ -148,10 +145,8 @@ int main()
     std::ofstream fee_orders("/tmp/pipeline_deribit_fee_orders.csv");
     std::ofstream fee_trades("/tmp/pipeline_deribit_fee_trades.csv");
     NaiveMarketMaker fee_strategy(1, 0.0, 0.5);
-    OrderBook fee_book(0.5);
     Portfolio fee_portfolio(1, 1000.0, 10.0);
-    Pipeline fee_pipeline(fee_orders, fee_trades, fee_book, fee_strategy, deribit_fee_engine,
-                          fee_portfolio);
+    Pipeline fee_pipeline(fee_orders, fee_trades, fee_strategy, deribit_fee_engine, fee_portfolio);
     fee_pipeline.process_event(BboQuote{20, "BTC-PERPETUAL", 99.0, 100, 101.0, 100, 1,
                                         "deribit"});
     fee_pipeline.process_event(
@@ -174,14 +169,13 @@ int main()
         std::ofstream funding_orders("/tmp/pipeline_funding_orders.csv");
         std::ofstream funding_trades("/tmp/pipeline_funding_trades.csv");
         NaiveMarketMaker funding_strategy(1, 0.0, 0.5);
-        OrderBook funding_book(0.5);
         MatchingEngine funding_engine(0.5, FeeSchedule{.maker_rate = 0.0002,
                                                        .taker_rate = 0.0005,
                                                        .quantity_scale = 1,
                                                        .unit_notional_usd = 10.0});
         Portfolio funding_portfolio(1, 1000.0, 10.0);
-        Pipeline funding_pipeline(funding_orders, funding_trades, funding_book, funding_strategy,
-                                  funding_engine, funding_portfolio);
+        Pipeline funding_pipeline(funding_orders, funding_trades, funding_strategy, funding_engine,
+                                  funding_portfolio);
         funding_pipeline.set_funding_rates(&funding);
 
         funding_pipeline.process_event(BboQuote{20, "BTC-PERPETUAL", 99.0, 100, 101.0, 100, 1,
@@ -219,10 +213,9 @@ int main()
                                                          .base_spread = 1.0,
                                                          .inventory_limit = 10,
                                                          .tick_size = 1.0});
-        OrderBook print_book(1.0);
         MatchingEngine print_engine(1.0);
         Portfolio print_portfolio;
-        Pipeline print_pipeline(print_orders, print_trades, print_book, print_strategy, print_engine,
+        Pipeline print_pipeline(print_orders, print_trades, print_strategy, print_engine,
                                 print_portfolio);
         print_pipeline.set_markout_cover(true);
         print_pipeline.set_gate_diagnostics(true);
