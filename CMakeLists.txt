@@ -58,7 +58,6 @@ set(CORE_SOURCES
     src/market/market_event_recorder.cpp
     src/market/replay_feed.cpp
     src/market/threaded_l2_replay.cpp
-    src/orderbook/orderbook.cpp
     src/orderbook/tick_ladder.cpp
     src/utils/logger.cpp
     src/utils/stage_profiler.cpp)
@@ -68,6 +67,7 @@ set(LINE_SOURCES
     src/lines/carry_ledger.cpp
     src/lines/paper_broker.cpp
     src/lines/legacy/tick_csv_parser.cpp
+    src/lines/legacy/order_book.cpp
     src/market/csv_feed.cpp
     src/market/funding_rate.cpp
     ${MARKET_READER_SOURCES})
@@ -131,7 +131,7 @@ add_executable(strategy_state_test tests/strategy_state_test.cpp
 target_include_directories(strategy_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME strategy_state_test COMMAND strategy_state_test)
 
-add_executable(orderbook_state_test tests/orderbook_state_test.cpp src/orderbook/orderbook.cpp)
+add_executable(orderbook_state_test tests/orderbook_state_test.cpp src/lines/legacy/order_book.cpp)
 target_include_directories(orderbook_state_test PRIVATE ${COMMON_INCLUDE_DIRS})
 add_test(NAME orderbook_state_test COMMAND orderbook_state_test)
 

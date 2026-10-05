@@ -1,6 +1,6 @@
 # The main line: the order to read this repository in, and what to drop
 
-This repository is 15,106 lines of source and 21 test binaries, and most of that is not the thing worth learning from.
+This repository is 15,179 lines of source and 21 test binaries, and most of that is not the thing worth learning from.
 **The main line is about 5,000 lines**, and it is the path a single market event takes: a file becomes an event, an
 event becomes a book, a book becomes a decision, a decision becomes an order, an order becomes a fill, a fill becomes
 cash, and cash becomes the number a document quotes. Everything else is either evidence for a closed line, a
@@ -70,7 +70,7 @@ removing it would make a claim in the documents unreproducible.
 
 | Part | Lines | Verdict | Why |
 |---|---:|---|---|
-| `src/lines/legacy/*`, where `l1_market_maker.h` alone is 1,285 | ~1,900 | **candidate to delete, with its tests and the tier 1 L1 invariants** | The frozen `v1.0-demo` tag already preserves this line, so the repository does not have to carry it, and nothing on the main line calls it |
+| `src/lines/legacy/*`, where `l1_market_maker.h` alone is 1,285 | 1,507 | **candidate to delete, with its tests and the tier 1 L1 invariants** | The frozen `v1.0-demo` tag already preserves this line, so the repository does not have to carry it, and nothing on the main line calls it |
 | The legacy CSV and UDP modes and the `Tick` model | ~700 | **candidate to delete** | Unreachable from the L2 path, and kept only for compatibility with a tag that exists |
 | `src/market/deribit_readers.*`, `okx_readers.*` and the crypto market code | ~1,500 | **keep, marked as evidence** | The data files are the record of closed lines and one fetch tool still reads the funding history, but this is not reading for the main line |
 | `src/market/funding_rate.*`, `src/lines/carry_ledger.*` | ~470 | **keep, marked as evidence** | A marked and checked block in [Performance History](PERFORMANCE_HISTORY.md) re-runs this on every gate: deleting it would either break the gate or turn the sharpest number here into a copied one |

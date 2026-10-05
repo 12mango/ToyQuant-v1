@@ -95,11 +95,11 @@ The source map is:
 |---|---|---|
 | Shared data | `src/common/types.h`, `src/common/market_event.h` | `Side`, `ExecType`, `MarketEvent` |
 | Instrument rules | `src/common/instrument_spec.h` | `InstrumentSpec`, `btc_usdt_spec` |
-| Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/lines/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv` |
+| Legacy input | `src/market/csv_feed.*`, `udp_feed.*`, `src/lines/legacy/*` | `legacy::Tick`, `legacy::TickPipeline`, `legacy::tick_csv`, `OrderBook` |
 | Market replay | `src/market/market_data_adapter.*` is the router, and each venue has its own file beside it: `binance_readers.*`, `deribit_readers.*`, `okx_readers.*`, sharing `field_parser.h`; plus `replay_feed.*`, `market_event_recorder.*`, `threaded_l2_replay.*` | `IMarketEventReader`, `ReplayFeed::run`, `MarketEventRecorder`, `ThreadedReplayFeed` |
 | Hand-off between threads | `src/concurrency/spsc_ring.h` | `SpscRing::try_push`, `SpscRing::try_pop`, `LatencyHistogram` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
-| Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*`, `tick_ladder.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook`, `TickLadder` |
+| Market view | `src/orderbook/top_of_book.h`, `l2_orderbook.*`, `l2_market_view.h`, `tick_ladder.*` | `TopOfBook`, `L2OrderBook`, `L2MarketView`, `TickLadder` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
 | Strategy | `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/lines/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, baseline pair, active L2 family |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
@@ -574,12 +574,15 @@ The split is not a behaviour change, and the gate is what says so: tier 1 assert
 orders, the fills, the PnL and the queue-ahead figures, and tier 2 hashes the full 1.5 GB of stdout against
 a stored reference, so an extraction that moved a number fails both.
 
-## 4. OrderBook: External Market View
+## 4. OrderBook: the frozen line's external view
 
-**Files:** `src/orderbook/orderbook.h`, `src/orderbook/orderbook.cpp`
+**Files:** `src/lines/legacy/order_book.h`, `src/lines/legacy/order_book.cpp`
 
-`OrderBook` contains external market data only. Legacy Tick input updates simplified bid or ask
-price maps, while Trades+BBO replay replaces the latest venue BBO snapshot.
+`OrderBook` contains external market data only, and it is the legacy line's book rather than the L2 path's:
+it lives under `lines/legacy/` beside the `Tick` model it consumes, `src/orderbook/` holds nothing but the
+L2 stack and the top-of-book type, and after the coordinator stopped taking a book the only production
+caller of this one is `legacy::TickPipeline`. Legacy Tick input updates simplified bid or ask price maps,
+while a stored BBO replaces the latest venue snapshot.
 
 ```cpp
 struct SideBook

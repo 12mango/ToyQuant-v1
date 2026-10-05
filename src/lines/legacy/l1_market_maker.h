@@ -31,7 +31,7 @@
 
 #include "exchange/execution_report.h"
 #include "lines/legacy/l1_market_maker_config.h"
-#include "orderbook/orderbook.h"
+#include "orderbook/top_of_book.h"
 #include "strategy/strategy.h"
 
 class PassiveL1MarketMaker : public Strategy
