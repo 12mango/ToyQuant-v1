@@ -28,7 +28,7 @@ int main()
     assert(view.depth_imbalance > 0.0);
     assert(view.micro_price > view.top.bid_price);
 
-    L2MarketMaker strategy(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase strategy(L2MarketMakerBaseConfig{.order_size = 1,
                                                 .base_spread = 1.0,
                                                 .inventory_limit = 100,
                                                 .tick_size = 0.5,
@@ -39,7 +39,7 @@ int main()
     assert(orders[1].side == Side::Sell);
     assert(orders[0].price < orders[1].price);
 
-    L2MarketMaker baseline(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase baseline(L2MarketMakerBaseConfig{.order_size = 1,
                                                 .base_spread = 1.0,
                                                 .inventory_limit = 100,
                                                 .tick_size = 0.5,
@@ -48,7 +48,7 @@ int main()
     assert(baseline_orders.size() == 2);
     assert(baseline_orders[0].price < orders[0].price);
 
-    L2MarketMaker passive_guard(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase passive_guard(L2MarketMakerBaseConfig{.order_size = 1,
                                                      .base_spread = 0.5,
                                                      .inventory_limit = 100,
                                                      .tick_size = 0.5,
@@ -59,7 +59,7 @@ int main()
     assert(guarded_orders[0].price <= view.top.bid_price);
     assert(guarded_orders[1].price >= view.top.ask_price);
 
-    L2MarketMaker refreshable(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase refreshable(L2MarketMakerBaseConfig{.order_size = 1,
                                                    .base_spread = 1.0,
                                                    .inventory_limit = 100,
                                                    .tick_size = 0.5,
@@ -80,7 +80,7 @@ int main()
     assert(refreshable.on_l2_market_view(moved_view).empty());
     assert(refreshable.cancel_requests().size() == 2);
 
-    L2MarketMaker depth_only_updates(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase depth_only_updates(L2MarketMakerBaseConfig{.order_size = 1,
                                                          .base_spread = 1.0,
                                                          .inventory_limit = 100,
                                                          .tick_size = 0.5,
@@ -97,7 +97,7 @@ int main()
     assert(depth_only_updates.on_l2_market_view(same_top).empty());
     assert(depth_only_updates.cancel_requests().empty());
 
-    L2MarketMaker queue_patient(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase queue_patient(L2MarketMakerBaseConfig{.order_size = 1,
                                                      .base_spread = 1.0,
                                                      .inventory_limit = 100,
                                                      .tick_size = 0.5,
@@ -126,7 +126,7 @@ int main()
     assert(queue_patient.on_l2_market_view(queue_move).empty());
     assert(queue_patient.cancel_requests().size() == 2);
 
-    L2MarketMaker guarded_buy_flow(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase guarded_buy_flow(L2MarketMakerBaseConfig{.order_size = 1,
                                                         .base_spread = 1.0,
                                                         .inventory_limit = 100,
                                                         .tick_size = 0.5,
@@ -139,7 +139,7 @@ int main()
     assert(buy_flow_orders.size() == 1);
     assert(buy_flow_orders[0].side == Side::Buy);
 
-    L2MarketMaker guarded_sell_flow(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase guarded_sell_flow(L2MarketMakerBaseConfig{.order_size = 1,
                                                          .base_spread = 1.0,
                                                          .inventory_limit = 100,
                                                          .tick_size = 0.5,
@@ -152,7 +152,7 @@ int main()
     assert(sell_flow_orders.size() == 1);
     assert(sell_flow_orders[0].side == Side::Sell);
 
-    L2MarketMaker short_flow(L2MarketMakerConfig{.order_size = 1,
+    L2MarketMakerBase short_flow(L2MarketMakerBaseConfig{.order_size = 1,
                                                   .base_spread = 1.0,
                                                   .inventory_limit = 100,
                                                   .tick_size = 0.5,
@@ -170,7 +170,7 @@ int main()
 
     InventoryAwareL2MarketMaker inventory_strategy(
         InventoryAwareL2MarketMakerConfig{
-            .base = L2MarketMakerConfig{.order_size = 2,
+            .base = L2MarketMakerBaseConfig{.order_size = 2,
                                          .base_spread = 1.0,
                                          .inventory_limit = 2,
                                          .tick_size = 0.5,
@@ -195,7 +195,7 @@ int main()
     assert(long_inventory_orders[0].side == Side::Sell);
 
     ActiveL2MarketMaker active(ActiveL2MarketMakerConfig{
-        .base = L2MarketMakerConfig{.order_size = 2,
+        .base = L2MarketMakerBaseConfig{.order_size = 2,
                                      .base_spread = 1.0,
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
@@ -218,7 +218,7 @@ int main()
     assert(active.volatility_ticks() >= 8.0);
 
     ActiveL2MarketMaker warming(ActiveL2MarketMakerConfig{
-        .base = L2MarketMakerConfig{.order_size = 1,
+        .base = L2MarketMakerBaseConfig{.order_size = 1,
                                      .base_spread = 1.0,
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
@@ -233,7 +233,7 @@ int main()
     assert(warming.on_l2_market_view(view).size() == 2);
 
     ActiveL2MarketMaker time_aware(ActiveL2MarketMakerConfig{
-        .base = L2MarketMakerConfig{.order_size = 2,
+        .base = L2MarketMakerBaseConfig{.order_size = 2,
                                      .base_spread = 1.0,
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
@@ -253,7 +253,7 @@ int main()
     const double slow_volatility = time_aware.volatility_ticks();
 
     ActiveL2MarketMaker fast_time_aware(ActiveL2MarketMakerConfig{
-        .base = L2MarketMakerConfig{.order_size = 2,
+        .base = L2MarketMakerBaseConfig{.order_size = 2,
                                      .base_spread = 1.0,
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
@@ -273,7 +273,7 @@ int main()
     assert(fast_volatility > slow_volatility);
 
     ActiveL2MarketMaker pausing(ActiveL2MarketMakerConfig{
-        .base = L2MarketMakerConfig{.order_size = 2,
+        .base = L2MarketMakerBaseConfig{.order_size = 2,
                                      .base_spread = 1.0,
                                      .inventory_limit = 100,
                                      .tick_size = 0.5,
@@ -302,7 +302,7 @@ int main()
     // which is the only component that sees the midpoint after a fill, and the gate waits for samples before it
     // tightens, because a gate that tightened from its first decision would refuse everything and never learn.
     {
-        L2MarketMaker gated(L2MarketMakerConfig{.order_size = 1,
+        L2MarketMakerBase gated(L2MarketMakerBaseConfig{.order_size = 1,
                                                 .base_spread = 1.0,
                                                 .inventory_limit = 100,
                                                 .tick_size = 0.5,
@@ -333,7 +333,7 @@ int main()
 
         // A distance whose fills have been profitable needs no cover beyond the fee, which is the asymmetry the
         // gate is built on: it refuses a cost, it does not demand a premium.
-        L2MarketMaker profitable(L2MarketMakerConfig{.order_size = 1,
+        L2MarketMakerBase profitable(L2MarketMakerBaseConfig{.order_size = 1,
                                                      .base_spread = 1.0,
                                                      .inventory_limit = 100,
                                                      .tick_size = 0.5,
@@ -356,7 +356,7 @@ int main()
     {
         const auto gated_with = [&](double fee_per_unit, double multiplier)
         {
-            L2MarketMaker maker(L2MarketMakerConfig{.order_size = 1,
+            L2MarketMakerBase maker(L2MarketMakerBaseConfig{.order_size = 1,
                                                     .base_spread = 1.0,
                                                     .inventory_limit = 100,
                                                     .tick_size = 0.5,
@@ -391,7 +391,7 @@ int main()
     // Inventory discipline: above the band the position is reduced instead of carried, by one order priced at
     // the touch on the reducing side, which the engine fills as a taker at that price.
     {
-        L2MarketMaker flattening(L2MarketMakerConfig{.order_size = 5,
+        L2MarketMakerBase flattening(L2MarketMakerBaseConfig{.order_size = 5,
                                                      .base_spread = 1.0,
                                                      .inventory_limit = 100,
                                                      .tick_size = 0.5,
@@ -418,7 +418,7 @@ int main()
 
         // With the band off the same position is quoted around instead, which is what every run before the band
         // did, and nothing is attributed to flattening.
-        L2MarketMaker carried(L2MarketMakerConfig{.order_size = 5,
+        L2MarketMakerBase carried(L2MarketMakerBaseConfig{.order_size = 5,
                                                   .base_spread = 1.0,
                                                   .inventory_limit = 100,
                                                   .tick_size = 0.5});

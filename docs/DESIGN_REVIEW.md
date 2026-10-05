@@ -284,7 +284,7 @@ consumer checks the field rather than the type:
 The fourth row is the one with consequences, and it is what makes "a trade without a usable BBO cannot
 create a synthetic fill" true. It is true because three callers test the same field, not because one of
 them raised: `Pipeline::process_l2_market_view` feeds the engine only when both prices are positive,
-`L2MarketMaker::on_l2_market_view` quotes at a mid of zero, which is a cancel, and the run's final mark
+`L2MarketMakerBase::on_l2_market_view` quotes at a mid of zero, which is a cancel, and the run's final mark
 stays at zero. The fifth row is the same idea for a timestamp: the check that the next batch is not early
 is written `local_timestamp_ != 0 && batch.local_ts < local_timestamp_`, so zero carries "nothing seen
 yet" without a second flag to keep in step with it.
@@ -335,12 +335,17 @@ expire on a quiet market.
 
 ```cpp
 // src/app/strategy_factory.h
+struct L1StrategyConfig
+{
+    FlowAwareMarketMakerConfig flow_config{}; // the frozen line's own knobs, in one struct
+    double risk_threshold = 0.60;             // four of the old arguments were fractions
+    double stress_spread_multiplier = 2.5;    // of the same type, in the same position
+    ...
+};
 struct StrategyFactoryConfig
 {
     const InstrumentSpec* instrument = nullptr;
-    FlowAwareMarketMakerConfig flow_config{};
-    double l1_risk_threshold = 0.60;          // four of the old arguments were fractions
-    double l1_stress_spread_multiplier = 2.5; // of the same type, in the same position
+    L1StrategyConfig l1{};                    // the only place an L1 type is still named
     ...
     uint64_t order_size_override = 0;         // ... and two were counts of the same type
 };

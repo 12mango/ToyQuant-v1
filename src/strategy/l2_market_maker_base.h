@@ -17,9 +17,9 @@
 // from this class rather than wrapping it, because a wrapper has to forward every virtual by hand and
 // a forgotten forward changes behaviour silently instead of failing to compile.
 //
-// The file carries `_base` because the family is not readable from a directory listing otherwise:
-// three names ending in `_l2_market_maker.h` look like siblings, and the one every other one extends
-// is not the one a reader would pick.
+// The class and its file both carry `Base` because the family is not readable from a directory listing
+// otherwise: three names ending in `_l2_market_maker.h` look like siblings, and the one every other one
+// extends is not the one a reader would pick.
 
 enum class L2SignalMode
 {
@@ -29,7 +29,7 @@ enum class L2SignalMode
     Flow
 };
 
-struct L2MarketMakerConfig
+struct L2MarketMakerBaseConfig
 {
     uint64_t order_size{1};
     double base_spread{1.0};
@@ -103,10 +103,10 @@ struct L2MarketMakerConfig
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
 // a wrapper has to hand-forward every callback, and a forgotten one changes behaviour silently.
-class L2MarketMaker : public Strategy
+class L2MarketMakerBase : public Strategy
 {
    public:
-    explicit L2MarketMaker(L2MarketMakerConfig config = {}) : config_(config) {}
+    explicit L2MarketMakerBase(L2MarketMakerBaseConfig config = {}) : config_(config) {}
 
     std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                               const TopOfBook& top) override
@@ -486,7 +486,7 @@ class L2MarketMaker : public Strategy
         uint64_t quantity;
     };
 
-    L2MarketMakerConfig config_;
+    L2MarketMakerBaseConfig config_;
     std::unordered_map<uint64_t, StrategyOrder> open_orders_;
     std::deque<TradeVolume> recent_trades_;
     uint64_t buy_volume_{0};

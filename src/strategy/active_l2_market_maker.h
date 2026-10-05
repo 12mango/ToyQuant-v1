@@ -9,7 +9,7 @@
 
 struct ActiveL2MarketMakerConfig
 {
-    L2MarketMakerConfig base;
+    L2MarketMakerBaseConfig base;
     double volatility_alpha{0.25};
     // The halt compares this against a mid-price speed in ticks per second, but that speed is not
     // usable at this feed rate: view gaps here range from microseconds to hundreds of milliseconds, so
@@ -28,16 +28,16 @@ struct ActiveL2MarketMakerConfig
 
 // Adds a volatility halt to the L2 maker.
 //
-// It derives from L2MarketMaker instead of holding one and forwarding each callback. A wrapper has to
+// It derives from L2MarketMakerBase instead of holding one and forwarding each callback. A wrapper has to
 // hand-forward every virtual of the base, and a forgotten forward changes behaviour silently rather
 // than failing to compile: InventoryAwareL2MarketMaker, which was written the other way, never
 // forwarded on_queue_activity, which disabled the base's queue-hold refresh policy and its
 // queue-consumption counters at the same time.
-class ActiveL2MarketMaker final : public L2MarketMaker
+class ActiveL2MarketMaker final : public L2MarketMakerBase
 {
    public:
     explicit ActiveL2MarketMaker(ActiveL2MarketMakerConfig config)
-        : L2MarketMaker(config.base), config_(config)
+        : L2MarketMakerBase(config.base), config_(config)
     {
     }
 
@@ -46,7 +46,7 @@ class ActiveL2MarketMaker final : public L2MarketMaker
     {
         update_volatility(top);
         if (should_pause()) return pause();
-        return L2MarketMaker::on_top_of_book(symbol, top);
+        return L2MarketMakerBase::on_top_of_book(symbol, top);
     }
 
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override
@@ -55,18 +55,18 @@ class ActiveL2MarketMaker final : public L2MarketMaker
         if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0) ++valid_views_;
         if (!warmup_complete()) return {};
         if (should_pause()) return pause();
-        return L2MarketMaker::on_l2_market_view(view);
+        return L2MarketMakerBase::on_l2_market_view(view);
     }
 
     void on_market_trade(const MarketTrade& trade) override
     {
-        L2MarketMaker::on_market_trade(trade);
+        L2MarketMakerBase::on_market_trade(trade);
         ++market_trades_;
     }
 
     StrategyMetrics metrics() const override
     {
-        auto result = L2MarketMaker::metrics();
+        auto result = L2MarketMakerBase::metrics();
         result.risk_pause_count = risk_pause_count_;
         result.edge_gate_skips = edge_gate_skips();
         result.min_spread_skips = min_spread_skips();

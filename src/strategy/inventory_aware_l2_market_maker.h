@@ -9,7 +9,7 @@
 
 struct InventoryAwareL2MarketMakerConfig
 {
-    L2MarketMakerConfig base;
+    L2MarketMakerBaseConfig base;
     int64_t inventory_limit{100};
     double max_inventory_shift_ticks{2.0};
 };
@@ -17,27 +17,27 @@ struct InventoryAwareL2MarketMakerConfig
 // Adds a continuous inventory response to the L2 maker: the side that would grow the position is
 // scaled down and the side that would reduce it is priced more aggressively.
 //
-// It derives from L2MarketMaker instead of holding one and forwarding each callback. The wrapper
+// It derives from L2MarketMakerBase instead of holding one and forwarding each callback. The wrapper
 // version forgot to forward on_queue_activity, which silently disabled the base's queue-hold refresh
 // policy together with its queue-consumption counters: this strategy reported zero consumed queue
 // while the base's own bookkeeping, and the refresh decision built on it, never ran.
-class InventoryAwareL2MarketMaker final : public L2MarketMaker
+class InventoryAwareL2MarketMaker final : public L2MarketMakerBase
 {
    public:
     explicit InventoryAwareL2MarketMaker(InventoryAwareL2MarketMakerConfig config)
-        : L2MarketMaker(config.base), config_(config)
+        : L2MarketMakerBase(config.base), config_(config)
     {
     }
 
     std::vector<StrategyOrder> on_top_of_book(const std::string& symbol,
                                               const TopOfBook& top) override
     {
-        return adjust_orders(L2MarketMaker::on_top_of_book(symbol, top));
+        return adjust_orders(L2MarketMakerBase::on_top_of_book(symbol, top));
     }
 
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override
     {
-        return adjust_orders(L2MarketMaker::on_l2_market_view(view));
+        return adjust_orders(L2MarketMakerBase::on_l2_market_view(view));
     }
 
    private:

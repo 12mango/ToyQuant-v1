@@ -12,11 +12,11 @@
 
 namespace
 {
-L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
+L2MarketMakerBaseConfig make_flow_l2_config(uint64_t order_size, double tick_size,
                                         int64_t inventory_limit, double base_spread,
                                         uint64_t refresh_price_ticks)
 {
-    return L2MarketMakerConfig{.order_size = order_size,
+    return L2MarketMakerBaseConfig{.order_size = order_size,
                                .base_spread = base_spread,
                                .inventory_limit = inventory_limit,
                                .tick_size = tick_size,
@@ -32,7 +32,7 @@ L2MarketMakerConfig make_flow_l2_config(uint64_t order_size, double tick_size,
                                .toxicity_flow_threshold = 0.65};
 }
 
-ActiveL2MarketMakerConfig make_active_l2_config(const L2MarketMakerConfig& base)
+ActiveL2MarketMakerConfig make_active_l2_config(const L2MarketMakerBaseConfig& base)
 {
     // The halt threshold sits on a speed that this feed's view gaps dominate, so it is left at the
     // value the 200,000-row window was recorded with. See the note on the field in
@@ -51,15 +51,15 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     // when these were parameters. What changed is that a caller can no longer pass them in the wrong
     // order without naming the wrong field.
     const InstrumentSpec* instrument = config.instrument;
-    const FlowAwareMarketMakerConfig& flow_config = config.flow_config;
+    const FlowAwareMarketMakerConfig& flow_config = config.l1.flow_config;
     const uint64_t order_size_override = config.order_size_override;
     const int64_t inventory_limit_override = config.inventory_limit_override;
     const double base_spread_ticks_override = config.base_spread_ticks_override;
     const uint64_t refresh_price_ticks_override = config.refresh_price_ticks_override;
-    const double l1_risk_threshold = config.l1_risk_threshold;
-    const double l1_stress_spread_multiplier = config.l1_stress_spread_multiplier;
-    const double l1_minimum_stress_quantity_ratio = config.l1_minimum_stress_quantity_ratio;
-    const double l1_fee_spread_multiplier = config.l1_fee_spread_multiplier;
+    const double l1_risk_threshold = config.l1.risk_threshold;
+    const double l1_stress_spread_multiplier = config.l1.stress_spread_multiplier;
+    const double l1_minimum_stress_quantity_ratio = config.l1.minimum_stress_quantity_ratio;
+    const double l1_fee_spread_multiplier = config.l1.fee_spread_multiplier;
 
     const uint64_t derived_order_size =
         instrument ? std::max(instrument->min_order_quantity, instrument->quantity_scale / 1000)
@@ -146,14 +146,14 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         if (strategy_name == "l2_micro") signal_mode = L2SignalMode::Micro;
         const bool public_flow_strategy = strategy_name == "l2" || strategy_name == "flow_aware_l2";
         if (public_flow_strategy)
-            return std::make_unique<L2MarketMaker>(
+            return std::make_unique<L2MarketMakerBase>(
                 make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
                                 refresh_price_ticks_override > 0 ? refresh_price_ticks_override
                                                                 : 2));
         // The flow strategies returned above through make_flow_l2_config, so the ternaries that used to
         // sit on these values could never take their flow branch. They are spelled out now, which is
         // also what makes the difference between the two configurations readable.
-        return std::make_unique<L2MarketMaker>(L2MarketMakerConfig{
+        return std::make_unique<L2MarketMakerBase>(L2MarketMakerBaseConfig{
             .order_size = order_size,
             .base_spread = spread,
             .inventory_limit = inventory_limit,

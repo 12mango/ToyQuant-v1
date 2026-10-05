@@ -71,7 +71,7 @@ int main()
 
     std::ofstream l2_orders("/tmp/pipeline_l2_queue_orders.csv");
     std::ofstream l2_trades("/tmp/pipeline_l2_queue_trades.csv");
-    L2MarketMaker l2_strategy(L2MarketMakerConfig{.order_size = 10,
+    L2MarketMakerBase l2_strategy(L2MarketMakerBaseConfig{.order_size = 10,
                                                    .base_spread = 0.5,
                                                    .inventory_limit = 100,
                                                    .tick_size = 1.0,
@@ -215,7 +215,7 @@ int main()
     {
         std::ofstream print_orders("/tmp/pipeline_print_orders.csv");
         std::ofstream print_trades("/tmp/pipeline_print_trades.csv");
-        L2MarketMaker print_strategy(L2MarketMakerConfig{.order_size = 1,
+        L2MarketMakerBase print_strategy(L2MarketMakerBaseConfig{.order_size = 1,
                                                          .base_spread = 1.0,
                                                          .inventory_limit = 10,
                                                          .tick_size = 1.0});

@@ -59,12 +59,13 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         auto strategy = make_strategy(name,
                                       StrategyFactoryConfig{
                                           .instrument = &instrument,
-                                          .flow_config = flow_config,
-                                          .l1_risk_threshold = l1_risk_threshold,
-                                          .l1_stress_spread_multiplier = l1_stress_spread_multiplier,
-                                          .l1_minimum_stress_quantity_ratio =
-                                              l1_minimum_stress_quantity_ratio,
-                                          .l1_fee_spread_multiplier = l1_fee_spread_multiplier});
+                                          .l1 = {.flow_config = flow_config,
+                                                 .risk_threshold = l1_risk_threshold,
+                                                 .stress_spread_multiplier =
+                                                     l1_stress_spread_multiplier,
+                                                 .minimum_stress_quantity_ratio =
+                                                     l1_minimum_stress_quantity_ratio,
+                                                 .fee_spread_multiplier = l1_fee_spread_multiplier}});
         OrderBook order_book(instrument.tick_size);
         MatchingEngine engine(instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,

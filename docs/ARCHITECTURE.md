@@ -722,11 +722,11 @@ Six files and three families, which is worth stating because the file names alon
 
 | File | Class | Role |
 |---|---|---|
-| `l2_market_maker_base.h` | `L2MarketMaker` | the L2 family root: the fair-price signal, the quote lifecycle, the queue-hold refresh policy, the counters |
+| `l2_market_maker_base.h` | `L2MarketMakerBase` | the L2 family root: the fair-price signal, the quote lifecycle, the queue-hold refresh policy, the counters |
 | `inventory_aware_l2_market_maker.h` | `InventoryAwareL2MarketMaker` | `final`, adds a position-scaled quote shift on top of the root |
 | `active_l2_market_maker.h` | `ActiveL2MarketMaker` | `final`, adds the volatility halt and the warmup on top of the root |
 
-The root's file carries `_base` even though its class is `L2MarketMaker`, because three names ending in `_l2_market_maker.h` read as siblings otherwise. Each of the leaves derives from the root rather than holding one and forwarding each callback: a wrapper has to hand-forward every virtual, and a forgotten forward changes behaviour silently rather than failing to compile, which is what happened when `InventoryAwareL2MarketMaker` was written the other way and never forwarded `on_queue_activity`.
+The root's class and its file both carry `Base`, because three names ending in `_l2_market_maker.h` read as siblings otherwise, and the one every other one extends is not the one a reader would pick. Each of the leaves derives from the root rather than holding one and forwarding each callback: a wrapper has to hand-forward every virtual, and a forgotten forward changes behaviour silently rather than failing to compile, which is what happened when `InventoryAwareL2MarketMaker` was written the other way and never forwarded `on_queue_activity`.
 
 The strategy is the decision layer, not the matching layer. It sees `TopOfBook`, keeps its own working-order and position state, and returns candidate `StrategyOrder` values. The pipeline later assigns IDs and converts them to `exchange::Order`.
 
@@ -992,7 +992,7 @@ flowchart TD
 
 #### 6.4.1 Fair-price construction
 
-`L2MarketMaker` supports `Baseline`, `Depth`, `Micro`, and `Flow` signal modes. The production
+`L2MarketMakerBase` supports `Baseline`, `Depth`, `Micro`, and `Flow` signal modes. The production
 factory selects `Flow` with a 16-trade FIFO window. In that mode the fair price is:
 
 ```text
@@ -1055,7 +1055,7 @@ be reconsidered. This is a queue-preservation rule, not a profitability assumpti
 
 #### 6.4.4 Active risk overlay
 
-`ActiveL2MarketMaker` composes `L2MarketMaker`; it does not duplicate its inventory or flow logic.
+`ActiveL2MarketMaker` composes `L2MarketMakerBase`; it does not duplicate its inventory or flow logic.
 It maintains a time-normalized midpoint-movement EWMA:
 
 ```text

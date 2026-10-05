@@ -844,7 +844,7 @@ aggregated L2 data leaves open. The only profitable cell is `optimistic` on `act
 warning about the fill assumption rather than a result. The recorded values come from the 200,000-row
 slice at default order sizing, and the full command is inside the marker above.
 
-One scale note, corrected later. `L2MarketMakerConfig::order_size` was `1` and `inventory_limit` was
+One scale note, corrected later. `L2MarketMakerBaseConfig::order_size` was `1` and `inventory_limit` was
 `1`, because `strategy_factory.cpp` derives both from the instrument's `quantity_scale`:
 
 ```cpp
@@ -1017,11 +1017,11 @@ owned, with nothing comparing them. They were fixed together, and the measuremen
 200,000-row depth slice.
 
 **A wrapper that forgot one callback.** `ActiveL2MarketMaker` and `InventoryAwareL2MarketMaker` held an
-`L2MarketMaker` and hand-forwarded each of its eight virtuals. `InventoryAwareL2MarketMaker` never
+`L2MarketMakerBase` and hand-forwarded each of its eight virtuals. `InventoryAwareL2MarketMaker` never
 forwarded `on_queue_activity`, which silently disabled two things at once: the base's queue-consumption
 counters, which reported zero, and the base's queue-hold refresh policy, which is built on the same
 member. A forgotten forward changes behaviour without failing to compile, so both classes now derive
-from `L2MarketMaker` and inherit everything they do not override. On this workload the refresh
+from `L2MarketMakerBase` and inherit everything they do not override. On this workload the refresh
 behaviour barely moved (`price_refresh_count` 221 → 221, age 121 → 120) because the hold only binds at
 a long quote age, but the counters went from `buy/sell_queue_consumed=0/0` to `1310/47480`.
 
