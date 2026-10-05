@@ -226,8 +226,11 @@ double empty_round_trip(uint64_t messages, Make make, uint64_t* checksum)
 double full_ring_push(uint64_t messages, uint64_t* refusals)
 {
     concurrency::SpscRing<uint64_t> ring(kRingCapacity);
+    // The ring holds exactly as many slots as this loop pushes, so every push succeeds. The result is
+    // discarded deliberately and the cast says so: the loop is filling the ring, not asking whether it
+    // can.
     for (std::size_t slot = 0; slot < kRingCapacity; ++slot)
-        ring.try_push(static_cast<uint64_t>(slot));
+        (void)ring.try_push(static_cast<uint64_t>(slot));
     uint64_t refused = 0;
     const auto start = Clock::now();
     for (uint64_t index = 0; index < messages; ++index)

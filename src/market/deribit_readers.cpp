@@ -57,7 +57,7 @@ class DeribitBookSnapshotReader final : public IMarketEventReader
         if (bids_.empty()) throw std::invalid_argument("Deribit book snapshot has no depth levels");
     }
 
-    bool next(MarketEvent& event) override
+    [[nodiscard]] bool next(MarketEvent& event) override
     {
         std::string_view row;
         while (reader_.next_line(row))
@@ -150,7 +150,7 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         column_roles_[amount_column_] = Column::Amount;
     }
 
-    bool next(MarketEvent& event) override
+    [[nodiscard]] bool next(MarketEvent& event) override
     {
         while (true)
         {
@@ -330,7 +330,7 @@ class DeribitTradeReader final : public IMarketEventReader
         amount_column_ = require_column("amount");
     }
 
-    bool next(MarketEvent& event) override
+    [[nodiscard]] bool next(MarketEvent& event) override
     {
         std::string_view row;
         while (reader_.next_line(row))

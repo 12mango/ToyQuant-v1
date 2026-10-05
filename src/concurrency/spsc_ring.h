@@ -92,19 +92,22 @@ class SpscRing
     SpscRing& operator=(const SpscRing&) = delete;
 
     // Producer side. Returns false when the ring is full and leaves the value untouched, so a caller
-    // can retry the same value after waiting for room.
-    bool try_push(const T& value)
+    // can retry the same value after waiting for room. `[[nodiscard]]` because a refused push is the ring
+    // asking to be waited on: a caller that drops the result has dropped an event rather than a value.
+    [[nodiscard]] bool try_push(const T& value)
     {
         return try_emplace(value);
     }
 
-    bool try_push(T&& value)
+    [[nodiscard]] bool try_push(T&& value)
     {
         return try_emplace(std::move(value));
     }
 
-    // Consumer side. Returns false when the ring is empty.
-    bool try_pop(T& out)
+    // Consumer side. Returns false when the ring is empty. Marked `[[nodiscard]]`, like `try_push` and
+    // for a sharper reason: `out` is not written when this returns false, so a caller that ignores the
+    // result reads whatever was already in `out` rather than the value it thinks it took.
+    [[nodiscard]] bool try_pop(T& out)
     {
         const uint64_t read = read_local_;
         if (read == write_.load(std::memory_order_acquire)) return false;

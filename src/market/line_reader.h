@@ -44,8 +44,10 @@ class LineReader
 
     // On success `line` views the internal block (or the growth buffer when a single
     // line exceeds the block) with the trailing "\n" and optional "\r" removed.
-    // Returns false once the input is exhausted.
-    bool next_line(std::string_view& line);
+    // Returns false once the input is exhausted. The result is `[[nodiscard]]` because `line` is not
+    // written when it returns false: a caller that ignores it loops on the last row for ever rather than
+    // stopping, and a caller that used the view would read a block that has since been refilled.
+    [[nodiscard]] bool next_line(std::string_view& line);
 
     // Number of successful block refills, i.e. read()/gzread() calls issued. Exposed so
     // tests can assert block level batching and the profiler can report read overhead.

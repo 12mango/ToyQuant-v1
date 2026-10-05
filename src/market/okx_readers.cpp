@@ -110,7 +110,7 @@ class OkxBookJsonReader final : public IMarketEventReader
         if (quantity_scale_ == 0) throw std::invalid_argument("okx quantity scale must be positive");
     }
 
-    bool next(MarketEvent& event) override
+    [[nodiscard]] bool next(MarketEvent& event) override
     {
         while (true)
         {
@@ -267,7 +267,7 @@ class OkxTradeCsvReader final : public IMarketEventReader
             throw std::invalid_argument("unexpected okx trades columns");
     }
 
-    bool next(MarketEvent& event) override
+    [[nodiscard]] bool next(MarketEvent& event) override
     {
         std::string_view row;
         while (reader_.next_line(row))

@@ -219,6 +219,7 @@ Counts from the repository, so this is an inventory rather than a slogan:
 | `std::list` — one per price level | one node per resting order: cancel is O(1) instead of moving the rest of the level |
 | `std::from_chars` — 7 | the boundary parsers, with an integer fast path in front of the `double` case |
 | `std::array` — 9 | fixed tables, such as the power-of-ten lookup the price parser indexes |
+| `[[nodiscard]]` — 22 | the five returns whose `bool` says whether their out-parameter was written (`SpscRing::try_push` and `try_pop`, `LineReader::next_line`, `IMarketEventReader::next`, `TickLadder::nth`), and the parsers and counters whose value is the whole point of the call. The distinction is the one worth stating: a dropped status is a silent wrong value, while a dropped query is only a call that did nothing |
 
 **Deliberately not used, and why:**
 
@@ -229,8 +230,6 @@ Counts from the repository, so this is an inventory rather than a slogan:
 * **Exceptions on the hot path** — the parsers validate and fall back to a slow path instead of throwing, so a
   malformed field costs time rather than control flow. Exceptions stay at the boundaries, where a missing
   input file should stop the program.
-* **`[[nodiscard]]`** — zero uses, which is a gap worth naming: `TickLadder::nth()` returns a `bool` that a
-  caller can drop silently today.
 
 ### Typed events without a vtable
 

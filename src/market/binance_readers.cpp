@@ -32,7 +32,7 @@ class BinanceAggTradeReader final : public IMarketEventReader
     {
     }
 
-    bool next(MarketEvent& event) override
+    [[nodiscard]] bool next(MarketEvent& event) override
     {
         std::string_view row;
         while (reader_.next_line(row))
@@ -76,7 +76,7 @@ class BinanceBookTickerReader final : public IMarketEventReader
     {
     }
 
-    bool next(MarketEvent& event) override
+    [[nodiscard]] bool next(MarketEvent& event) override
     {
         std::string_view row;
         while (reader_.next_line(row))

@@ -137,8 +137,10 @@ class TickLadder
         return result;
     }
 
-    // The index-th best level. Returns false when this side holds fewer levels.
-    bool nth(std::size_t index, PriceTick& tick, uint64_t& quantity) const
+    // The index-th best level. Returns false when this side holds fewer levels, and writes neither
+    // out-parameter then: the result is `[[nodiscard]]` because ignoring it turns "there is no such
+    // level" into "the level above still holds that quantity".
+    [[nodiscard]] bool nth(std::size_t index, PriceTick& tick, uint64_t& quantity) const
     {
         if (index >= count_ || best_ == kNoBest) return false;
         std::size_t slot = slot_of(best_);

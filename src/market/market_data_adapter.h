@@ -12,7 +12,10 @@ class IMarketEventReader
 {
    public:
     virtual ~IMarketEventReader() = default;
-    virtual bool next(MarketEvent& event) = 0;
+    // `[[nodiscard]]` because the return value is the only thing that says whether `event` was written:
+    // a reader with nothing left returns false and leaves the event untouched, and a caller that ignored
+    // that would process the previous event a second time.
+    [[nodiscard]] virtual bool next(MarketEvent& event) = 0;
 };
 
 struct MarketDataReaders
