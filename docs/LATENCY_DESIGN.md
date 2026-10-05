@@ -663,6 +663,19 @@ confined to the reader has to look like. And the two results triangulate with th
 motivated them: gprof charged `parse_uint64` 16% of application time, the isolation bench showed the
 two-digit loop about 47% faster, and the end-to-end effect came out at 6%.
 
+### Why the parsers are a header of `inline` functions
+
+These functions run once per field per row, and they used to be written inside the reader that called
+them, in one translation unit where the compiler inlined them. Splitting the readers into one file per
+feed family would have moved them into a `.cpp` of their own, and that is not a refactor: an out-of-line
+call per field per row on the hot path is a performance change, and a change that has to be measured
+rather than asserted. They were left in a header as `inline` instead, so the readers are separate files
+and the call still disappears at `-O2`.
+
+The same reasoning puts the cold path in a function of its own. `throw_invalid_uint` carries
+`[[noreturn]]`, the `std::string` construction and the throw with it, so the loops that call the parsers
+do not carry the exception machinery on every row. Only a malformed field pays for it, and it pays once.
+
 ## 6. The hand-off between two threads: `SpscRing`
 
 ### Problem
@@ -703,6 +716,14 @@ Four decisions carry the mechanism, and each has a cheaper-looking alternative t
 - **Slots are raw storage, not values.** `T` may be non-trivial: the producer placement-news into a slot and
   the consumer moves out and destroys it. A ring of bytes would need a separate encoding to carry a
   `MarketEvent`, and the encoding is where the second copy would come from.
+- **A slot's pointer is laundered every time the slot is reused.** `object_at()` goes through
+  `std::launder` rather than a plain `reinterpret_cast`, because the storage is rewritten by a placement
+  new on each wrap: a pointer the compiler formed for the previous object in that slot must not be reused
+  to name the next one, and a ring that skipped the laundering can read the old value back out of a
+  register once the optimizer is allowed to assume the object never changed. `static_assert` carries the
+  other half of the contract at compile time, and it is a real constraint rather than a formality: the
+  value type has to be move-assignable, because the consumer assigns out of the moved-from object before
+  destroying it.
 
 A full ring is **backpressure, not a drop**: `try_push` returns false and leaves the value untouched, so the
 caller retries the same value. That is the property the replay's threading relies on, and it is why the feed

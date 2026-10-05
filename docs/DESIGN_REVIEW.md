@@ -72,6 +72,7 @@ distribution covers every order rather than only the ones a trace was asked for.
 | Integer tick prices everywhere, one conversion function | `src/common/types.h` | float price comparison is a bug generator | the matcher compares `PriceTick`, so no epsilon logic exists anywhere in the engine |
 | `std::stable_sort` for in-flight orders | `src/exchange/matching_engine.cpp` | delivery times collide and submission order has to survive | a replay stays reproducible when two orders are due in the same microsecond |
 | Named config structs, designated initializers | `src/app/strategy_factory.h`, `src/strategy/l2_market_maker.h` | the factory took 11 positional arguments, seven of them `double` | a transposed pair of fractions can no longer compile |
+| Rebuild aside, validate, then `std::move` the result in | `src/orderbook/l2_orderbook.cpp` | a snapshot that fails a check must not leave half a book behind | every rejection path leaves the previous book live, which is what the ordering, cross and symbol checks depend on |
 
 ### The line reader: blocks, `memchr`, and a stated lifetime contract
 
@@ -211,7 +212,7 @@ Counts from the repository, so this is an inventory rather than a slogan:
 | `constexpr` — 46 | the block size, the parse bounds (`kMaxExactMantissa`, `kMaxFastDecimals`), the tick conversion, the ladder's growth constants |
 | `if constexpr` — 10, with `std::variant` + `std::visit` — 9 | one `Pipeline::process_event` for four input formats, resolved at compile time, no vtable |
 | `std::unique_ptr` / `make_unique` — 18 / 16 | the strategy factory hands ownership to the caller; nothing else in the loop is heap-owned by policy |
-| `enum class` — 11 | `Side`, `ExecType`, `QueueModel`, `LiquidityRole`, `AppMode`, `Stage`: scoped, and a mix-up does not compile |
+| `enum class` — 11 | `Side`, `ExecType`, `QueueModel`, `LiquidityRole`, `AppMode`, `Stage`: scoped, and a mix-up does not compile. The four in `common/types.h` also name their underlying type, `uint8_t`, because a side, a run mode, an execution type and a queue model are each carried by structs that travel with every event, and naming the width keeps that a decision rather than a default |
 | `= delete` — 2 | `LineReader` copy construction and assignment: it owns a file handle, so a copy would double-close it |
 | `std::stable_sort` — 2 vs `std::sort` — 4 | where the order *is* the semantics (in-flight orders) against where any order is fine |
 | `std::deque` — 8 | rolling trade windows and the markout queue: append at the back, remove at the front, nothing shifts |
@@ -266,6 +267,49 @@ Every price in the engine, the books and the queue counters is `PriceTick`; a `d
 the boundary where a feed is parsed and where a report is rendered. That removes the entire class of
 "it should have crossed but did not" bugs, because there is no rounding disagreement left to have: the reader
 and the engine call the same function.
+
+### Zero is "nothing", and there is no other sentinel
+
+The project does not use `std::optional` on the data path. "This field means nothing" is a zero, and a
+consumer checks the field rather than the type:
+
+| Where | The zero | What it means |
+|---|---|---|
+| `TickLadder::kNoBest`, `src/orderbook/tick_ladder.h` | `-1` | this side holds no populated level |
+| a ladder slot, `quantity_[slot]` | `0` | the level is not there, which is why no presence bitmap sits beside it |
+| `IncrementalBookUpdate::amount` | `0` | the venue's delete message, applied by the same `set()` that adds a level |
+| an `L2MarketView` on an empty or crossed book | every field | there is no usable touch, so nothing downstream may act on it |
+| `L2OrderBook::local_timestamp_` | `0` | no local timestamp has been seen yet, so the next one cannot be early |
+
+The fourth row is the one with consequences, and it is what makes "a trade without a usable BBO cannot
+create a synthetic fill" true. It is true because three callers test the same field, not because one of
+them raised: `Pipeline::process_l2_market_view` feeds the engine only when both prices are positive,
+`L2MarketMaker::on_l2_market_view` quotes at a mid of zero, which is a cancel, and the run's final mark
+stays at zero. The fifth row is the same idea for a timestamp: the check that the next batch is not early
+is written `local_timestamp_ != 0 && batch.local_ts < local_timestamp_`, so zero carries "nothing seen
+yet" without a second flag to keep in step with it.
+
+The price of the convention is that a reader has to learn it, which is what this section is for. The
+alternative buys a branch and a wider struct on the path of every event, to express a distinction the
+fields already carry.
+
+### The same invariant can be an error on one path and normal on another
+
+A crossed book, meaning a best bid above the best ask, is refused on the snapshot path and tolerated on
+the incremental one:
+
+```cpp
+// src/orderbook/l2_orderbook.cpp
+if (next_bids.best() > next_asks.best()) throw std::invalid_argument("L2 snapshot is crossed");
+```
+
+A snapshot is a venue asserting that its book is clean at one instant, so a crossed one is a broken input
+and the whole update is refused. An incremental stream makes no such assertion: its two sides arrive in
+separate messages, so a book that reads crossed between them is a normal intermediate state rather than a
+fault. The incremental path therefore checks nothing about the two sides together, and the crossed state
+is absorbed one layer up, where `top_of_book()` and `market_view()` return the empty view until the next
+update clears it. Validating there would reject a correct feed, and not validating anywhere would hide a
+defect on the snapshot path, so the two paths cannot share the check.
 
 ### Delivery order is a correctness property, not a preference
 

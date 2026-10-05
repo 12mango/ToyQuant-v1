@@ -238,6 +238,31 @@ snapshot atomically, validates ordering and sequence, and derives an `L2MarketVi
 path passes that view explicitly to the selected strategy after venue and instrument validation;
 raw vendor rows never enter strategy code, and Binance L1 data is not combined with Deribit L2.
 
+One instance of `L2OrderBook` holds one instrument, and that follows from what sits beneath it: a
+`TickLadder` is a flat array sized around one instrument's price span, so a book per symbol would be a map
+of arrays rather than one array. The class enforces the instrument it was built for instead of assuming
+it, and refuses an update that names another symbol.
+
+The two entry points are the two shapes a venue publishes, not two styles of the same code.
+`apply_snapshot` takes whole sides, requires each of them to arrive in price order, and refuses a crossed
+book. `apply_incremental_batch` takes one side at a time, where an amount of zero is the venue's deletion
+message, and checks nothing about the two sides together, because an incremental stream's sides arrive in
+separate messages and the state between them can legitimately read crossed. Both build their result aside
+and swap it in only after every check has passed, so a refused update leaves the previous book live rather
+than half applied. Both emit the same `L2MarketView`, and both produce an empty one when the touch cannot
+be read: an empty side or a crossed pair gives a view whose every field is zero, and the three callers
+that can act on a view each test that field rather than an error.
+
+Two details of the read path are worth knowing before changing it. `price_from_tick` converts a tick back
+to a price and then rounds the result onto the tick grid a second time, so a price the feed wrote as
+`100.0` is reported as `100.0` rather than as `100.00000000000001`; the reports and the order records
+carry those values, so this is what keeps a round trip through ticks equal to the input. And `sequence()`
+is the feed's own sequence on the snapshot path and a batch counter on the incremental one, because an
+incremental message carries no sequence of its own, so a caller that compares sequences has to know which
+path it is on. What the incremental rows do carry is a snapshot flag per row, so a burst of rows belonging
+to one snapshot is recognised as a burst and the book is cleared once at its start rather than once per
+row.
+
 A replay is delivered as fast as the file reads unless the run asks for pacing. `ReplayPacing` maps the file's
 timestamps onto the wall clock, optionally at a speed, and `L2ReplayFeed` reports how late each delivery was
 against that schedule: this process being busy, the reader being slow and the operating system not waking the
@@ -526,6 +551,29 @@ void log(Args&&... args)
 
 Inside `format`, the fold expression `(stream << ... << args)` expands the pack into chained stream insertions. The example above is conceptually `stream << "order=" << id << " qty=" << quantity`. The resulting `std::string` lets the non-template `write` method implement the destination policy only once. The template definitions remain in the header because the compiler must see their bodies when it instantiates them for each argument combination.
 
+### 3.4 Three owners where there was one class
+
+`Pipeline` was one class of 1,261 lines holding the counters, the risk gates, the account, the order
+records and the PnL formula. It is now the coordinator plus three owners, and the line between them is
+**which data a piece of state belongs to** rather than how many lines each piece took:
+
+| Owner | Files | What it holds | The question it answers |
+|---|---|---|---|
+| `OrderLedger` | `src/app/order_ledger.*` | the two CSV writers, the trace of one named order, the per-order audit entry, the queue profile | what happened to *this order* |
+| `RunAccounting` | `src/app/run_accounting.*` | the funding series and its settlements, the two markout queues and the horizon they drain on, the PnL formula | what the *run* measured |
+| `RunSummary` | `src/app/run_summary.h` | `ExecutionQualityMetrics`, `PnlSummary`, and the lines that print them | what the run *reports* |
+
+The counters, the risk gates and the account stay with the coordinator and the `Portfolio`, because they
+are the run rather than a measurement of it. The two owners that were extracted are the ones whose state
+is *not resolved when it is written*: an order's audit entry is opened at submission and closed by the
+report that ends the order, and a markout is queued at the fill and resolved five quote cycles later.
+Those two queues of unresolved things sat beside twenty-one counters, which is what made the class hard to
+read, and it is why the split is by ownership rather than by size.
+
+The split is not a behaviour change, and the gate is what says so: tier 1 asserts the batch counts, the
+orders, the fills, the PnL and the queue-ahead figures, and tier 2 hashes the full 1.5 GB of stdout against
+a stored reference, so an extraction that moved a number fails both.
+
 ## 4. OrderBook: External Market View
 
 **Files:** `src/orderbook/orderbook.h`, `src/orderbook/orderbook.cpp`
@@ -677,6 +725,8 @@ class Strategy
 {
    public:
     virtual ~Strategy() = default;
+
+    // Pure virtual: the pipeline calls these on every strategy, so every strategy must answer.
     virtual std::vector<StrategyOrder> on_top_of_book(
         const std::string& symbol, const TopOfBook& tob) = 0;
     virtual void on_order_submitted(const StrategyOrder& order) = 0;
@@ -684,8 +734,32 @@ class Strategy
     virtual int64_t net_position() const = 0;
     virtual size_t working_order_count() const = 0;
     virtual void on_order_update(const ExecutionReport& report) = 0;
+
+    // Defaulted, and deliberately not pure: a strategy that has nothing to say about the richer
+    // entry point inherits the answer that drops back to the touch.
+    virtual std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view)
+    {
+        return on_top_of_book(view.symbol, view.top);
+    }
+    virtual void on_market_trade(const MarketTrade& trade) { (void)trade; }
+    virtual void on_queue_activity(Side side, uint64_t consumed_quantity) { ... }
+    virtual StrategyMetrics metrics() const { return {}; }
+    virtual void on_markout_estimate(const MarkoutEstimate& estimate) { (void)estimate; }
+    virtual uint64_t markout_gate_skips() const { return 0; }
+    virtual uint64_t flatten_orders() const { return 0; }
+    virtual uint64_t flatten_quantity() const { return 0; }
 };
 ```
+
+The split between those two halves is the design, and it is six pure virtuals against nine defaulted
+ones. A pure virtual is a question the pipeline asks of every strategy, so a strategy that cannot answer
+it should not compile. A defaulted virtual is a question only some strategies have an answer to, and each
+default is chosen so that the ones without an answer are still *correct* rather than merely empty:
+`on_l2_market_view` falls back to the touch, so a strategy written against `TopOfBook` runs on the L2 path
+unchanged, and `on_market_trade` with a `BboQuote` calls the one-argument version rather than duplicating
+it. The remaining callbacks report execution quality, queue activity and the two optional gates, and they
+default to doing nothing and returning zero, which is what keeps a run that did not ask for a gate
+byte-for-byte identical to the same run before the gate existed.
 
 `main.cpp` selects an implementation with `std::make_unique`; the pipeline then uses the common
 interface without knowing which strategy is active. The virtual destructor makes polymorphic
