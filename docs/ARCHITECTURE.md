@@ -781,6 +781,9 @@ byte-for-byte identical to the same run before the gate existed.
 interface without knowing which strategy is active. The virtual destructor makes polymorphic
 ownership safe.
 
+A reader who wants the family as a table rather than as a tour can start at section 6.5, which opens with
+every strategy in the repository by the mechanisms it has.
+
 ### Strategy lifecycle at a glance
 
 ```mermaid
@@ -1145,6 +1148,48 @@ The run summary also records `audited_orders`, `audited_filled_orders`,
 `total_order_lifetime_cycles`. The last field counts quote decision cycles, not elapsed time.
 
 ### 6.5 Strategy families and comparison
+
+Every strategy in the repository, by what it can actually do. The columns are the mechanisms that differ
+between them rather than the ones they share, and the rows are classes rather than names: the L2 family is
+one inheritance chain, so it is three rows, while the frozen L1 line is five separate classes that happen
+to share an interface and seven of the L2 names are one class under seven configurations.
+
+| Strategy | CLI name(s) | Input | Fair price from | Inventory | Flow | Queue | Gates | Halt | Discipline |
+|---|---|---|---|---|---|---|---|---|---|
+| `NaiveMarketMaker` | `naive` | touch | midpoint | none | — | — | — | — | — |
+| `OptimizedMarketMaker` | `optimized` | touch | smoothed midpoint + trend | skew, size, limit | — | — | — | — | — |
+| `PassiveL1MarketMaker` | `passive_l1` | touch | midpoint | limit | — | — | — | — | — |
+| `InventoryAwareL1MarketMaker` | `inventory_aware_l1` | touch | midpoint + skew | skew, size, limit | — | — | — | — | — |
+| `FlowAwareL1MarketMaker` | `flow_aware_l1` | touch | midpoint + flow | limit | window, weights 0.6/0.4 | — | — | — | — |
+| `L1MarketMaker` | `l1` | touch | midpoint + skew + stress | skew, size, limit | window + weights | — | fee-aware spread | stress widening | — |
+| `ActiveL1MarketMaker` | `active_l1` | touch | skew first | skew, size, limit | — | — | — | — | shorter lifetime |
+| `L2MarketMakerBase` | `l2`, `passive_l2`, `l2_baseline`, `l2_depth`, `l2_micro`, `l2_flow`, `flow_aware_l2` | touch + depth | microprice + depth + flow, by mode | skew, limit | guards | **hold** | fee + edge + markout | — | flatten |
+| `InventoryAwareL2MarketMaker` | `inventory_aware_l2` | touch + depth | as the root | skew, limit, **size, reducing side** | guards | hold | fee + edge + markout | — | flatten |
+| `ActiveL2MarketMaker` | `active_l2`, `adaptive_l2` | touch + depth | as the root | skew, limit | guards | hold | fee + edge + markout | **yes, with warmup** | flatten |
+
+Four things that table cannot say, and they matter more than the marks do:
+
+* **The seven `l2` names are one class under seven configurations.** `l2`, `passive_l2`, `l2_baseline`,
+  `l2_depth`, `l2_micro`, `l2_flow` and `flow_aware_l2` all build `L2MarketMakerBase` and differ only in
+  `L2SignalMode` and in whether the flow guards are on, which is what makes the fair-price row a list
+  rather than a value. Adding a signal is a `case` in `fair_price()`, not a class.
+* **The L2 row's mechanisms are off unless a run asks for them.** `edge_cover_ticks` is `0`, `markout_cover`
+  is `false` and `flatten_band_units` is `0` in every recorded run, and the reason is written into the
+  config: a run that does not ask for a gate must behave exactly as it did before the gate existed. So the
+  table describes what the strategies *can* do; what the recorded numbers exercised is in
+  [Performance History](PERFORMANCE_HISTORY.md).
+* **`InventoryAwareL2MarketMaker` and `ActiveL2MarketMaker` are `final` and add one behaviour each** to the
+  same root, so their rows repeat the root's columns on purpose: they inherit the queue-hold policy, the
+  gates and the flatten band, and adding a mechanism to the root adds it to both.
+* **The five L1 rows are frozen rather than maintained.** `src/lines/legacy/` carries them so the recorded
+  L1 results stay reproducible, and the gate pins them instead of describing them: tier 1 asserts their
+  invariants on every edit and tier 2 compares a full-file run byte for byte.
+
+One capability is deliberately absent from the table twice. `NaiveMarketMaker` has no inventory control at
+all — its own comment records what that cost before the refresh triggers were added: 234,576 orders, a 52%
+fill rate and a position of -12,000 contracts on a 200,000-row window. And no strategy in the repository
+crosses the spread on its own initiative: the L2 root rounds each quote onto the tick grid and then clamps
+it to the touch (`bid <= best bid`, `ask >= best ask`), which is what keeps the family maker-only.
 
 For the same `sample_ticks.csv` run, the two legacy Tick strategies diverge immediately:
 
