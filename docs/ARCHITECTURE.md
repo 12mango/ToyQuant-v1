@@ -101,7 +101,7 @@ The source map is:
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/orderbook.*`, `l2_orderbook.*`, `tick_ladder.*` | `TopOfBook`, `OrderBook::market_top`, `L2OrderBook`, `TickLadder` |
 | Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
-| Strategy | `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/lines/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, active L2 family |
+| Strategy | `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/lines/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, baseline pair, active L2 family |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
@@ -716,7 +716,17 @@ mechanism and records the measured effect on the `engine` stage.
 
 ## 6. Strategy: The Main Decision Module
 
-**Files:** `src/strategy/strategy.h`, `src/strategy/market_maker.h`, `src/lines/legacy/l1_market_maker.h`
+**Files:** `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/strategy/l2_market_maker_base.h`, `src/strategy/inventory_aware_l2_market_maker.h`, `src/strategy/active_l2_market_maker.h`, `src/lines/legacy/l1_market_maker.h`
+
+Six files and three families, which is worth stating because the file names alone do not say it. `strategy.h` is the interface everything implements, and it is where the L2 family stops depending on the L1 one: `tools/check_layering.py` keeps that true rather than trusting it, because a `legacy/` include anywhere under `src/strategy/` fails the gate. `baseline_market_makers.h` holds `NaiveMarketMaker` and `OptimizedMarketMaker`, neither of which implements `on_l2_market_view`: they see the touch and nothing else, and they are the baseline the rest is measured against. The active family is three files with one inheritance chain between them, and the middle one is the root:
+
+| File | Class | Role |
+|---|---|---|
+| `l2_market_maker_base.h` | `L2MarketMaker` | the L2 family root: the fair-price signal, the quote lifecycle, the queue-hold refresh policy, the counters |
+| `inventory_aware_l2_market_maker.h` | `InventoryAwareL2MarketMaker` | `final`, adds a position-scaled quote shift on top of the root |
+| `active_l2_market_maker.h` | `ActiveL2MarketMaker` | `final`, adds the volatility halt and the warmup on top of the root |
+
+The root's file carries `_base` even though its class is `L2MarketMaker`, because three names ending in `_l2_market_maker.h` read as siblings otherwise. Each of the leaves derives from the root rather than holding one and forwarding each callback: a wrapper has to hand-forward every virtual, and a forgotten forward changes behaviour silently rather than failing to compile, which is what happened when `InventoryAwareL2MarketMaker` was written the other way and never forwarded `on_queue_activity`.
 
 The strategy is the decision layer, not the matching layer. It sees `TopOfBook`, keeps its own working-order and position state, and returns candidate `StrategyOrder` values. The pipeline later assigns IDs and converts them to `exchange::Order`.
 

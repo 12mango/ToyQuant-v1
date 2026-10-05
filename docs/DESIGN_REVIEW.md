@@ -71,7 +71,7 @@ distribution covers every order rather than only the ones a trace was asked for.
 | `std::variant` + `std::visit` for market events instead of a base class | `src/app/pipeline.cpp`, `src/common/market_event.h` | the event set is closed and known at compile time | jump-table dispatch, no vtable on the hot path, and the compiler forces every alternative to be handled |
 | Integer tick prices everywhere, one conversion function | `src/common/types.h` | float price comparison is a bug generator | the matcher compares `PriceTick`, so no epsilon logic exists anywhere in the engine |
 | `std::stable_sort` for in-flight orders | `src/exchange/matching_engine.cpp` | delivery times collide and submission order has to survive | a replay stays reproducible when two orders are due in the same microsecond |
-| Named config structs, designated initializers | `src/app/strategy_factory.h`, `src/strategy/l2_market_maker.h` | the factory took 11 positional arguments, seven of them `double` | a transposed pair of fractions can no longer compile |
+| Named config structs, designated initializers | `src/app/strategy_factory.h`, `src/strategy/l2_market_maker_base.h` | the factory took 11 positional arguments, seven of them `double` | a transposed pair of fractions can no longer compile |
 | Rebuild aside, validate, then `std::move` the result in | `src/orderbook/l2_orderbook.cpp` | a snapshot that fails a check must not leave half a book behind | every rejection path leaves the previous book live, which is what the ordering, cross and symbol checks depend on |
 
 ### The line reader: blocks, `memchr`, and a stated lifetime contract

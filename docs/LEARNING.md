@@ -63,7 +63,7 @@ A maker pays a fee on every fill, so the spread only matters if it exceeds that 
 it does not: the captured edge is 0.095 ticks per contract against a fee worth 2.57 ticks of the same
 contract, so the strategy earns about 4% of the fee it pays. Widening the quote fixes the ratio and destroys
 the fills: the two cross near five ticks, where the window holds one observation. Both tables, and the code
-that turns the width into a price (`src/strategy/l2_market_maker.h:295`), are in
+that turns the width into a price (`src/strategy/l2_market_maker_base.h:377`), are in
 [Performance History](PERFORMANCE_HISTORY.md).
 
 One BTC-PERPETUAL contract has a fixed 10 USD face value at a price near 6,421, so a half-dollar tick

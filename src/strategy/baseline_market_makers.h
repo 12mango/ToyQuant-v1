@@ -10,6 +10,10 @@
 #include "orderbook/orderbook.h"
 #include "strategy.h"
 
+// The two strategies that quote from the top of book alone: neither implements `on_l2_market_view`, so
+// neither sees depth. They are the baseline the L2 family is measured against, and the file is named
+// for what it holds rather than `market_maker.h`, which read as the root of a family it is not in.
+
 class NaiveMarketMaker : public Strategy
 {
    public:

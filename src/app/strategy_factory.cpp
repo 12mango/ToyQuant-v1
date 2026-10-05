@@ -7,8 +7,8 @@
 #include "lines/legacy/l1_market_maker.h"
 #include "strategy/active_l2_market_maker.h"
 #include "strategy/inventory_aware_l2_market_maker.h"
-#include "strategy/l2_market_maker.h"
-#include "strategy/market_maker.h"
+#include "strategy/l2_market_maker_base.h"
+#include "strategy/baseline_market_makers.h"
 
 namespace
 {

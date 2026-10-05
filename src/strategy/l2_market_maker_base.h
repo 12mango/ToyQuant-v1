@@ -10,6 +10,17 @@
 #include "exchange/execution_report.h"
 #include "strategy/strategy.h"
 
+// The root of the L2 family. It holds the whole quoting engine -- the fair-price signal, the quote
+// lifecycle, the queue-hold refresh policy and the counters -- and the two `final` classes beside it
+// each add one behaviour to it: `inventory_aware_l2_market_maker.h` scales and shifts a quote by the
+// position, and `active_l2_market_maker.h` halts quoting while the mid is moving fast. Both derive
+// from this class rather than wrapping it, because a wrapper has to forward every virtual by hand and
+// a forgotten forward changes behaviour silently instead of failing to compile.
+//
+// The file carries `_base` because the family is not readable from a directory listing otherwise:
+// three names ending in `_l2_market_maker.h` look like siblings, and the one every other one extends
+// is not the one a reader would pick.
+
 enum class L2SignalMode
 {
     Baseline,

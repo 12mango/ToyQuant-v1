@@ -1,5 +1,7 @@
 #include "app/app_config.h"
 
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <filesystem>
 #include <iostream>
@@ -15,6 +17,22 @@
 
 namespace
 {
+// The accepted strategy names, in one place. The usage text prints this list and the validation below
+// searches it, so a name cannot be accepted without being documented: the two were written out
+// separately, and four names (`l2_baseline`, `l2_depth`, `l2_micro`, `l2_flow`) were accepted while the
+// usage text stopped short of them. The order is the order the usage text prints, grouped by family.
+constexpr std::array<std::string_view, 17> kStrategyNames = {
+    // The touch-only baselines. Neither implements the L2 entry point, so neither sees depth.
+    "optimized", "naive",
+    // The frozen L1 line, kept so recorded results stay reproducible rather than re-measured.
+    "l1", "passive_l1", "inventory_aware_l1", "flow_aware_l1", "active_l1",
+    // The active L2 line. These are one class under several signal configs, which is why the names
+    // outnumber the classes they select.
+    "l2", "passive_l2", "l2_baseline", "l2_depth", "l2_micro", "l2_flow", "flow_aware_l2",
+    "inventory_aware_l2", "active_l2", "adaptive_l2",
+};
+constexpr std::string_view kDefaultStrategyName = "optimized";
+
 constexpr std::string_view kProfileStagesPrefix = "--profile-stages=";
 constexpr std::string_view kLivePacingPrefix = "--live-pacing=";
 constexpr std::string_view kRecordPrefix = "--record=";
@@ -110,7 +128,14 @@ void print_usage(const char* executable)
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
                      "values derived from the instrument quantity scale | --base-spread-ticks=N "
                      "sets the quote half-spread, 1 being the venue touch\n";
-        std::cerr << "   strategy: optimized (default) | naive | l1 | passive_l1 | inventory_aware_l1 | flow_aware_l1 | active_l1 | passive_l2 | inventory_aware_l2 | flow_aware_l2 | active_l2 | adaptive_l2 | l2\n";
+        std::cerr << "   strategy: ";
+        for (const std::string_view name : kStrategyNames)
+        {
+            if (name != kStrategyNames.front()) std::cerr << " | ";
+            std::cerr << name;
+            if (name == kDefaultStrategyName) std::cerr << " (default)";
+        }
+        std::cerr << "\n";
         std::cerr << "   queue_model: prorata (default, calibrated) | lumpy (same mean, real variance) | "
                      "conservative (lower bound) | optimistic (upper bound)\n";
         std::cerr << "   arrival: --arrival-share=X sets the share of the displayed size a new quote "
@@ -747,15 +772,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
     }
     if (!is_replay_mode && argc >= 5) cfg.strategy_name = argv[4];
 
-    if (cfg.strategy_name != "optimized" && cfg.strategy_name != "naive" &&
-        cfg.strategy_name != "l1" && cfg.strategy_name != "passive_l1" &&
-        cfg.strategy_name != "inventory_aware_l1" && cfg.strategy_name != "flow_aware_l1" &&
-        cfg.strategy_name != "active_l1" && cfg.strategy_name != "l2" &&
-        cfg.strategy_name != "passive_l2" && cfg.strategy_name != "inventory_aware_l2" &&
-        cfg.strategy_name != "flow_aware_l2" && cfg.strategy_name != "adaptive_l2" &&
-        cfg.strategy_name != "active_l2" &&
-        cfg.strategy_name != "l2_baseline" && cfg.strategy_name != "l2_depth" &&
-        cfg.strategy_name != "l2_micro" && cfg.strategy_name != "l2_flow")
+    // One list, searched rather than spelled out: the names this accepts and the names the usage text
+    // prints are the same array, so they cannot drift apart again.
+    const std::string_view requested_strategy = cfg.strategy_name;
+    if (std::find(kStrategyNames.begin(), kStrategyNames.end(), requested_strategy) ==
+        kStrategyNames.end())
     {
         error = "unsupported strategy name";
         return false;

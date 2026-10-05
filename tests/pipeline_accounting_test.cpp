@@ -14,8 +14,8 @@
 #include "exchange/matching_engine.h"
 #include "market/funding_rate.h"
 #include "orderbook/orderbook.h"
-#include "strategy/l2_market_maker.h"
-#include "strategy/market_maker.h"
+#include "strategy/l2_market_maker_base.h"
+#include "strategy/baseline_market_makers.h"
 #include "utils/logger.h"
 
 int main()

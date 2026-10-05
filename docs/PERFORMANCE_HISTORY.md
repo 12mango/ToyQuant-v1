@@ -101,7 +101,7 @@ story". The knob is `config_.base_spread`, and widening it moves both sides away
 the tick rounding and the clamp that stops a quote from being more aggressive than the touch:
 
 ```cpp
-// src/strategy/l2_market_maker.h:295
+// src/strategy/l2_market_maker_base.h:377
 const double raw_bid_price = std::floor((fair_price - config_.base_spread - inventory_shift -
                                          weak_flow_spread_shift) / config_.tick_size) * config_.tick_size;
 const double raw_ask_price = std::ceil((fair_price + config_.base_spread - inventory_shift +
