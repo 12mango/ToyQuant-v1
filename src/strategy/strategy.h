@@ -7,7 +7,7 @@
 #include "exchange/execution_report.h"
 #include "common/market_event.h"
 #include "orderbook/l2_market_view.h"
-#include "orderbook/orderbook.h"
+#include "orderbook/top_of_book.h"
 
 struct StrategyOrder
 {

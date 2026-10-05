@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "orderbook/orderbook.h"
+#include "orderbook/top_of_book.h"
 
 struct L2MarketView
 {

@@ -5,14 +5,7 @@
 #include "common/tick.h"
 #include "common/types.h"
 #include "common/market_event.h"
-
-struct TopOfBook
-{
-    double bid_price{0};
-    uint64_t bid_size{0};
-    double ask_price{0};
-    uint64_t ask_size{0};
-};
+#include "orderbook/top_of_book.h"
 
 class IOrderBook
 {

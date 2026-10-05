@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "exchange/execution_report.h"
-#include "orderbook/orderbook.h"
+#include "orderbook/top_of_book.h"
 #include "strategy.h"
 
 // The two strategies that quote from the top of book alone: neither implements `on_l2_market_view`, so
