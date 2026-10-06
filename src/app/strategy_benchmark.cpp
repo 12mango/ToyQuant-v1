@@ -54,20 +54,17 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
 
         auto strategy = make_strategy(
             name, StrategyFactoryConfig{.instrument = &instrument, .l1 = l1_config});
-        MatchingEngine engine(instrument.tick_size,
-                              FeeSchedule{.maker_rate = instrument.maker_fee_rate,
-                                          .taker_rate = instrument.taker_fee_rate,
-                                          .quantity_scale = instrument.quantity_scale,
-                                          .unit_notional_usd = instrument.unit_notional_usd,
-                                          .multiplier = instrument.multiplier,
-                                          .fee_per_share = instrument.fee_per_share,
-                                          .min_commission_per_order = instrument.min_commission_per_order,
-                                          .regulatory_fee_rate = instrument.regulatory_fee_rate,
-                                          .clearing_fee_per_share = instrument.clearing_fee_per_share,
-                                          .audit_fee_per_share = instrument.audit_fee_per_share,
-                                          .maker_rebate_per_share = instrument.maker_rebate_per_share},
-                              1, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0, 0,
-                              instrument.lot_size, instrument.min_order_quantity);
+        // The schedule comes off the instrument through the one function that reads it, which is the rule
+        // its own comment states: a term listed by hand at a construction site is a term that stops being
+        // applied the day it is added to the instrument, and the run then prices it at zero in silence.
+        //
+        // The queue arguments after it are the engine's defaults, and on this path they are inert: the L1
+        // line's feed carries trades and a best bid and offer with no depth, so there is no level for a
+        // queue to be attached to. A queue model here would be a knob that changes nothing, which is why
+        // the L1 comparisons can be read as a price-touch model at all.
+        MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument), 1, QueueModel::ProRata, 1,
+                              kDefaultQueueSeed, 1.0, 0, 0, instrument.lot_size,
+                              instrument.min_order_quantity);
         Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
         Pipeline pipeline(orders, trades, *strategy, engine, portfolio, instrument.tick_size);

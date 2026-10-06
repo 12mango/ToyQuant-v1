@@ -100,7 +100,7 @@ The source map is:
 | Hand-off between threads | `src/concurrency/spsc_ring.h` | `SpscRing::try_push`, `SpscRing::try_pop`, `LatencyHistogram` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/top_of_book.h`, `l2_orderbook.*`, `l2_market_view.h`, `tick_ladder.*` | `TopOfBook`, `L2OrderBook`, `L2MarketView`, `TickLadder` |
-| Matching | `src/exchange/matching_engine.*` | `MatchingEngine::match`, `send_order` |
+| Matching | `src/exchange/matching_engine.*`, `queue_model.h` | `MatchingEngine::match`, `send_order`, `QueueAheadModel::advance_quantity` |
 | Strategy | `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/lines/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, baseline pair, active L2 family |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
@@ -639,7 +639,7 @@ identity, comparison, and ordering deterministic while retaining readable public
 
 ## 5. MatchingEngine: Orders, Queues, and Reports
 
-**Files:** `src/exchange/order.h`, `execution_report.h`, `matching_engine.*`
+**Files:** `src/exchange/order.h`, `execution_report.h`, `matching_engine.*`, `queue_model.h`
 
 The exchange namespace defines the order vocabulary. `Order` carries identity, symbol, side, limit or market type, original quantity, remaining quantity, timestamp, and owner. `ExecutionReport` adds the event type and reports either a fill or a lifecycle transition.
 
@@ -1097,7 +1097,10 @@ from `InstrumentSpec`; the current Deribit BTC perpetual benchmark assumes maker
 markout, inventory, and refresh-cause metrics together.
 
 The matching engine supports four queue interpretations, and they are one family rather than four
-opinions. When a level's displayed size falls by `r` with no trade at that price, the only unknown is how
+opinions. They are one class with one method in `src/exchange/queue_model.h`, which is a name the table
+below can be read against: the arithmetic used to be a lambda inside `MatchingEngine::process_bbo_for`, so
+the four names the command line takes and the four rows here were separated by a hundred lines of book
+update code. When a level's displayed size falls by `r` with no trade at that price, the only unknown is how
 much of that `r` was ahead of a resting order, and each model is a claim about that one random variable,
 `X(r)`, with `q` the share of the display that is ahead of the order:
 

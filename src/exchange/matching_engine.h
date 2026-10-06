@@ -3,7 +3,6 @@
 #include <functional>
 #include <list>
 #include <map>
-#include <random>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -13,6 +12,7 @@
 #include "execution_report.h"
 #include "common/market_event.h"
 #include "order.h"
+#include "queue_model.h"
 
 // Every draw in QueueModel::Lumpy comes from a generator seeded with the date of the recorded window,
 // so a lumpy run is reproducible by default. A different seed is a replication of the same model
@@ -156,9 +156,7 @@ class MatchingEngine : public IMatchingEngine
                              uint64_t min_order_quantity = 1)
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
-                    queue_model_(queue_model),
-                    lump_chunks_(lump_chunks == 0 ? 1 : lump_chunks),
-                    queue_rng_(random_seed),
+                    queue_ahead_model_(queue_model, lump_chunks, random_seed),
                     arrival_share_(arrival_share < 0.0 ? 0.0
                                                        : arrival_share > 1.0 ? 1.0 : arrival_share),
                     order_latency_us_(order_latency_us),
@@ -309,12 +307,10 @@ class MatchingEngine : public IMatchingEngine
     void advance_to(uint64_t ts);
     void send_order_now(const exchange::Order& order);
 
-    QueueModel queue_model_{QueueModel::ProRata};
-    // Chunks per level decrease for QueueModel::Lumpy, and the generator that draws them. The seed is
-    // fixed so a lumpy run is reproducible: one seed is a replication, not a random experiment, and
-    // the spread across seeds is the quantity worth reporting.
-    uint64_t lump_chunks_{1};
-    std::mt19937_64 queue_rng_{kDefaultQueueSeed};
+    // The queue model's arithmetic, which `process_bbo_for` applies to a level. It was a lambda in that
+    // method; it is a named component because the four models are a documented mechanism, and because the
+    // difference between them was otherwise visible only to a reader of that method.
+    QueueAheadModel queue_ahead_model_{QueueModel::ProRata, 1, kDefaultQueueSeed};
     double arrival_share_{1.0};
     // Orders do not exist in the book until the exchange has had them for this long, measured on the
     // clock the market events carry. Zero is a synchronous engine, which is what every recorded run
