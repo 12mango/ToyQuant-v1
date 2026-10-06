@@ -51,7 +51,8 @@ def write_window(source, target, timestamp_names, start, end):
 
 def benchmark(binary, trades, quotes, symbol, scale):
     output = subprocess.run(
-        [binary, str(trades), str(quotes), symbol, str(scale)],
+        [binary, f"--trades={trades}", f"--quotes={quotes}", f"--symbol={symbol}",
+         f"--quantity-scale={scale}"],
         check=True,
         text=True,
         capture_output=True,

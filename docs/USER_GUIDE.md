@@ -516,23 +516,22 @@ mainline is `active_l2`.
 | `flow_aware_l1` | Recent trade-flow and BBO imbalance response |
 | `l1` | The complete replay-oriented strategy and default mainline comparison |
 
-For a side-by-side replay comparison, use the benchmark target:
+For a side-by-side replay comparison, use the benchmark target. It takes named options, and
+`--help` lists them with the defaults they carry:
 
 ```bash
 ./out/build/linux-debug/strategy_benchmark \
-  data/v2/fixtures/test_aggTrades_5k.csv \
-  data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 1000000
+  --trades=data/v2/fixtures/test_aggTrades_5k.csv \
+  --quotes=data/v2/fixtures/test_bookTicker_5k.csv --symbol=BTCUSDT --quantity-scale=1000000
 ```
 
-To keep one continuous strategy state while recording hourly checkpoints, append the optional
-timeline path after the parameter list:
+To keep one continuous strategy state while recording hourly checkpoints, pass `--timeline=PATH`:
 
 ```bash
 ./out/build/linux-debug/strategy_benchmark \
-  data/v2/crypto/BTCUSDT-aggTrades-2024-03-30.csv \
-  data/v2/crypto/BTCUSDT-bookTicker-2024-03-30.csv BTCUSDT 1000000 \
-  0.6 0.4 0.06 0.08 0.20 1 0.60 2.5 0.10 0.40 \
-  reports/strategy_timeline.csv
+  --trades=data/v2/crypto/BTCUSDT-aggTrades-2024-03-30.csv \
+  --quotes=data/v2/crypto/BTCUSDT-bookTicker-2024-03-30.csv --symbol=BTCUSDT \
+  --quantity-scale=1000000 --timeline=reports/strategy_timeline.csv
 ```
 
 The timeline keeps the replay state continuous and records cumulative hourly orders, fills,

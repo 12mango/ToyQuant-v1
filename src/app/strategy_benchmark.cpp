@@ -20,11 +20,7 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
                                                             const std::string& quotes_path,
                                                             const std::string& symbol,
                                                             uint64_t quantity_scale,
-                                                            const FlowAwareMarketMakerConfig& flow_config,
-                                                            double l1_risk_threshold,
-                                                            double l1_stress_spread_multiplier,
-                                                            double l1_minimum_stress_quantity_ratio,
-                                                            double l1_fee_spread_multiplier,
+                                                            const L1StrategyConfig& l1_config,
                                                             const std::string& timeline_path)
 {
     if (symbol.empty()) throw std::invalid_argument("benchmark symbol cannot be empty");
@@ -56,16 +52,8 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         orders << "ts,symbol,side,price,quantity,order_id\n";
         trades << "ts,symbol,side,price,quantity,order_id,liquidity_role,fee\n";
 
-        auto strategy = make_strategy(name,
-                                      StrategyFactoryConfig{
-                                          .instrument = &instrument,
-                                          .l1 = {.flow_config = flow_config,
-                                                 .risk_threshold = l1_risk_threshold,
-                                                 .stress_spread_multiplier =
-                                                     l1_stress_spread_multiplier,
-                                                 .minimum_stress_quantity_ratio =
-                                                     l1_minimum_stress_quantity_ratio,
-                                                 .fee_spread_multiplier = l1_fee_spread_multiplier}});
+        auto strategy = make_strategy(
+            name, StrategyFactoryConfig{.instrument = &instrument, .l1 = l1_config});
         MatchingEngine engine(instrument.tick_size,
                               FeeSchedule{.maker_rate = instrument.maker_fee_rate,
                                           .taker_rate = instrument.taker_fee_rate,

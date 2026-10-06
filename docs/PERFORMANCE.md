@@ -71,7 +71,8 @@ could and could not answer, and why the queue model moved to the L2 path — is 
 
 ```bash
 /usr/bin/time -f '%e' ./out/build/linux-debug/strategy_benchmark \
-  data/v2/fixtures/test_aggTrades_5k.csv data/v2/fixtures/test_bookTicker_5k.csv BTCUSDT 1000000
+  --trades=data/v2/fixtures/test_aggTrades_5k.csv \
+  --quotes=data/v2/fixtures/test_bookTicker_5k.csv --symbol=BTCUSDT --quantity-scale=1000000
 ```
 
 ## 2. Environment

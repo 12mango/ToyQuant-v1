@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "lines/legacy/l1_market_maker_config.h"
+#include "app/strategy_factory.h"
 
 struct StrategyBenchmarkResult
 {
@@ -45,13 +45,14 @@ struct StrategyBenchmarkResult
     double max_trade_deviation_bps{0.0};
 };
 
+// The same decision `make_strategy` made, applied to the driver that calls it. These were ten parameters of
+// which nine were scalars, four of them consecutive doubles that mean different things: a caller could
+// transpose the stress multiplier with the fee multiplier and still compile. `L1StrategyConfig` already
+// holds exactly those four with the defaults this function used to repeat, and `make_strategy` already
+// reads them from there, so the four are one parameter and the numbers live in one place.
 std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& trades_path,
                                                             const std::string& quotes_path,
                                                             const std::string& symbol,
                                                             uint64_t quantity_scale = 1000000,
-                                                            const FlowAwareMarketMakerConfig& flow_config = {},
-                                                            double l1_risk_threshold = 0.60,
-                                                            double l1_stress_spread_multiplier = 2.5,
-                                                            double l1_minimum_stress_quantity_ratio = 0.10,
-                                                            double l1_fee_spread_multiplier = 0.40,
+                                                            const L1StrategyConfig& l1_config = {},
                                                             const std::string& timeline_path = {});

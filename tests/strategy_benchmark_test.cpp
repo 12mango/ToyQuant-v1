@@ -77,8 +77,7 @@ int main()
     quotes.close();
 
     const auto results = run_strategy_benchmark(trades_path.string(), quotes_path.string(),
-                                                "BTCUSDT", 1000000, {}, 0.60, 2.5, 0.10,
-                                                0.40, timeline_path.string());
+                                                "BTCUSDT", 1000000, {}, timeline_path.string());
     const auto& inventory = find_result(results, "inventory_aware_l1");
     const auto& flow = find_result(results, "flow_aware_l1");
 
