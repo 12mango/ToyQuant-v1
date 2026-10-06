@@ -8,7 +8,13 @@ claims worth checking mechanically are the ones with a single source of truth in
   * every `--flag` a document mentions exists in one of the binaries' parsers, and every flag the main
     binary accepts is documented;
   * every queue model is mentioned, and no document names a model that does not exist;
-  * every path under `tools/` a document refers to exists.
+  * every path under `tools/` a document refers to exists;
+  * the tree's file and line counts, the size table's entries and the test-binary count are counted again
+    here rather than trusted.
+
+What it does not check is the other half of a counted claim: a figure that describes a past run, a timing,
+or a ratio between two numbers that were never measured against each other. The list above is the part with
+a single source of truth that a program can read.
 
 Usage:
     python3 tools/lint_prose.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md ...
@@ -24,6 +30,40 @@ MODEL_ENUM = re.compile(r"enum class QueueModel[^}]*\{(?P<body>[^}]*)\}", re.DOT
 MODEL_NAME_CASE = re.compile(r'case QueueModel::\w+:\s*\n\s*return "(\w+)"')
 DOCUMENTED_FLAG = re.compile(r"`(--[\w-]+)")
 TOOL_PATH = re.compile(r"\b(tools/[\w.]+\.(?:sh|py))\b")
+SOURCE_FILE = re.compile(r"\.(?:h|cpp)$")
+# The tree's size as the documents state it, and the two shorter ways the same claim is made. Each pattern
+# is required to match: a checker that goes quiet because a sentence was reworded is worse than no checker,
+# because it is still believed.
+SIZE_BREAKDOWN = re.compile(r"(\d[\d,]*) files, ([\d,]+) lines: (.+)")
+BREAKDOWN_ENTRY = re.compile(r"`([\w/]+)` ([\d,]+)")
+SOURCE_LINE_CLAIM = re.compile(r"is ([\d,]+) lines of source")
+TEST_BINARY_CLAIM = re.compile(r"(\d+) (?:unit-)?test binaries")
+TEST_TARGET = re.compile(r"^\s*add_toy_test\((\w+)\)", re.MULTILINE)
+
+
+def counted_source(root):
+    """Files and lines per directory, with `lines/legacy` counted on its own.
+
+    Lines are newlines, which is what `wc -l` counts, because those are the numbers the documents already
+    carry. A checker that disagreed with how the figure was measured would be a checker nobody trusts.
+    """
+    counts = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or not SOURCE_FILE.search(path.name):
+            continue
+        parts = path.relative_to(root).parts
+        if "legacy" in parts:
+            key = "legacy"
+        elif len(parts) == 1:
+            # `src/main.cpp` has no directory of its own, and the size table used to leave it out while the
+            # total counted it, which is why the table's entries did not add up to its own total.
+            key = "main"
+        else:
+            key = parts[0]
+        entry = counts.setdefault(key, [0, 0])
+        entry[0] += 1
+        entry[1] += path.read_text().count("\n")
+    return counts
 
 
 def main():
@@ -39,6 +79,10 @@ def main():
                         default=Path("src/app/strategy_benchmark_main.cpp"))
     # The queue models live beside the enum, not in the engine that switches on them.
     parser.add_argument("--types", type=Path, default=Path("src/common/types.h"))
+    # The counted claims: the tree the size figures describe, and the build that says how many test binaries
+    # the gate runs.
+    parser.add_argument("--source", type=Path, default=Path("src"))
+    parser.add_argument("--cmake", type=Path, default=Path("CMakeLists.txt"))
     args = parser.parse_args()
 
     config = args.config.read_text()
@@ -71,11 +115,54 @@ def main():
         if not Path(name).exists():
             problems.append(f"{name} is referenced by a document and does not exist")
 
+    # The counts. They are hand-copied into prose, nothing else reads them, and one drifted for a whole
+    # commit before anyone noticed: the CLI change added ninety-eight lines to `app` while the size table
+    # still said 4120. This is the part of the documents that says how big the repository is, so it is
+    # measured here instead of believed.
+    counts = counted_source(args.source)
+    if not counts:
+        problems.append(f"no source files found under {args.source}")
+    total_files = sum(entry[0] for entry in counts.values())
+    total_lines = sum(entry[1] for entry in counts.values())
+
+    size = SIZE_BREAKDOWN.search(text)
+    if size is None:
+        problems.append("no document states the size of the tree as '<files> files, <lines> lines: ...'")
+    else:
+        if int(size.group(1).replace(",", "")) != total_files:
+            problems.append(
+                f"a document states {size.group(1)} source files and the tree has {total_files}")
+        if int(size.group(2).replace(",", "")) != total_lines:
+            problems.append(
+                f"a document states {size.group(2)} source lines and the tree has {total_lines}")
+        entries = {name: int(value.replace(",", ""))
+                   for name, value in BREAKDOWN_ENTRY.findall(size.group(3))}
+        for name, stated in sorted(entries.items()):
+            measured = counts.get(name)
+            if measured is None:
+                problems.append(f"the size table names `{name}` and the tree has no such directory")
+            elif measured[1] != stated:
+                problems.append(f"`{name}` has {measured[1]} lines and the size table states {stated}")
+        for name in sorted(set(counts) - set(entries)):
+            problems.append(f"the tree has `{name}` and the size table leaves it out")
+        if sum(entries.values()) != total_lines:
+            problems.append(f"the size table's entries add up to {sum(entries.values())} and the total "
+                            f"states {total_lines}")
+
+    for stated in SOURCE_LINE_CLAIM.findall(text):
+        if int(stated.replace(",", "")) != total_lines:
+            problems.append(f"a document states {stated} source lines and the tree has {total_lines}")
+    test_targets = TEST_TARGET.findall(args.cmake.read_text())
+    for stated in TEST_BINARY_CLAIM.findall(text):
+        if int(stated) != len(test_targets):
+            problems.append(f"a document states {stated} test binaries and the build registers "
+                            f"{len(test_targets)}")
+
     for problem in problems:
         print(f"FAIL {problem}")
     print(
-        f"checked {len(mentioned)} flags and {len(models)} queue models against "
-        f"{len(args.documents)} document(s), {len(problems)} problem(s)"
+        f"checked {len(mentioned)} flags, {len(models)} queue models and {total_files} source files "
+        f"({total_lines} lines) against {len(args.documents)} document(s), {len(problems)} problem(s)"
     )
     return 1 if problems else 0
 
