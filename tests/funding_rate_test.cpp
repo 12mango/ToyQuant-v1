@@ -1,11 +1,6 @@
-// The checks in this test are the test: keep them enabled even when the build defines
-// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include "accounting/portfolio.h"
 #include "market/funding_rate.h"
+#include "support/test_support.h"
 
 #include <cassert>
 #include <cmath>
@@ -21,12 +16,22 @@ namespace
 constexpr double kMsPerYear = 365.0 * 24.0 * 60.0 * 60.0 * 1000.0;
 constexpr uint64_t kEightHours = 8ULL * 60ULL * 60ULL * 1000ULL;
 
+// The inputs of these cases live in one directory, which is removed when the process ends. The call sites
+// keep plain strings, because that is what the reader constructors take, so this is the one place where a
+// scratch file has to outlive the function that wrote it -- and the directory is what makes that safe
+// rather than a leak into `/tmp`.
+const std::filesystem::path& scratch()
+{
+    static const test_support::TempDir directory("funding_rate_test");
+    return directory.path();
+}
+
 std::string write_file(const std::string& name, const std::string& contents)
 {
-    const auto path = std::filesystem::temp_directory_path() / name;
+    const std::filesystem::path path = scratch() / name;
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     out << contents;
-    out.close();
+    assert(out.good() && "a scratch file the test cannot write is the test's failure, not the code's");
     return path.string();
 }
 

@@ -1,10 +1,5 @@
-// The checks in this test are the test: keep them enabled even when the build defines
-// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include "market/line_reader.h"
+#include "support/test_support.h"
 
 #include <algorithm>
 #include <cassert>
@@ -41,13 +36,6 @@ std::string mixed_payload()
     payload += "\n";
     payload += "deribit,BTC-PERPETUAL,1585699301000000,1585699301000001,true,bid,6420.5,3";
     return payload;
-}
-
-void write_text(const std::filesystem::path& path, const std::string& content)
-{
-    std::ofstream output(path, std::ios::binary);
-    assert(output);
-    output.write(content.data(), static_cast<std::streamsize>(content.size()));
 }
 
 // Reference semantics for the reader: split on '\n', drop one trailing '\r'.
@@ -96,12 +84,13 @@ void expect_equal(const std::vector<std::string>& actual, const std::vector<std:
 
 int main()
 {
-    const auto root = std::filesystem::temp_directory_path();
-    const auto plain_path = root / "toy_quant_line_reader.csv";
-    const auto gzip_path = root / "toy_quant_line_reader.csv.gz";
+    test_support::TempFile plain_file("line_reader.csv");
+    test_support::TempFile gzip_file("line_reader.csv.gz");
+    const auto& plain_path = plain_file.path();
+    const auto& gzip_path = gzip_file.path();
 
     const std::string payload = mixed_payload();
-    write_text(plain_path, payload);
+    plain_file.write(payload);
 
     const auto expected = reference_lines(plain_path.string());
     assert(expected.size() == 204);
@@ -130,13 +119,12 @@ int main()
 
     // A single line larger than the block must grow the buffer instead of looping forever.
     {
-        const auto long_path = root / "toy_quant_line_reader_long.csv";
+        test_support::TempFile long_file("line_reader_long.csv");
         std::string long_payload(200000, 'x');
         long_payload += "\nshort\n";
-        write_text(long_path, long_payload);
-        expect_equal(reader_lines(long_path.string(), std::size_t{64}),
+        long_file.write(long_payload);
+        expect_equal(reader_lines(long_file.path().string(), std::size_t{64}),
                      {std::string(200000, 'x'), "short"}, "line larger than the block");
-        std::filesystem::remove(long_path);
     }
 
     // Block level batching: one refill, not one read per line.
@@ -181,8 +169,6 @@ int main()
         }
     }
 
-    std::filesystem::remove(plain_path);
-    std::filesystem::remove(gzip_path);
     std::cout << "line_reader_test passed\n";
     return 0;
 }

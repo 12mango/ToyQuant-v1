@@ -1,9 +1,3 @@
-// The checks in this test are the test: keep them enabled even when the build defines
-// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include "market/market_data_adapter.h"
 
 #include <cassert>
@@ -15,6 +9,7 @@
 #include <vector>
 
 #include "market/replay_feed.h"
+#include "support/test_support.h"
 
 #ifndef PROJECT_ROOT_DIR
 #define PROJECT_ROOT_DIR "."
@@ -106,7 +101,8 @@ int main()
     }
     assert(rejected_sequence_regression);
 
-    const auto snapshot_path = std::filesystem::temp_directory_path() / "toy_quant_depth_snapshot.csv";
+    test_support::TempFile snapshot_file("depth_snapshot.csv");
+    const auto& snapshot_path = snapshot_file.path();
     {
         std::ofstream output(snapshot_path);
         output << "exchange,symbol,timestamp,asks[0].price,asks[0].amount,bids[0].price,bids[0].amount,"
@@ -133,7 +129,6 @@ int main()
     assert(second_snapshot.sequence == 2);
     assert(second_snapshot.ts > first_timestamp);
     assert(!snapshot_reader->next(snapshot_event));
-    std::filesystem::remove(snapshot_path);
 
     const auto deribit_trades = root / "data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz";
     if (std::filesystem::exists(deribit_trades))
@@ -157,8 +152,8 @@ int main()
 
     // Incremental book reader: batches group rows by local_timestamp, the snapshot batch
     // starts the stream, CRLF rows are accepted, and the final row has no newline.
-    const auto incremental_path =
-        std::filesystem::temp_directory_path() / "toy_quant_incremental_book.csv";
+    test_support::TempFile incremental_file("incremental_book.csv");
+    const auto& incremental_path = incremental_file.path();
     {
         std::ofstream output(incremental_path);
         output << "exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount\r\n"
@@ -223,13 +218,13 @@ int main()
     MarketEvent routed_event;
     assert(routed_reader->next(routed_event));
     assert(std::holds_alternative<IncrementalBookBatch>(routed_event));
-    std::filesystem::remove(incremental_path);
 
     // An OKX order book file is JSON Lines: one snapshot line carrying the whole book, then update lines that
     // carry only the levels that changed. Sizes are contract counts, so an amount is the size times the
     // contract value, and a size of zero is how this feed removes a level.
     {
-        const auto okx_book = std::filesystem::temp_directory_path() / "okx_book_test.jsonl";
+        test_support::TempFile okx_book_file("okx_book_test.jsonl");
+        const auto& okx_book = okx_book_file.path();
         {
             std::ofstream file(okx_book);
             file << R"({"instId":"BTC-USDT-SWAP","action":"snapshot","ts":"1767744000007",)"
@@ -278,12 +273,12 @@ int main()
         assert(second.updates.size() == 1);
         assert(second.updates[0].amount == 119000);
         assert(!reader->next(event));
-        std::filesystem::remove(okx_book);
     }
 
     // The trade reader applies the same contract conversion, and the side in the file is the aggressor's.
     {
-        const auto okx_trades = std::filesystem::temp_directory_path() / "okx_trades_test.csv";
+        test_support::TempFile okx_trades_file("okx_trades_test.csv");
+        const auto& okx_trades = okx_trades_file.path();
         {
             std::ofstream file(okx_trades);
             file << "instrument_name,trade_id,side,price,size,created_time\n";
@@ -308,7 +303,6 @@ int main()
         assert(later.quantity == 25000);
         assert(later.aggressor_side == Side::Sell);
         assert(!reader->next(event));
-        std::filesystem::remove(okx_trades);
     }
 
     // Cross-check against the independent recomputation in tools/check_okx_book.py: the first snapshot of the

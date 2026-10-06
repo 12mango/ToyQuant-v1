@@ -155,87 +155,44 @@ set_target_properties(ring_bench PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMA
 
 # ==================== Tests ====================
 enable_testing()
-add_executable(strategy_state_test tests/strategy_state_test.cpp)
-target_link_libraries(strategy_state_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME strategy_state_test COMMAND strategy_state_test)
 
-add_executable(orderbook_state_test tests/orderbook_state_test.cpp)
-target_link_libraries(orderbook_state_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME orderbook_state_test COMMAND orderbook_state_test)
+# Every test makes the same three decisions -- one file, the whole stack, and checked in every build -- so
+# they are made once here instead of twenty-one times, and the second one is the reason the function exists.
+# `assert` is the test: `linux-relwithdebinfo` defines NDEBUG, and a test compiled with NDEBUG is a program
+# that exits zero while checking nothing, which is why twenty-one files used to carry their own `#undef`.
+# A flag cannot be forgotten when a test is added; a boilerplate header can. `-UNDEBUG` is spelled `/U NDEBUG`
+# with a space for MSVC, which would otherwise read it as `/U NTDEBUG`.
+function(add_toy_test name)
+    add_executable(${name} tests/${name}.cpp)
+    target_link_libraries(${name} PRIVATE toy_core toy_lines toy_app)
+    if(MSVC)
+        target_compile_options(${name} PRIVATE "/U NDEBUG")
+    else()
+        target_compile_options(${name} PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
 
-add_executable(tick_ladder_test tests/tick_ladder_test.cpp)
-target_link_libraries(tick_ladder_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME tick_ladder_test COMMAND tick_ladder_test)
+add_toy_test(strategy_state_test)
+add_toy_test(orderbook_state_test)
+add_toy_test(tick_ladder_test)
+add_toy_test(l2_orderbook_test)
+add_toy_test(l2_strategy_test)
+add_toy_test(l2_replay_test)
+add_toy_test(market_event_recorder_test)
+add_toy_test(spsc_ring_test)
+add_toy_test(threaded_replay_test)
 
-add_executable(l2_orderbook_test tests/l2_orderbook_test.cpp)
-target_link_libraries(l2_orderbook_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME l2_orderbook_test COMMAND l2_orderbook_test)
+add_toy_test(paper_broker_test)
+add_toy_test(matching_engine_test)
+add_toy_test(tick_csv_parser_test)
+add_toy_test(line_reader_test)
+add_toy_test(stage_profiler_test)
+add_toy_test(market_data_adapter_test)
+add_toy_test(performance_test)
+add_toy_test(portfolio_test)
 
-add_executable(l2_strategy_test tests/l2_strategy_test.cpp)
-target_link_libraries(l2_strategy_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME l2_strategy_test COMMAND l2_strategy_test)
-
-add_executable(l2_replay_test tests/l2_replay_test.cpp)
-target_link_libraries(l2_replay_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME l2_replay_test COMMAND l2_replay_test)
-
-add_executable(market_event_recorder_test tests/market_event_recorder_test.cpp)
-target_link_libraries(market_event_recorder_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME market_event_recorder_test COMMAND market_event_recorder_test)
-
-add_executable(spsc_ring_test tests/spsc_ring_test.cpp)
-target_include_directories(spsc_ring_test PRIVATE ${COMMON_INCLUDE_DIRS})
-target_link_libraries(spsc_ring_test PRIVATE Threads::Threads)
-add_test(NAME spsc_ring_test COMMAND spsc_ring_test)
-
-add_executable(threaded_replay_test tests/threaded_replay_test.cpp)
-target_link_libraries(threaded_replay_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME threaded_replay_test COMMAND threaded_replay_test)
-
-add_executable(paper_broker_test tests/paper_broker_test.cpp)
-target_link_libraries(paper_broker_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME paper_broker_test COMMAND paper_broker_test)
-
-add_executable(matching_engine_test tests/matching_engine_test.cpp)
-target_link_libraries(matching_engine_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME matching_engine_test COMMAND matching_engine_test)
-
-add_executable(tick_csv_parser_test tests/tick_csv_parser_test.cpp)
-target_link_libraries(tick_csv_parser_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME tick_csv_parser_test COMMAND tick_csv_parser_test)
-
-add_executable(line_reader_test tests/line_reader_test.cpp)
-target_link_libraries(line_reader_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME line_reader_test COMMAND line_reader_test)
-
-add_executable(stage_profiler_test tests/stage_profiler_test.cpp)
-target_link_libraries(stage_profiler_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME stage_profiler_test COMMAND stage_profiler_test)
-
-add_executable(market_data_adapter_test tests/market_data_adapter_test.cpp)
-target_link_libraries(market_data_adapter_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME market_data_adapter_test COMMAND market_data_adapter_test)
-
-add_executable(performance_test tests/performance_test.cpp)
-target_link_libraries(performance_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME performance_test COMMAND performance_test)
-
-add_executable(portfolio_test tests/portfolio_test.cpp)
-target_link_libraries(portfolio_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME portfolio_test COMMAND portfolio_test)
-
-add_executable(carry_ledger_test tests/carry_ledger_test.cpp)
-target_link_libraries(carry_ledger_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME carry_ledger_test COMMAND carry_ledger_test)
-
-add_executable(funding_rate_test tests/funding_rate_test.cpp)
-target_link_libraries(funding_rate_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME funding_rate_test COMMAND funding_rate_test)
-
-add_executable(pipeline_accounting_test tests/pipeline_accounting_test.cpp)
-target_link_libraries(pipeline_accounting_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME pipeline_accounting_test COMMAND pipeline_accounting_test)
-
-add_executable(strategy_benchmark_test tests/strategy_benchmark_test.cpp)
-target_link_libraries(strategy_benchmark_test PRIVATE toy_core toy_lines toy_app)
-add_test(NAME strategy_benchmark_test COMMAND strategy_benchmark_test)
+add_toy_test(carry_ledger_test)
+add_toy_test(funding_rate_test)
+add_toy_test(pipeline_accounting_test)
+add_toy_test(strategy_benchmark_test)

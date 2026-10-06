@@ -1,9 +1,3 @@
-// The checks in this test are the test: keep them enabled even when the build defines
-// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -13,6 +7,7 @@
 #include <string_view>
 
 #include "app/strategy_benchmark.h"
+#include "support/test_support.h"
 
 namespace
 {
@@ -28,12 +23,14 @@ const StrategyBenchmarkResult& find_result(const std::vector<StrategyBenchmarkRe
 
 int main()
 {
-    const auto temp = std::filesystem::temp_directory_path();
-    const auto trades_path = temp / "toy_quant_flow_signal_trades.csv";
-    const auto quotes_path = temp / "toy_quant_flow_signal_quotes.csv";
-    const auto timeline_path = temp / "toy_quant_flow_signal_timeline.csv";
-    std::ofstream trades(trades_path);
-    std::ofstream quotes(quotes_path);
+    test_support::TempFile trades_file("flow_signal_trades.csv");
+    test_support::TempFile quotes_file("flow_signal_quotes.csv");
+    test_support::TempFile timeline_file("flow_signal_timeline.csv");
+    const auto& trades_path = trades_file.path();
+    const auto& quotes_path = quotes_file.path();
+    const auto& timeline_path = timeline_file.path();
+    std::ofstream trades = trades_file.open();
+    std::ofstream quotes = quotes_file.open();
     assert(trades && quotes);
 
     quotes << "update_id,best_bid_price,best_bid_qty,best_ask_price,best_ask_qty,"

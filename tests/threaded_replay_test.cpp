@@ -1,9 +1,6 @@
 // The threaded path's contract is that it changes when a decision is taken, not what it is: the same
 // events handed over a ring have to produce the same run as the direct path, or the numbers a live
 // session is compared against are measuring the plumbing.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 
 #include <cassert>
 #include <charconv>
@@ -16,6 +13,7 @@
 
 #include "market/market_data_adapter.h"
 #include "market/threaded_l2_replay.h"
+#include "support/test_support.h"
 
 namespace
 {
@@ -81,9 +79,7 @@ void write_inputs(const std::filesystem::path& trades_path, const std::filesyste
 
 int main()
 {
-    const auto root = std::filesystem::temp_directory_path() / "toy_quant_threaded_replay_test";
-    std::filesystem::remove_all(root);
-    std::filesystem::create_directories(root);
+    test_support::TempDir root("threaded_replay_test");
     const auto trades_path = root / "trades.csv";
     const auto depth_path = root / "depth.csv";
     write_inputs(trades_path, depth_path, 200);
@@ -173,6 +169,4 @@ int main()
         }
         assert(caught);
     }
-
-    std::filesystem::remove_all(root);
 }

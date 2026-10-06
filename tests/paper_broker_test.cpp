@@ -2,10 +2,6 @@
 // invisible, and a faulted one is visible in the two places that matter, its summary and the statement
 // it keeps of what the venue executed. A fault injection whose faults cannot be seen is worse than none,
 // because the run that carries it then looks exactly like a clean one.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include <algorithm>
 #include <cassert>
 #include <cmath>

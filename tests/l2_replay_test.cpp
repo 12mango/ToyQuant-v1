@@ -1,9 +1,3 @@
-// The checks in this test are the test: keep them enabled even when the build defines
-// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include <cassert>
 #include <chrono>
 #include <filesystem>
@@ -11,12 +5,14 @@
 #include <vector>
 
 #include "market/l2_replay_feed.h"
+#include "support/test_support.h"
 
 int main()
 {
-    const auto root = std::filesystem::temp_directory_path();
-    const auto trades_path = root / "toy_quant_l2_replay_trades.csv";
-    const auto depth_path = root / "toy_quant_l2_replay_depth.csv";
+    test_support::TempFile trades_file("l2_replay_trades.csv");
+    test_support::TempFile depth_file("l2_replay_depth.csv");
+    const auto& trades_path = trades_file.path();
+    const auto& depth_path = depth_file.path();
     {
         std::ofstream trades(trades_path);
         trades << "exchange,symbol,timestamp,local_timestamp,id,side,price,amount\n"
@@ -45,8 +41,10 @@ int main()
     // Pacing delivers each event at its place in a schedule derived from the file's own timestamps, and reports
     // how late it ran. Both the clock and the sleep are injectable, so the schedule is asserted exactly instead
     // of waited for: the two files below interleave into eight events five milliseconds apart.
-    const auto pace_trades = root / "toy_quant_pace_trades.csv";
-    const auto pace_depth = root / "toy_quant_pace_depth.csv";
+    test_support::TempFile pace_trades_file("l2_replay_pace_trades.csv");
+    test_support::TempFile pace_depth_file("l2_replay_pace_depth.csv");
+    const auto& pace_trades = pace_trades_file.path();
+    const auto& pace_depth = pace_depth_file.path();
     {
         std::ofstream trades(pace_trades);
         trades << "exchange,symbol,timestamp,local_timestamp,id,side,price,amount\n";
@@ -143,9 +141,4 @@ int main()
         assert(elapsed >= 20);
         assert(real.pacing_summary().events == 8);
     }
-    std::filesystem::remove(pace_trades);
-    std::filesystem::remove(pace_depth);
-
-    std::filesystem::remove(trades_path);
-    std::filesystem::remove(depth_path);
 }

@@ -1,9 +1,6 @@
 // The ring's contract: one producer, one consumer, no lock, and no value lost or reordered. The
 // two-thread case is the part that cannot be established by reading the atomics: it either delivers
 // every value in order or it does not.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 
 #include <atomic>
 #include <cassert>

@@ -1,9 +1,3 @@
-// The checks in this test are the test: keep them enabled even when the build defines
-// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include <cassert>
 #include <cmath>
 #include <fstream>
@@ -16,12 +10,15 @@
 #include "orderbook/top_of_book.h"
 #include "strategy/l2_market_maker_base.h"
 #include "strategy/baseline_market_makers.h"
+#include "support/test_support.h"
 #include "utils/logger.h"
 
 int main()
 {
-    std::ofstream orders("/tmp/pipeline_accounting_orders.csv");
-    std::ofstream trades("/tmp/pipeline_accounting_trades.csv");
+    test_support::TempFile orders_file("pipeline_accounting_orders.csv");
+    test_support::TempFile trades_file("pipeline_accounting_trades.csv");
+    std::ofstream orders = orders_file.open();
+    std::ofstream trades = trades_file.open();
     NaiveMarketMaker strategy(10, 0.1, 1.0);
     MatchingEngine engine(1.0,
                           FeeSchedule{.maker_rate = 0.001,
@@ -68,8 +65,10 @@ int main()
     }
     assert(rejected_mixed_exchange);
 
-    std::ofstream l2_orders("/tmp/pipeline_l2_queue_orders.csv");
-    std::ofstream l2_trades("/tmp/pipeline_l2_queue_trades.csv");
+    test_support::TempFile l2_orders_file("pipeline_l2_queue_orders.csv");
+    test_support::TempFile l2_trades_file("pipeline_l2_queue_trades.csv");
+    std::ofstream l2_orders = l2_orders_file.open();
+    std::ofstream l2_trades = l2_trades_file.open();
     L2MarketMakerBase l2_strategy(L2MarketMakerBaseConfig{.order_size = 10,
                                                    .base_spread = 0.5,
                                                    .inventory_limit = 100,
@@ -142,8 +141,10 @@ int main()
                     .taker_rate = 0.0005,
                     .quantity_scale = 1,
                     .unit_notional_usd = 10.0});
-    std::ofstream fee_orders("/tmp/pipeline_deribit_fee_orders.csv");
-    std::ofstream fee_trades("/tmp/pipeline_deribit_fee_trades.csv");
+    test_support::TempFile fee_orders_file("pipeline_deribit_fee_orders.csv");
+    test_support::TempFile fee_trades_file("pipeline_deribit_fee_trades.csv");
+    std::ofstream fee_orders = fee_orders_file.open();
+    std::ofstream fee_trades = fee_trades_file.open();
     NaiveMarketMaker fee_strategy(1, 0.0, 0.5);
     Portfolio fee_portfolio(1, 1000.0, 10.0);
     Pipeline fee_pipeline(fee_orders, fee_trades, fee_strategy, deribit_fee_engine, fee_portfolio);
@@ -166,8 +167,10 @@ int main()
         FundingRateSeries funding("BTC-PERPETUAL");
         funding.add(0, 0.5);      // reached while the account is flat and no price exists yet
         funding.add(30, 0.0001);  // 0.01%, which the long pays
-        std::ofstream funding_orders("/tmp/pipeline_funding_orders.csv");
-        std::ofstream funding_trades("/tmp/pipeline_funding_trades.csv");
+        test_support::TempFile funding_orders_file("pipeline_funding_orders.csv");
+        test_support::TempFile funding_trades_file("pipeline_funding_trades.csv");
+        std::ofstream funding_orders = funding_orders_file.open();
+        std::ofstream funding_trades = funding_trades_file.open();
         NaiveMarketMaker funding_strategy(1, 0.0, 0.5);
         MatchingEngine funding_engine(0.5, FeeSchedule{.maker_rate = 0.0002,
                                                        .taker_rate = 0.0005,
@@ -207,8 +210,10 @@ int main()
     // cannot measure it, because it never sees the midpoint after a fill, and the [GATE] line is printed only
     // when a run asks for it.
     {
-        std::ofstream print_orders("/tmp/pipeline_print_orders.csv");
-        std::ofstream print_trades("/tmp/pipeline_print_trades.csv");
+        test_support::TempFile print_orders_file("pipeline_print_orders.csv");
+        test_support::TempFile print_trades_file("pipeline_print_trades.csv");
+        std::ofstream print_orders = print_orders_file.open();
+        std::ofstream print_trades = print_trades_file.open();
         L2MarketMakerBase print_strategy(L2MarketMakerBaseConfig{.order_size = 1,
                                                          .base_spread = 1.0,
                                                          .inventory_limit = 10,

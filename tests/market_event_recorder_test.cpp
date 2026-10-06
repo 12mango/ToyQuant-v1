@@ -1,8 +1,5 @@
 // The check this test makes is the recorder's contract: the events a feed delivered, written back in
 // the replay CSV shapes and read again, are the same events in the same order.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 
 #include <cassert>
 #include <charconv>
@@ -16,6 +13,7 @@
 #include "market/l2_replay_feed.h"
 #include "market/market_data_adapter.h"
 #include "market/market_event_recorder.h"
+#include "support/test_support.h"
 
 namespace
 {
@@ -120,9 +118,7 @@ std::string first_line(const std::filesystem::path& path)
 
 int main()
 {
-    const auto root = std::filesystem::temp_directory_path() / "toy_quant_recorder_test";
-    std::filesystem::remove_all(root);
-    std::filesystem::create_directories(root);
+    test_support::TempDir root("recorder_test");
 
     // An incremental stream, which is the shape the L2 mainline reads: one snapshot batch, then a
     // batch of two level changes that share a local timestamp, then a batch of one.
@@ -318,6 +314,4 @@ int main()
         }
         assert(threw);
     }
-
-    std::filesystem::remove_all(root);
 }

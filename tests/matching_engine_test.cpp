@@ -1,9 +1,3 @@
-// The checks in this test are the test: keep them enabled even when the build defines
-// NDEBUG, which is the case for the RelWithDebInfo profiling preset.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
 
