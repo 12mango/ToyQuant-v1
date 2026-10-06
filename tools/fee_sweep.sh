@@ -34,10 +34,7 @@ WINDOWS=(
   "0401_incremental_2m|data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz|/tmp/depth_2m.csv|0.0002"
 )
 
-# First occurrence of field=value in a run's output, which is how tools/check_docs.py reads a recorded block.
-field_of() {
-  printf '%s' "$1" | grep -oE "(^| )$2=[^ ]+" | head -n 1 | sed 's/^ //; s/^[A-Za-z_][A-Za-z0-9_]*=//'
-}
+. tools/lib.sh
 
 echo "| window | maker rate | fills | net USD | gross USD | closed USD | gross/fill USD | breakeven rate |"
 echo "|---|---:|---:|---:|---:|---:|---:|---:|"

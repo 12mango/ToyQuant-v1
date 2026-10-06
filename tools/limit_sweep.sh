@@ -29,9 +29,7 @@ for symbol in "${WINDOWS[@]}"; do
   done
 done
 
-field_of() {
-  printf '%s' "$1" | grep -oE "(^| )$2=[^ ]+" | head -n 1 | sed 's/^ //; s/^[A-Za-z_][A-Za-z0-9_]*=//'
-}
+. tools/lib.sh
 
 run() {
   # shellcheck disable=SC2086

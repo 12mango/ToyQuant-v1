@@ -60,9 +60,7 @@ ROWS=(
 # has given the price away.
 PINNED="spy fast, 1 ms each way|spy fast, 5 ms each way"
 
-field_of() {
-  printf '%s' "$1" | grep -oE "(^| )$2=[^ ]+" | head -n 1 | sed 's/^ //; s/^[A-Za-z_][A-Za-z0-9_]*=//'
-}
+. tools/lib.sh
 
 echo "| window | order/cancel | fills | shares | cancels | capture ticks | gross USD | net USD | net/fill USD | breakeven rate |"
 echo "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"

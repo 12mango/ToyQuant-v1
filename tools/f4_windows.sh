@@ -80,9 +80,7 @@ WINDOWS=(
 # one command away through this script.
 PINNED="spy_1tick aapl_conservative tsla_conservative mes_1tick"
 
-field_of() {
-  printf '%s' "$1" | grep -oE "(^| )$2=[^ ]+" | head -n 1 | sed 's/^ //; s/^[A-Za-z_][A-Za-z0-9_]*=//'
-}
+. tools/lib.sh
 
 echo "| window | fills | units | fee USD | capture ticks | markout ticks | gross USD | closed USD | net USD | net/fill USD | breakeven rate | peak inventory |"
 echo "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"

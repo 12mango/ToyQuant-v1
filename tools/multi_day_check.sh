@@ -34,11 +34,7 @@ day_of() {
   printf '%s' "$1" | sed -n 's/.*_\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)_BTC-PERPETUAL\.csv\(\.gz\)\{0,1\}$/\1/p'
 }
 
-# First occurrence of field=value in the run's whole output, C++ default formatting included. This mirrors how
-# tools/check_docs.py reads a recorded block, so a row this script prints is a row that tool can verify.
-field_of() {
-  printf '%s' "$1" | grep -oE "(^|[^A-Za-z0-9_])$2=[^ ]+" | head -n 1 | sed 's/^[^A-Za-z0-9_]//; s/^[A-Za-z_][A-Za-z0-9_]*=//'
-}
+. tools/lib.sh
 
 # Ratio of two decimal fields as the "times the captured edge" the table quotes, or n/a when the edge is zero.
 ratio_of() {
