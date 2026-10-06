@@ -401,18 +401,21 @@ drops the incoming tick by design.
 event feed, and `L2Replay` creates a trade+depth feed. `Pipeline` owns the v2 domain sequence; the
 application intentionally does not introduce separate runner abstractions yet.
 
+The diagram is the `Replay` path, and it has no book in it. A quote is already a top of book, and the
+pipeline applies the book's own rule for one it can use -- both sides positive and not crossed -- rather
+than writing the quote into an `OrderBook` and reading it back out, which is what that round trip was for
+and what it added. The L2 path stopped building the book it never read for the same reason.
+
 ```mermaid
 sequenceDiagram
     participant F as Feed
     participant P as Pipeline
-    participant B as OrderBook
     participant M as MatchingEngine
     participant S as Strategy
     F->>P: process_event(MarketEvent)
-    P->>B: on_bbo(BboQuote)
+    P->>M: process_bbo(BboQuote)
     P->>M: process_market_trade(MarketTrade)
-    P->>B: top(symbol)
-    B-->>P: TopOfBook
+    P->>P: TopOfBook from the quote, usable or empty
     P->>S: on_top_of_book(top)
     S-->>P: new orders
     P->>M: cancel_order / send_order

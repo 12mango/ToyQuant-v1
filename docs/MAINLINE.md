@@ -70,7 +70,7 @@ removing it would make a claim in the documents unreproducible.
 
 | Part | Lines | Verdict | Why |
 |---|---:|---|---|
-| `src/lines/legacy/*`, where `l1_market_maker.h` alone is 1,285 | 1,507 | **candidate to delete, with its tests and the tier 1 L1 invariants** | The frozen `v1.0-demo` tag already preserves this line, so the repository does not have to carry it, and nothing on the main line calls it |
+| `src/lines/legacy/*`, where `l1_market_maker.h` alone is 1,285 | 1,507 | **candidate to delete, with its tests and the tier 1 L1 invariants** | The frozen `v1.0-demo` tag already preserves this line, so the repository does not have to carry it, and nothing on the main line calls it. `OrderBook::on_bbo` is the clearest instance: its only caller left is one test, and the interface it belongs to is still what the legacy tick path reads through `market_top`, so the unit to remove is the line and not the method |
 | The legacy CSV and UDP modes and the `Tick` model | ~700 | **candidate to delete** | Unreachable from the L2 path, and kept only for compatibility with a tag that exists |
 | `src/market/deribit_readers.*`, `okx_readers.*` and the crypto market code | ~1,500 | **keep, marked as evidence** | The data files are the record of closed lines and one fetch tool still reads the funding history, but this is not reading for the main line |
 | `src/market/funding_rate.*`, `src/lines/carry_ledger.*` | ~470 | **keep, marked as evidence** | A marked and checked block in [Performance History](PERFORMANCE_HISTORY.md) re-runs this on every gate: deleting it would either break the gate or turn the sharpest number here into a copied one |
