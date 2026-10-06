@@ -117,6 +117,21 @@ Application::OutputFiles Application::open_output_files(const std::string& sourc
     return files;
 }
 
+Logger Application::make_logger() const
+{
+    Logger logger(application_log_path(cfg_.discard_output));
+    configure_logger(logger);
+    return logger;
+}
+
+void Application::apply_pipeline_limits(Pipeline& pipeline) const
+{
+    pipeline.set_position_limit(cfg_.position_limit);
+    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
+    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
+    pipeline.set_trace_order(cfg_.trace_order);
+}
+
 int Application::run() const
 {
     switch (cfg_.mode)
@@ -151,8 +166,7 @@ void Application::run_carry_mode() const
     if (!instrument_spec_of(cfg_.symbol_b, venue_b))
         throw std::invalid_argument("no instrument specification for carry symbol: " + cfg_.symbol_b);
 
-    Logger logger(application_log_path(cfg_.discard_output));
-    configure_logger(logger);
+    Logger logger = make_logger();
     logger.log("[Mode: Carry] leg_a=", cfg_.symbol, " ", to_abs_path(cfg_.path_or_port),
                " leg_b=", cfg_.symbol_b, " ", to_abs_path(cfg_.funding_b_path),
                " notional_usd=", cfg_.carry_notional_usd,
@@ -176,8 +190,7 @@ void Application::run_carry_mode() const
 void Application::run_legacy_csv_mode() const
 {
     const std::string csv_file = to_abs_path(cfg_.path_or_port);
-    Logger logger(application_log_path(cfg_.discard_output));
-    configure_logger(logger);
+    Logger logger = make_logger();
     logger.log("[Mode: Legacy CSV] Opening: ", csv_file, " (delay: ", cfg_.delay,
                "ms) strategy=", cfg_.strategy_name);
 
@@ -189,10 +202,7 @@ void Application::run_legacy_csv_mode() const
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
-    pipeline.set_position_limit(cfg_.position_limit);
-    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
-    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
-    pipeline.set_trace_order(cfg_.trace_order);
+    apply_pipeline_limits(pipeline);
     CsvFeed feed(
         csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick); }, cfg_.delay,
         &logger);
@@ -211,8 +221,7 @@ void Application::run_replay_mode() const
     if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
     const std::string trades_file = to_abs_path(cfg_.path_or_port);
     const std::string quotes_file = to_abs_path(cfg_.quotes_path);
-    Logger logger(application_log_path(cfg_.discard_output));
-    configure_logger(logger);
+    Logger logger = make_logger();
     logger.log("[Mode: Replay] trades=", trades_file, " quotes=", quotes_file,
                " symbol=", cfg_.symbol, " quantity_scale=", cfg_.quantity_scale,
                " strategy=", cfg_.strategy_name, " maker_fee_rate=", instrument.maker_fee_rate);
@@ -248,10 +257,7 @@ void Application::run_replay_mode() const
     // and edge figures are in dollars rather than in raw instrument units.
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
-    pipeline.set_position_limit(cfg_.position_limit);
-    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
-    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
-    pipeline.set_trace_order(cfg_.trace_order);
+    apply_pipeline_limits(pipeline);
     // The funding series is optional and owned here, because the pipeline only borrows it. A file that names
     // no settlement for this instrument is an error rather than an empty input, since a wrong symbol would
     // otherwise look like an instrument that never paid funding.
@@ -307,7 +313,10 @@ void Application::run_l2_replay_mode() const
     // A different maker fee rate than the venue's, for the runs that ask what the fee would have had to be.
     if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
     // And the account's own schedule, when a run names one. It is applied here, before the instrument reaches
-    // the venue, the strategy and the pipeline, so all three price the schedule the mode line reports.
+    // the venue, the strategy and the pipeline, so all three price the schedule the mode line reports. The five
+    // terms are the ones `InstrumentSpec` and `--fee-schedule` have in common, which is why they are listed one
+    // by one: a term added to the flag's struct and not to the instrument prices the run without it while the
+    // mode line reports it set, the failure `fee_schedule_of` exists to prevent in the other direction.
     if (cfg_.has_fee_schedule)
     {
         instrument.min_commission_per_order = cfg_.fee_schedule.min_commission_per_order;
@@ -316,8 +325,7 @@ void Application::run_l2_replay_mode() const
         instrument.audit_fee_per_share = cfg_.fee_schedule.audit_fee_per_share;
         instrument.maker_rebate_per_share = cfg_.fee_schedule.maker_rebate_per_share;
     }
-    Logger logger(application_log_path(cfg_.discard_output));
-    configure_logger(logger);
+    Logger logger = make_logger();
     logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
                " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
                " queue_model=", queue_model_name(cfg_.queue_model),
@@ -388,11 +396,8 @@ void Application::run_l2_replay_mode() const
     // enforced. 0, the default, reports the ceiling without blocking anything.
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
-    pipeline.set_position_limit(cfg_.position_limit);
-    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
-    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
     pipeline.set_profiler(profiler);
-    pipeline.set_trace_order(cfg_.trace_order);
+    apply_pipeline_limits(pipeline);
     // The broker's own commission and its floor, which are the only schedule terms the fee model needs at order
     // level rather than per fill: the floor is charged when an order ends, because that is when the order's own
     // total is known.
@@ -537,8 +542,7 @@ void Application::run_l2_replay_mode() const
 void Application::run_legacy_udp_mode() const
 {
     int port = std::stoi(cfg_.path_or_port);
-    Logger logger(application_log_path(cfg_.discard_output));
-    configure_logger(logger);
+    Logger logger = make_logger();
     logger.log("[Mode: Legacy UDP] Listening on UDP port: ", port,
                "... strategy=", cfg_.strategy_name);
 
@@ -550,10 +554,7 @@ void Application::run_legacy_udp_mode() const
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
     pipeline.set_collateral(1000.0, 0.0);
-    pipeline.set_position_limit(cfg_.position_limit);
-    pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
-    pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
-    pipeline.set_trace_order(cfg_.trace_order);
+    apply_pipeline_limits(pipeline);
     UdpFeed feed(port);
     feed.start();
 

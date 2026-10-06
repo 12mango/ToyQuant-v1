@@ -6,6 +6,7 @@
 #include "app/app_config.h"
 
 class Logger;
+class Pipeline;
 struct InstrumentSpec;
 struct MatchingEngineConfig;
 
@@ -27,6 +28,11 @@ class Application
     // The parsed flags as the engine's own settings, in one place, because two modes build an engine from
     // the same flags and a mode should read as a list of objects rather than a list of numbers in order.
     MatchingEngineConfig engine_config(const InstrumentSpec& instrument) const;
+    // Every mode opens its log the same way and applies the same four pipeline limits, and neither is worth
+    // repeating at four call sites: the prologue is two lines of the same two calls, and the limits are the
+    // risk controls a reader wants to find by name rather than infer from four adjacent setters.
+    Logger make_logger() const;
+    void apply_pipeline_limits(Pipeline& pipeline) const;
     void configure_logger(Logger& logger) const;
     void run_legacy_csv_mode() const;
     void run_replay_mode() const;
