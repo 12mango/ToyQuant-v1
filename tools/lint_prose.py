@@ -41,6 +41,20 @@ TEST_BINARY_CLAIM = re.compile(r"(\d+) (?:unit-)?test binaries")
 TEST_TARGET = re.compile(r"^\s*add_toy_test\((\w+)\)", re.MULTILINE)
 
 
+def usage_text(source):
+    """The body of `print_usage`, which is the binary's own help.
+
+    Empty when it cannot be found, and the caller reports that rather than skipping: a check that goes quiet
+    when a function is renamed is still believed, which is worse than no check.
+    """
+    lines = source.splitlines()
+    starts = [index for index, line in enumerate(lines) if line.startswith("void print_usage")]
+    ends = [index for index, line in enumerate(lines) if line.startswith("bool parse_config")]
+    if not starts or not ends:
+        return ""
+    return "\n".join(lines[starts[0]:ends[0]])
+
+
 def counted_source(root):
     """Files and lines per directory, with `lines/legacy` counted on its own.
 
@@ -111,6 +125,17 @@ def main():
     for model in sorted(models):
         if model not in text.lower():
             problems.append(f"queue model {model} exists and is not mentioned in any document")
+    # Every flag the parser takes is named in its own help text. The check above says the documents cover
+    # the flags; it says nothing about what a user gets from `--help`, and eleven flags were missing from it
+    # -- `--trace-order`, the two risk limits, the two latency knobs and the rest of what the L2 path takes
+    # -- every one of them written up in a document and none of them discoverable from the binary.
+    usage = usage_text(config)
+    if not usage:
+        problems.append(f"could not find the usage text in {args.config}")
+    else:
+        for flag in sorted(declared):
+            if flag.rstrip("=") not in usage:
+                problems.append(f"{flag} is accepted by the binary and missing from its own --help text")
     for name in sorted(set(TOOL_PATH.findall(text))):
         if not Path(name).exists():
             problems.append(f"{name} is referenced by a document and does not exist")

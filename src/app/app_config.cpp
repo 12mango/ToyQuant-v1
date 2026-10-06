@@ -128,6 +128,16 @@ void print_usage(const char* executable)
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
                      "values derived from the instrument quantity scale | --base-spread-ticks=N "
                      "sets the quote half-spread, 1 being the venue touch\n";
+        std::cerr << "   overrides: --inventory-shift-ticks=N shifts the inventory-aware quotes by N ticks "
+                     "at a full position, --refresh-price-ticks=N is how far the strategy's own fair price "
+                     "has to move before its resting quotes are pulled and replaced, --edge-cover-ticks=N "
+                     "requires a quote to cover N ticks on top of the maker fee before it is placed, and "
+                     "--min-spread-ticks=N quotes only where the touch is at least N ticks wide; 0 leaves "
+                     "each of them at the strategy's own setting\n";
+        std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
+                     "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
+                     "stops the run when its loss reaches N dollars instead of carrying the position into "
+                     "the final mark\n";
         std::cerr << "   strategy: ";
         for (const std::string_view name : kStrategyNames)
         {
@@ -138,6 +148,9 @@ void print_usage(const char* executable)
         std::cerr << "\n";
         std::cerr << "   queue_model: prorata (default, calibrated) | lumpy (same mean, real variance) | "
                      "conservative (lower bound) | optimistic (upper bound)\n";
+        std::cerr << "   queue: --queue-chunks=N is how many chunks a level decrease is split into when the "
+                     "lumpy model draws from it, and --queue-seed=N is that generator's seed, fixed by "
+                     "default so a lumpy run is reproducible\n";
         std::cerr << "   arrival: --arrival-share=X sets the share of the displayed size a new quote "
                      "starts behind; 1.0 is FIFO\n";
         std::cerr << "   funding: --funding-rates=FILE applies the instrument's funding history as the "
@@ -158,15 +171,22 @@ void print_usage(const char* executable)
         std::cerr << "   record: --record=PREFIX (l2_replay) writes PREFIX_trades.csv and "
                      "PREFIX_depth.csv in the replay shapes, so the stream this run was fed can be "
                      "replayed again\n";
+        std::cerr << "   trace: --trace-order=N reports the pipeline's per-order hints for order N, which "
+                     "is how one order's decisions are read back\n";
         std::cerr << "   threads: --feed-thread (l2_replay) reads on its own thread and hands each "
                      "event to the strategy thread over a ring, reporting the hand-off as a "
                      "[LATENCY] line; --ring-capacity=N sizes that ring (default 4096)\n";
+        std::cerr << "   latency: --order-latency-us=N and --cancel-latency-us=N hold an order or a cancel "
+                     "for N microseconds of the market's own clock before the venue sees it, which is what "
+                     "being slow costs and the one part of the order lifecycle a replay can model "
+                     "directly\n";
         std::cerr << "   broker: --paper-broker (l2_replay) puts a broker between the strategy and the "
                      "venue that keeps its own statement and reports [BROKER] and [RECON]; "
                      "--broker-reject-every=N refuses every Nth order, --broker-partial-every=N splits "
                      "every Nth fill, --broker-drop-every=N withholds every Nth fill from the strategy, "
                      "and --broker-outage-after=N with --broker-outage-holds=M holds the next M orders "
                      "while the venue is unreachable\n";
+        std::cerr << "   --help prints this text\n";
 }
 
 bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
