@@ -69,6 +69,28 @@ struct PriceLevel
     uint64_t external_queue_ahead{0};
 };
 
+// Everything the engine is told that is not the instrument. These were nine positional arguments, and the
+// middle six of them were a queue model, that model's two knobs and the two latencies: a call site reading
+// `0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 0.0, 7` has to be counted rather than read, and the
+// `7` is `order_latency_us`. That is the same decision `StrategyFactoryConfig` already carries, applied to the
+// last constructor that had not had it -- and the reason it is worth doing is the 34 call sites: the ones
+// that only set the tick size and the schedule are unaffected by this being a struct, and the ones that set
+// a knob say which knob.
+//
+// What each field means is documented where it is used, on the member it initialises.
+struct MatchingEngineConfig
+{
+    uint64_t cancel_delay_events{0};
+    QueueModel queue_model{QueueModel::ProRata};
+    uint64_t queue_lump_chunks{1};
+    uint64_t queue_seed{kDefaultQueueSeed};
+    double arrival_share{1.0};
+    uint64_t order_latency_us{0};
+    uint64_t cancel_latency_us{0};
+    uint64_t lot_size{1};
+    uint64_t min_order_quantity{1};
+};
+
 struct MEOrderBook
 {
     std::map<PriceTick, PriceLevel, std::greater<PriceTick>> bids;  // Highest price first.
@@ -148,22 +170,21 @@ class MatchingEngine : public IMatchingEngine
     using ReportCallback = std::function<void(const ExecutionReport&)>;
 
     explicit MatchingEngine(double tick_size = PRICE_TICK_SIZE, FeeSchedule fee_schedule = {},
-                             uint64_t cancel_delay_events = 0,
-                             QueueModel queue_model = QueueModel::ProRata,
-                             uint64_t lump_chunks = 1, uint64_t random_seed = kDefaultQueueSeed,
-                             double arrival_share = 1.0, uint64_t order_latency_us = 0,
-                             uint64_t cancel_latency_us = 0, uint64_t lot_size = 1,
-                             uint64_t min_order_quantity = 1)
+                             MatchingEngineConfig config = {})
                 : tick_size_(tick_size),
                     fee_schedule_(fee_schedule),
-                    queue_ahead_model_(queue_model, lump_chunks, random_seed),
-                    arrival_share_(arrival_share < 0.0 ? 0.0
-                                                       : arrival_share > 1.0 ? 1.0 : arrival_share),
-                    order_latency_us_(order_latency_us),
-                    cancel_latency_us_(cancel_latency_us),
-                    cancel_delay_events_(cancel_delay_events),
-                    lot_size_(lot_size == 0 ? 1 : lot_size),
-                    min_order_quantity_(min_order_quantity == 0 ? 1 : min_order_quantity)
+                    queue_ahead_model_(config.queue_model, config.queue_lump_chunks,
+                                       config.queue_seed),
+                    arrival_share_(config.arrival_share < 0.0 ? 0.0
+                                                              : config.arrival_share > 1.0
+                                                                    ? 1.0
+                                                                    : config.arrival_share),
+                    order_latency_us_(config.order_latency_us),
+                    cancel_latency_us_(config.cancel_latency_us),
+                    cancel_delay_events_(config.cancel_delay_events),
+                    lot_size_(config.lot_size == 0 ? 1 : config.lot_size),
+                    min_order_quantity_(config.min_order_quantity == 0 ? 1
+                                                                      : config.min_order_quantity)
     {
     }
 

@@ -44,6 +44,30 @@ std::string application_log_path(bool discard_output)
 
 Application::Application(const AppConfig& cfg) : cfg_(cfg) {}
 
+MatchingEngineConfig Application::engine_config(const InstrumentSpec& instrument) const
+{
+    // `--queue-seed=0` means "use the default seed", which is why that decision lives here rather than in the
+    // parser: the flag's zero is this mapping's business, and there is one mapping for both modes that build
+    // an engine from these flags.
+    //
+    // `cancel_delay_events = 1` is the one field here that no flag sets. It is the original event-counted
+    // cancel delay that `cancel_latency_us` was added underneath, and every recorded run has carried it; it
+    // used to be a bare `1` as the third argument of the engine's parameter list, which is a value nobody
+    // could read. Moving these into a struct without it is what the gate caught: every L2 and L1 number moved
+    // the moment the one-event delay was dropped.
+    return MatchingEngineConfig{
+        .cancel_delay_events = 1,
+        .queue_model = cfg_.queue_model,
+        .queue_lump_chunks = cfg_.queue_lump_chunks,
+        .queue_seed = cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
+        .arrival_share = cfg_.arrival_share,
+        .order_latency_us = cfg_.order_latency_us,
+        .cancel_latency_us = cfg_.cancel_latency_us,
+        .lot_size = instrument.lot_size,
+        .min_order_quantity = instrument.min_order_quantity,
+    };
+}
+
 void Application::configure_logger(Logger& logger) const
 {
     if (cfg_.discard_output) logger.set_enabled(false);
@@ -215,11 +239,7 @@ void Application::run_replay_mode() const
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
-                          1, cfg_.queue_model, cfg_.queue_lump_chunks,
-                          cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
-                          cfg_.arrival_share, cfg_.order_latency_us,
-                          cfg_.cancel_latency_us, instrument.lot_size,
-                          instrument.min_order_quantity);
+                          engine_config(instrument));
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio,
@@ -343,11 +363,7 @@ void Application::run_l2_replay_mode() const
                                       .flatten_band_units = cfg_.flatten_band,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
-                          1, cfg_.queue_model, cfg_.queue_lump_chunks,
-                          cfg_.queue_seed == 0 ? kDefaultQueueSeed : cfg_.queue_seed,
-                          cfg_.arrival_share, cfg_.order_latency_us,
-                          cfg_.cancel_latency_us, instrument.lot_size,
-                          instrument.min_order_quantity);
+                          engine_config(instrument));
     // The paper broker wraps the venue rather than replacing it: the strategy, the book and the
     // accounting do not know it is there, and with no faults configured it forwards every call and every
     // report, which is what makes a run with it comparable to one without.

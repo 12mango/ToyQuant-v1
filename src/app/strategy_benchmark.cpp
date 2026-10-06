@@ -100,13 +100,17 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
         // its own comment states: a term listed by hand at a construction site is a term that stops being
         // applied the day it is added to the instrument, and the run then prices it at zero in silence.
         //
-        // The queue arguments after it are the engine's defaults, and on this path they are inert: the L1
-        // line's feed carries trades and a best bid and offer with no depth, so there is no level for a
-        // queue to be attached to. A queue model here would be a knob that changes nothing, which is why
-        // the L1 comparisons can be read as a price-touch model at all.
-        MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument), 1, QueueModel::ProRata, 1,
-                              kDefaultQueueSeed, 1.0, 0, 0, instrument.lot_size,
-                              instrument.min_order_quantity);
+        // The rest of the configuration is the engine's defaults apart from the instrument's own order
+        // constraints, and the one-event cancel delay the mainline has always carried -- a value that used to
+        // be a bare `1` in this argument list, where it could not be read, and that the gate caught the moment
+        // a struct replaced the list without it: every L1 number moved. The queue part of the configuration is
+        // inert here, because the L1 line's feed carries trades and a best bid and offer with no depth, so
+        // there is no level for a queue to be attached to, which is why an L1 comparison reads as a
+        // price-touch model at all.
+        MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
+                              {.cancel_delay_events = 1,
+                               .lot_size = instrument.lot_size,
+                               .min_order_quantity = instrument.min_order_quantity});
         Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
         Pipeline pipeline(orders, trades, *strategy, engine, portfolio, instrument.tick_size);

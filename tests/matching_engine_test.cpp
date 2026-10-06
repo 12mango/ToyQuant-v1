@@ -172,7 +172,7 @@ int main()
     assert(queued_engine.queue_ahead_consumed(Side::Buy) == 50);
     assert(queued_engine.queue_ahead_levels_cleared(Side::Buy) == 1);
 
-    MatchingEngine conservative_queue_engine(0.1, {}, 0, QueueModel::Conservative);
+    MatchingEngine conservative_queue_engine(0.1, {}, {.queue_model = QueueModel::Conservative});
     std::vector<ExecutionReport> conservative_queue_reports;
     conservative_queue_engine.set_report_callback(
         [&conservative_queue_reports](const ExecutionReport& report)
@@ -190,7 +190,7 @@ int main()
     assert(!has_report(conservative_queue_reports, 80, ExecType::Trade, 10));
     assert(conservative_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 0);
 
-    MatchingEngine optimistic_queue_engine(0.1, {}, 0, QueueModel::Optimistic);
+    MatchingEngine optimistic_queue_engine(0.1, {}, {.queue_model = QueueModel::Optimistic});
     std::vector<ExecutionReport> optimistic_queue_reports;
     optimistic_queue_engine.set_report_callback(
         [&optimistic_queue_reports](const ExecutionReport& report)
@@ -208,7 +208,7 @@ int main()
     assert(optimistic_queue_engine.queue_ahead_from_quantity_changes(Side::Buy) == 50);
 
     // The proportional model: a level that empties takes the whole queue ahead with it.
-    MatchingEngine prorata_queue_engine(0.1, {}, 0, QueueModel::ProRata);
+    MatchingEngine prorata_queue_engine(0.1, {}, {.queue_model = QueueModel::ProRata});
     prorata_queue_engine.process_l2_top({34, "PRORATA", 100.0, 50, 100.1, 40, 2, "test"});
     prorata_queue_engine.send_order({82, "PRORATA", exchange::Side::Buy,
                                      exchange::OrderType::Limit, 100.0, 10, 10, 35,
@@ -222,7 +222,8 @@ int main()
     // in it however finely the decrease is split.
     for (const uint64_t chunks : {1ULL, 8ULL})
     {
-        MatchingEngine lumpy_full(0.1, {}, 0, QueueModel::Lumpy, chunks, 7);
+        MatchingEngine lumpy_full(0.1, {}, {.queue_model = QueueModel::Lumpy,
+                                            .queue_lump_chunks = chunks, .queue_seed = 7});
         lumpy_full.process_l2_top({40, "LUMPYFULL", 100.0, 50, 100.1, 40, 2, "test"});
         lumpy_full.send_order({90, "LUMPYFULL", exchange::Side::Buy, exchange::OrderType::Limit, 100.0,
                                10, 10, 41, "MarketMaker"});
@@ -234,7 +235,7 @@ int main()
     // of us, so the mean removal is half the decrease and the lumpiness is the only thing left to vary.
     const auto half_share_removal = [](uint64_t seed)
     {
-        MatchingEngine engine(0.1, {}, 0, QueueModel::Lumpy, 1, seed);
+        MatchingEngine engine(0.1, {}, {.queue_model = QueueModel::Lumpy, .queue_seed = seed});
         engine.process_l2_top({50, "LUMPYHALF", 100.0, 50, 100.1, 40, 2, "test"});
         engine.send_order({91, "LUMPYHALF", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10,
                            10, 51, "MarketMaker"});
@@ -247,7 +248,7 @@ int main()
     // The seed makes a run reproducible: one seed is a replication, not a random draw.
     assert(half_share_removal(11) == half_share_removal(11));
 
-    MatchingEngine prorata_half(0.1, {}, 0, QueueModel::ProRata);
+    MatchingEngine prorata_half(0.1, {}, {.queue_model = QueueModel::ProRata});
     prorata_half.process_l2_top({54, "PRORATAHALF", 100.0, 50, 100.1, 40, 2, "test"});
     prorata_half.send_order({92, "PRORATAHALF", exchange::Side::Buy, exchange::OrderType::Limit, 100.0,
                              10, 10, 55, "MarketMaker"});
@@ -269,7 +270,8 @@ int main()
 
     // The arrival share scales the queue a new quote starts behind: Q0 = alpha * D0. At 1.0 the engine
     // keeps the FIFO rule untouched, which is what makes every recorded run reproducible.
-    MatchingEngine arrival_half(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 0.5);
+    MatchingEngine arrival_half(0.1, {},
+                                {.queue_model = QueueModel::ProRata, .arrival_share = 0.5});
     arrival_half.process_l2_top({60, "ARRIVALHALF", 100.0, 50, 100.1, 40, 2, "test"});
     arrival_half.send_order({93, "ARRIVALHALF", exchange::Side::Buy, exchange::OrderType::Limit, 100.0,
                              10, 10, 61, "MarketMaker"});
@@ -277,7 +279,8 @@ int main()
     // Half of the display is ahead of us, so a decrease of 40 removes 40 * (25 / 50) = 20 from it.
     assert(arrival_half.queue_ahead_from_quantity_changes(Side::Buy) == 20);
 
-    MatchingEngine arrival_front(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 0.0);
+    MatchingEngine arrival_front(0.1, {},
+                                 {.queue_model = QueueModel::ProRata, .arrival_share = 0.0});
     std::vector<ExecutionReport> arrival_front_reports;
     arrival_front.set_report_callback([&arrival_front_reports](const ExecutionReport& report)
                                       { arrival_front_reports.push_back(report); });
@@ -293,7 +296,8 @@ int main()
     // sent at ts=100 lands on the first event whose clock reaches 107, so a print at 100 cannot reach it
     // and a print after the clock has passed 107 can. Note the field order of the market events: the
     // timestamp is the first member, not a sequence number.
-    MatchingEngine latency_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 0.0, 7);
+    MatchingEngine latency_engine(0.1, {}, {.queue_model = QueueModel::ProRata, .arrival_share = 0.0,
+                                            .order_latency_us = 7});
     std::vector<ExecutionReport> latency_reports;
     latency_engine.set_report_callback([&latency_reports](const ExecutionReport& report)
                                        { latency_reports.push_back(report); });
@@ -314,8 +318,7 @@ int main()
     // A cancel takes effect only after its own latency. The order rests at ts=200, the cancel is sent at
     // 200 with a cancels latency of 50, and the cancellation therefore lands at 250 rather than at the
     // next event: through 240 the quote is still standing and still able to be filled.
-    MatchingEngine cancel_latency_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0,
-                                         50);
+    MatchingEngine cancel_latency_engine(0.1, {}, {.cancel_latency_us = 50});
     std::vector<ExecutionReport> cancel_latency_reports;
     cancel_latency_engine.set_report_callback([&cancel_latency_reports](const ExecutionReport& report)
                                               { cancel_latency_reports.push_back(report); });
@@ -333,7 +336,7 @@ int main()
     // A refused order used to vanish without a report, which is indistinguishable from an accepted one on
     // the caller's side. It now counts, warns on stderr, and the instrument's own ordering constraints are
     // enforced: lot size 5 and a minimum of 10 make four of these five orders untradeable.
-    MatchingEngine strict_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0, 0, 5, 10);
+    MatchingEngine strict_engine(0.1, {}, {.lot_size = 5, .min_order_quantity = 10});
     std::vector<ExecutionReport> strict_reports;
     strict_engine.set_report_callback([&strict_reports](const ExecutionReport& report)
                                       { strict_reports.push_back(report); });
@@ -361,7 +364,7 @@ int main()
     // actually joined behind and the queue a level decrease actually shrinks. Before our order is in the
     // level there is no queue to report: the field belongs to the order's wait, not to the price, and the
     // trace's submit row therefore reads zero while the rest row that follows reads the joined queue.
-    MatchingEngine traced_engine(0.1, {}, 0, QueueModel::ProRata, 1, kDefaultQueueSeed, 1.0, 0, 0);
+    MatchingEngine traced_engine(0.1);
     traced_engine.process_l2_top({100, "TRACEIT", 100.0, 50, 100.1, 40, 5, "test"});
     assert(traced_engine.queue_ahead_at("TRACEIT", Side::Buy, 100.0) == 0);
     traced_engine.send_order({97, "TRACEIT", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10,
@@ -385,7 +388,7 @@ int main()
     assert(has_report(queued_reports, 53, ExecType::Trade, 1));
     assert(has_report(queued_reports, 53, ExecType::PartialFill, 9));
 
-    MatchingEngine delayed_cancel_engine(0.1, {}, 1);
+    MatchingEngine delayed_cancel_engine(0.1, {}, {.cancel_delay_events = 1});
     std::vector<ExecutionReport> delayed_cancel_reports;
     delayed_cancel_engine.set_report_callback(
         [&delayed_cancel_reports](const ExecutionReport& report)
@@ -404,7 +407,7 @@ int main()
                          [](const ExecutionReport& report)
                          { return report.exec_type == ExecType::Cancelled; }) == 0);
 
-    MatchingEngine cancel_engine(0.1, {}, 2);
+    MatchingEngine cancel_engine(0.1, {}, {.cancel_delay_events = 2});
     std::vector<ExecutionReport> cancel_reports;
     cancel_engine.set_report_callback([&cancel_reports](const ExecutionReport& report)
                                       { cancel_reports.push_back(report); });
