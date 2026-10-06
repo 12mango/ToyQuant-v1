@@ -7,6 +7,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "accounting/portfolio.h"
@@ -15,6 +16,48 @@
 #include "exchange/matching_engine.h"
 #include "market/replay_feed.h"
 #include "common/market_event.h"
+
+namespace
+{
+// The two files a strategy's run writes are its audit trail, and nothing reads them: the numbers the caller
+// gets come from the summary. They are written because a `Pipeline` writes one, so the benchmark measures the
+// work a replay does -- which is also why they are not redirected to a null device, whose absence would
+// change the timing this tool exists to report.
+//
+// What was wrong was where. The paths were spelled `/tmp`, a POSIX convention in a program that also builds
+// for Windows, and nothing removed them: a run left ten files and most of a megabyte behind, and every run
+// after it overwrote the same ten names. The lifetime is the tests' scratch file's, and the declaration has to
+// come before the streams it names: destruction runs in reverse, so the files are closed before they are
+// removed, which is what a platform that refuses to unlink an open file requires.
+class ScrapOutputs
+{
+   public:
+    explicit ScrapOutputs(const std::string& strategy)
+        : orders_(std::filesystem::temp_directory_path() /
+                  ("toy_quant_benchmark_orders_" + strategy + ".csv")),
+          trades_(std::filesystem::temp_directory_path() /
+                  ("toy_quant_benchmark_trades_" + strategy + ".csv"))
+    {
+    }
+
+    ~ScrapOutputs()
+    {
+        std::error_code error;
+        std::filesystem::remove(orders_, error);
+        std::filesystem::remove(trades_, error);
+    }
+
+    ScrapOutputs(const ScrapOutputs&) = delete;
+    ScrapOutputs& operator=(const ScrapOutputs&) = delete;
+
+    const std::filesystem::path& orders() const { return orders_; }
+    const std::filesystem::path& trades() const { return trades_; }
+
+   private:
+    std::filesystem::path orders_;
+    std::filesystem::path trades_;
+};
+}  // namespace
 
 std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& trades_path,
                                                             const std::string& quotes_path,
@@ -41,11 +84,10 @@ std::vector<StrategyBenchmarkResult> run_strategy_benchmark(const std::string& t
 
     for (const auto& name : names)
     {
-        const std::string orders_path = "/tmp/strategy_benchmark_orders_" + name + ".csv";
-        const std::string trades_out_path = "/tmp/strategy_benchmark_trades_" + name + ".csv";
-
-        std::ofstream orders(orders_path);
-        std::ofstream trades(trades_out_path);
+        // Declared before the streams it names, so that it is destroyed after them.
+        const ScrapOutputs scrap(name);
+        std::ofstream orders(scrap.orders());
+        std::ofstream trades(scrap.trades());
         if (!orders || !trades)
             throw std::runtime_error("failed to open temporary benchmark files for strategy: " + name);
 
