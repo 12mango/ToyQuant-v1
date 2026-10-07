@@ -1530,6 +1530,11 @@ which is also where a test's one file, the layers it takes and its registration 
 a flag cannot be forgotten when a test is added and twenty-one copies of a block can. The whole suite
 executes its checks in both presets either way.
 
+The scratch files those tests write went the same way. They had named `/tmp` themselves, or left the file
+behind on the last line of `main` -- which an early `assert`, being an abort, walks past. `tests/support/`
+now holds `TempFile` and `TempDir`, which name a file under the system temporary directory and remove it when
+it goes out of scope, so a full ctest run leaves nothing behind.
+
 
 ## Stage Timing (before the container change)
 

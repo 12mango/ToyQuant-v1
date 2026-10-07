@@ -24,7 +24,7 @@ for talking about it out loud.
 
 | Document | What it is for | Not the place for | Kept honest by |
 |---|---|---|---|
-| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way, the C++ decisions with code anchors and measured effects, the headline results, the limitations, and the interview versions | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked for flags, queue models and tool paths by `tools/lint_prose.py` |
+| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way, the C++ decisions with code anchors and measured effects, the headline results, the limitations, and the interview versions | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked by `tools/lint_prose.py`: the flags, the queue models, the tool paths, the size figures and the test-binary count it states, and the flags its own `--help` text names |
 | [Roadmap](ROADMAP.md) | The phases from this demo to a personal execution system, what each one buys, and what is deliberately not planned | what exists today, or how to run it | prose linted with the rest |
 | [Main Line](MAINLINE.md) | The order to read the source in, the measured result each step produced, what each step is arguing, and the per-part verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result (`LEARNING`) | prose linted |
 | [Retrospective](RETROSPECTIVE.md) | The closing document: the eight markets this project closed, the number that closed each one, and the rules that came out of it | what exists in the code, or how to run it | prose linted |
