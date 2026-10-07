@@ -1521,11 +1521,14 @@ larger than one block, block level batching, gzip parity, and line-for-line pari
 reader coverage for `local_timestamp` batching, the snapshot batch that starts the stream, CRLF
 rows, and the header sniffing in `make_deribit_depth_reader`.
 
-Every test source now starts with `#ifdef NDEBUG / #undef NDEBUG / #endif` before its first
+Every test source used to start with `#ifdef NDEBUG / #undef NDEBUG / #endif` before its first
 include. Without it `linux-relwithdebinfo` compiled the checks out, so a guarded setup call was
 skipped while the following `std::get<BboQuote>` still ran and aborted with
 `std::bad_variant_access`. That preset is the profiling build, so its test run has to mean
-something; the whole suite now executes its checks in both presets.
+something. The guard is on the target now -- `-UNDEBUG` inside `add_toy_test()` in `CMakeLists.txt`,
+which is also where a test's one file, the layers it takes and its registration are stated -- because
+a flag cannot be forgotten when a test is added and twenty-one copies of a block can. The whole suite
+executes its checks in both presets either way.
 
 
 ## Stage Timing (before the container change)

@@ -361,6 +361,28 @@ and a fee multiplier could be swapped and still compile. Named fields with desig
 class of mistake unwritable, and the C++20 rule that initializers follow declaration order is what makes a
 call site readable in review.
 
+### One place per fact, and the check that guards it
+
+The factory's decision is the general one, and the repository now applies it to everything that had been
+written out twice. This is not a wish list: each row was a fact living in more than one place, and the right
+column says what fails when the row stops being true -- or that nothing does yet.
+
+| fact | where it lives now | what fails when it stops being true |
+|---|---|---|
+| the engine's nine settings | `MatchingEngineConfig` | the 34 call sites, which name the knobs they set |
+| the venue's schedule for an instrument | `fee_schedule_of` | the recorded runs, through the numbers they quote |
+| the L1 settings a run uses | `L1StrategyConfig` | `tests/strategy_benchmark_test.cpp`, which passes `{}` where it used to repeat four values |
+| the flags the binary accepts | `parse_config` and its `print_usage` | `tools/lint_prose.py`, in both directions |
+| the size of the tree, per directory | the table above | `tools/lint_prose.py`, which counts it |
+| the number of test binaries | `CMakeLists.txt` | `tools/lint_prose.py`, which counts `add_toy_test` |
+| a field of a run's output | `tools/lib.sh`'s `field_of` | nothing yet: the agreement with `tools/check_docs.py`'s rule was measured once, on a 115-field run |
+
+Two of these earned their place twice. The engine's struct was the last positional configuration in the
+codebase, and replacing its argument list dropped a bare `1` -- the one-event cancel delay that no flag names
+-- which moved every recorded L2 and L1 number until the gate said so and the value got a name. And the field
+reader had been written in five scripts with two different boundary rules, which agreed on every field of a
+real run: that is the state a rule drifts out of, not the state it drifts into.
+
 ## 3. Where the time went
 
 One line per attempt, including the ones that paid nothing. "Effect" is a paired measurement on a fixed

@@ -60,7 +60,7 @@ when reviewing this repository rather than changing it.
 | 8 | equity is an identity that holds between marks, and one method accrues every kind of flow | [Architecture](ARCHITECTURE.md), section 7 |
 | 9 | every table in the record is one of these printed lines, and state is split by which data it belongs to rather than by how many lines it took | [Architecture](ARCHITECTURE.md), sections 3.4 and 7 |
 | 10 | memory ordering is the whole contract, a slot is storage rather than a value, and the instrument that measures the code measures itself first | [Low-Latency Design](LATENCY_DESIGN.md), sections 6 and 4 |
-| 11 | configuration is a named struct rather than a positional list, and the flag list is what the prose is checked against | [Design Review](DESIGN_REVIEW.md), "The strategy factory takes a struct, not eleven arguments" |
+| 11 | configuration is a named struct rather than a positional list, and the flag list is what the prose is checked against | [Design Review](DESIGN_REVIEW.md), "The strategy factory takes a struct, not eleven arguments" and "One place per fact, and the check that guards it" |
 
 ## What to drop, and why
 
