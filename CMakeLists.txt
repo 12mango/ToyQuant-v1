@@ -71,6 +71,7 @@ set(LINE_SOURCES
     src/lines/legacy/order_book.cpp
     src/market/csv_feed.cpp
     src/market/udp_feed.cpp
+    src/market/ws_feed.cpp
     src/market/funding_rate.cpp
     ${MARKET_READER_SOURCES})
 
@@ -189,6 +190,7 @@ add_toy_test(tick_csv_parser_test)
 add_toy_test(line_reader_test)
 add_toy_test(stage_profiler_test)
 add_toy_test(market_data_adapter_test)
+add_toy_test(ws_feed_test)
 add_toy_test(performance_test)
 add_toy_test(portfolio_test)
 

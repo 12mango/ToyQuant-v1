@@ -12,6 +12,10 @@ enum class AppMode
     LegacyUdp,
     Replay,
     L2Replay,
+    // A live session: the same L2 delivery path as L2Replay, with the two readers taken from a
+    // websocket instead of from files. It carries the same flags, the book, the matching engine, the
+    // recorder and the paper broker, because the engine cannot tell a live feed from a replayed one.
+    WebSocket,
     // A two leg carry measured over two funding histories rather than replayed against a book: the
     // position is stated, and what is measured is what holding it pays and costs.
     Carry
@@ -23,6 +27,11 @@ struct AppConfig
     std::string path_or_port = "data/scenarios/synthetic_ticks.csv";
     std::string quotes_path;
     std::string symbol;
+    // The live websocket endpoint of a ws-mode run: host:port from the positional argument, and the
+    // HTTP target the handshake asks for, which defaults to "/" and is set by --ws-target=.
+    std::string ws_host;
+    uint16_t ws_port = 0;
+    std::string ws_target = "/";
     int delay = 0;
     std::string strategy_name = "optimized";
     uint64_t quantity_scale = 1000000;

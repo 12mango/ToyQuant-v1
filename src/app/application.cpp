@@ -25,6 +25,7 @@
 #include "market/threaded_l2_replay.h"
 #include "market/replay_feed.h"
 #include "market/udp_feed.h"
+#include "market/ws_feed.h"
 #include "lines/legacy/order_book.h"
 #include "orderbook/l2_orderbook.h"
 #include "utils/logger.h"
@@ -146,7 +147,10 @@ int Application::run() const
             run_replay_mode();
             return 0;
         case AppMode::L2Replay:
-            run_l2_replay_mode();
+        case AppMode::WebSocket:
+            // One delivery path for both: the live session is the replay with its readers swapped for
+            // the socket, so the two modes differ only in where the market events come from.
+            run_l2_session_mode();
             return 0;
         case AppMode::Carry:
             run_carry_mode();
@@ -296,13 +300,25 @@ void Application::run_replay_mode() const
     logger.log(pipeline.summary().to_log_string());
 }
 
-void Application::run_l2_replay_mode() const
+void Application::run_l2_session_mode() const
 {
-    const std::string trades_file = to_abs_path(cfg_.path_or_port);
-    const std::string depth_file = to_abs_path(cfg_.quotes_path);
-    // The depth file says which venue it came from, so the format is not a command line argument.
-    const std::string format = market_data_format_of(depth_file);
-    const bool okx = format == "okx";
+    // A live session and a file replay differ only in where their readers come from, so one method
+    // owns both: `live` selects the websocket for the market events, and every choice below that is
+    // not about the source is shared. The file path needs its two inputs up front; the live one opens
+    // its socket further down, beside the file readers it stands in for.
+    const bool live = cfg_.mode == AppMode::WebSocket;
+    std::string trades_file;
+    std::string depth_file;
+    std::string format;
+    bool okx = false;
+    if (!live)
+    {
+        trades_file = to_abs_path(cfg_.path_or_port);
+        depth_file = to_abs_path(cfg_.quotes_path);
+        // The depth file says which venue it came from, so the format is not a command line argument.
+        format = market_data_format_of(depth_file);
+        okx = format == "okx";
+    }
 
     // The symbol decides the instrument, through the one registry the rest of the program reads, so a new
     // market is an entry there rather than another branch here. A symbol with no entry is an error rather
@@ -326,15 +342,27 @@ void Application::run_l2_replay_mode() const
         instrument.maker_rebate_per_share = cfg_.fee_schedule.maker_rebate_per_share;
     }
     Logger logger = make_logger();
-    logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
-               " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
-               " queue_model=", queue_model_name(cfg_.queue_model),
-               " maker_fee_rate=", instrument.maker_fee_rate,
-               " min_commission_per_order=", instrument.min_commission_per_order,
-               " regulatory_fee_rate=", instrument.regulatory_fee_rate,
-               " clearing_fee_per_share=", instrument.clearing_fee_per_share,
-               " audit_fee_per_share=", instrument.audit_fee_per_share,
-               " maker_rebate_per_share=", instrument.maker_rebate_per_share);
+    if (live)
+        logger.log("[Mode: WebSocket] endpoint=", cfg_.ws_host, ":", cfg_.ws_port,
+                   " target=", cfg_.ws_target, " symbol=", cfg_.symbol,
+                   " strategy=", cfg_.strategy_name,
+                   " queue_model=", queue_model_name(cfg_.queue_model),
+                   " maker_fee_rate=", instrument.maker_fee_rate,
+                   " min_commission_per_order=", instrument.min_commission_per_order,
+                   " regulatory_fee_rate=", instrument.regulatory_fee_rate,
+                   " clearing_fee_per_share=", instrument.clearing_fee_per_share,
+                   " audit_fee_per_share=", instrument.audit_fee_per_share,
+                   " maker_rebate_per_share=", instrument.maker_rebate_per_share);
+    else
+        logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
+                   " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
+                   " queue_model=", queue_model_name(cfg_.queue_model),
+                   " maker_fee_rate=", instrument.maker_fee_rate,
+                   " min_commission_per_order=", instrument.min_commission_per_order,
+                   " regulatory_fee_rate=", instrument.regulatory_fee_rate,
+                   " clearing_fee_per_share=", instrument.clearing_fee_per_share,
+                   " audit_fee_per_share=", instrument.audit_fee_per_share,
+                   " maker_rebate_per_share=", instrument.maker_rebate_per_share);
 
     // Per-stage timing is opt-in. The profiler allocates nothing until sampling starts, so
     // a run without --profile-stages pays nothing beyond this construction.
@@ -352,9 +380,14 @@ void Application::run_l2_replay_mode() const
             "thread that calls it and this path calls it from two, so its report would be a race "
             "rather than a measurement");
 
-    const std::string source = format + ";trades=" + trades_file + ";depth=" + depth_file +
-                               ";symbol=" + cfg_.symbol +
-                               ";tick_size=" + std::to_string(instrument.tick_size);
+    // The source string names where the runtime files came from, so a live session records its
+    // endpoint where a replay records its two files.
+    const std::string source =
+        live ? std::string("websocket;endpoint=") + cfg_.ws_host + ":" +
+                   std::to_string(cfg_.ws_port) + ";symbol=" + cfg_.symbol +
+                   ";tick_size=" + std::to_string(instrument.tick_size)
+             : format + ";trades=" + trades_file + ";depth=" + depth_file + ";symbol=" + cfg_.symbol +
+                   ";tick_size=" + std::to_string(instrument.tick_size);
     auto output_files = open_output_files(source, "source_l2_market_data");
     L2OrderBook l2_book(instrument.tick_size);
     auto strategy = make_strategy(cfg_.strategy_name,
@@ -423,18 +456,38 @@ void Application::run_l2_replay_mode() const
     MarketDataValidationConfig validation_config;
     validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
     // A venue brings either its own trade archive and a JSON Lines book, or the CSV pair this repository
-    // started with, so the two readers are chosen together from the format the depth file reported.
-    auto trades_reader = okx ? make_okx_trade_reader(trades_file, instrument.symbol, instrument.contract_size,
-                                                     instrument.quantity_scale)
-                             : make_deribit_trade_reader(trades_file);
-    auto depth_reader = okx ? make_okx_book_reader(depth_file, instrument.symbol, instrument.contract_size,
-                                                   instrument.quantity_scale)
-                            : make_deribit_depth_reader(depth_file);
+    // started with, so the two readers are chosen together from the format the depth file reported. A
+    // live session brings neither: its two readers are the trade and depth views of one socket, and the
+    // feed that owns that socket outlives them because it is declared above the L2 feed built below.
+    std::unique_ptr<WebSocketFeed> live_feed;
+    std::unique_ptr<IMarketEventReader> trades_reader;
+    std::unique_ptr<IMarketEventReader> depth_reader;
+    if (live)
+    {
+        live_feed = std::make_unique<WebSocketFeed>(
+            WebSocketFeed::Endpoint{cfg_.ws_host, cfg_.ws_port, cfg_.ws_target});
+        live_feed->start();
+        trades_reader = live_feed->trades_reader();
+        depth_reader = live_feed->depth_reader();
+    }
+    else
+    {
+        trades_reader = okx ? make_okx_trade_reader(trades_file, instrument.symbol,
+                                                    instrument.contract_size,
+                                                    instrument.quantity_scale)
+                            : make_deribit_trade_reader(trades_file);
+        depth_reader = okx ? make_okx_book_reader(depth_file, instrument.symbol,
+                                                  instrument.contract_size,
+                                                  instrument.quantity_scale)
+                           : make_deribit_depth_reader(depth_file);
+    }
     // The fifth positional argument of l2_replay has always been a delay in milliseconds, applied as a fixed
     // sleep after every event. That neither reproduces the file's own timing nor scales, so a non-zero value now
     // means "pace this replay" and the speed stays at real time, while --live-pacing is the explicit form and
     // accepts a speed. Zero, which every recorded run passes, still reads the file as fast as it can.
-    const ReplayPacing pacing{.enabled = cfg_.live_pacing || cfg_.delay > 0,
+    // A live session is paced by the venue, not by a schedule read from a file, so pacing is off there
+    // whatever the flags say: there is no file clock to pace against.
+    const ReplayPacing pacing{.enabled = !live && (cfg_.live_pacing || cfg_.delay > 0),
                               .speed = cfg_.live_pacing ? cfg_.live_pacing_speed : 1.0};
     // A recording of the delivered stream, when the run asked for one. It is owned here rather than
     // by the callback because its lifetime is the run's: the two files are opened once, and what
@@ -536,6 +589,13 @@ void Application::run_l2_replay_mode() const
         // Written straight to stdout rather than through the logger, because --no-output
         // disables the logger and that is the recommended combination for profiling.
         std::cout << profiler->report() << std::flush;
+    }
+    if (live_feed != nullptr)
+    {
+        // The socket is closed and its receive thread joined before this line is logged, so the
+        // counters are the session's final ones rather than a race with a reader still draining.
+        live_feed->stop();
+        logger.log("[WS] ", live_feed->summary().to_log_string());
     }
 }
 

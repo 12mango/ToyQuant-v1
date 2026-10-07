@@ -43,6 +43,7 @@ csv         -> legacy Tick scenario
 udp         -> legacy Tick stream
 replay      -> v2 Binance Trade+BBO MarketEvent replay
 l2_replay   -> Deribit L2 trade + depth replay, the mainline path
+ws          -> the same L2 delivery path, reading the same replay shapes over a websocket
 carry       -> two leg carry measured over two funding histories
 ```
 
@@ -431,6 +432,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--record=PREFIX` | Write the delivered stream to `PREFIX_trades.csv` and `PREFIX_depth.csv` in the replay shapes, reported as a `[REC]` line | Off |
 | `--feed-thread` | Read on a second thread and hand each event to the strategy thread over a ring, reported as a `[LATENCY]` line | Off, the feed reads in front of the strategy |
 | `--ring-capacity=N` | Slots in that ring, rounded up to a power of two | 4096 |
+| `--ws-target=/path` | The HTTP path the live `ws` handshake asks for | `/` |
 | `--paper-broker` | Put a broker between the strategy and the engine that keeps its own statement of what the venue executed, reported as `[BROKER]` and compared with the portfolio as `[RECON]` | Off, the plain engine |
 | `--broker-reject-every=N` | Refuse every Nth order at the broker, counted | 0, refuse none |
 | `--broker-partial-every=N` | Deliver every Nth of the strategy's fills as two prints, with the fee split the same way | 0, split none |
@@ -576,6 +578,52 @@ whose useful bounded behavior has partly been incorporated into `l1`. `active_l1
 experiment that produces more observable activity and inventory rotation while accepting more
 adverse-selection risk. After a fill it rebuilds quotes around the new inventory on the next BBO
 cycle, making the inventory-reversion behavior visible in the benchmark diagnostics.
+
+## Run a Live Session Over a WebSocket
+
+`ws` is `l2_replay` with its two readers moved from files onto a socket, and nothing else: the same book, the
+same matching engine, the same recorder, the same paper broker and the same strategy, because none of them can
+tell a live feed from a replayed one. That is the point of the seam the reader is written against, and it is what
+lets one strategy drive a session and a session become replayable.
+
+```text
+ws <host:port> <symbol> [strategy] [quantity_scale] [queue_model] [flags]
+```
+
+```bash
+./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-PERPETUAL active_l2 1 prorata \
+  --fast-validation --record=out/lat/live
+```
+
+The client speaks the WebSocket protocol directly -- the RFC 6455 handshake and text frames -- with no external
+dependency, and reads the two replay CSV shapes as its wire format, one row per text message:
+
+```text
+exchange,symbol,timestamp,id,side,price,amount                                  a trade, 7 columns
+exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount         a depth change, 8 columns
+```
+
+A row's kind is its column count and a header row is skipped, so the two files `--record` writes can be streamed
+back with no transformation. Two readers share the one connection: the receive thread fans each parsed row into a
+trade queue or a depth queue, and the depth reader regroups rows that share a local timestamp into the same batch
+the file reader produces. `--record=PREFIX` then writes the live session back into `PREFIX_trades.csv` and
+`PREFIX_depth.csv`, and streaming those two files over the feed again reproduces them byte for byte.
+
+`tools/websocket_sender.py` is a local stand-in for a venue: it is a WebSocket server that streams a trade file
+and a depth file, interleaved by their own timestamps, so the whole path can be exercised on a desk:
+
+```bash
+python3 tools/websocket_sender.py --port 8765 \
+  --trades out/lat/live_trades.csv --depth out/lat/live_depth.csv &
+./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-PERPETUAL active_l2 1 prorata --fast-validation
+```
+
+The session ends when the peer closes the connection, and the run reports it as a `[WS]` line: the frames and
+messages it read, the trades and depth updates it decoded, and whether the close was clean. `--ws-target=/path`
+sets the HTTP path the handshake asks for; it defaults to `/`. Pacing has no meaning on this mode -- the venue
+sets the speed, not a file's clock -- so `--live-pacing` is refused there, and every other `l2_replay` flag
+(`--record`, `--feed-thread`, `--ring-capacity`, `--fast-validation`, `--profile-stages`, `--paper-broker` and
+its faults, and the strategy and risk flags) is accepted unchanged.
 
 ## Carry: Two Legs Over Two Funding Histories
 

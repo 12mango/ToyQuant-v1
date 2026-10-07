@@ -38,6 +38,7 @@ constexpr std::string_view kLivePacingPrefix = "--live-pacing=";
 constexpr std::string_view kRecordPrefix = "--record=";
 constexpr std::string_view kFeedThreadFlag = "--feed-thread";
 constexpr std::string_view kRingCapacityPrefix = "--ring-capacity=";
+constexpr std::string_view kWebSocketTargetPrefix = "--ws-target=";
 constexpr std::string_view kPaperBrokerFlag = "--paper-broker";
 constexpr std::string_view kBrokerRejectPrefix = "--broker-reject-every=";
 constexpr std::string_view kBrokerPartialPrefix = "--broker-partial-every=";
@@ -120,6 +121,11 @@ void print_usage(const char* executable)
                       << " l2_replay <trades_csv[.gz]> <depth_or_incremental_csv> <symbol> "
                          "[ms_delay] [strategy] [quantity_scale] [queue_model] [--no-output] "
                          "[--fast-validation] [--profile-stages[=interval]] [--live-pacing[=speed]]\n";
+        std::cerr << "   or: " << executable
+                      << " ws <host:port> <symbol> [strategy] [quantity_scale] [queue_model] "
+                         "[--ws-target=/path] [--no-output] [--fast-validation] [--record=PREFIX] "
+                         "[--feed-thread] [--paper-broker]; the live twin of l2_replay, reading the "
+                         "same replay shapes over a websocket instead of from files\n";
         std::cerr << "   or: " << executable
                       << " carry <leg_a_funding_csv> <leg_b_funding_csv> --symbol-a=SYM --symbol-b=SYM "
                          "[--notional-usd=N] [--long=b]\n";
@@ -204,64 +210,138 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         cfg.mode = AppMode::L2Replay;
     else if (mode == "carry")
         cfg.mode = AppMode::Carry;
+    else if (mode == "ws")
+        cfg.mode = AppMode::WebSocket;
     else
     {
-        error = "mode must be 'csv', 'udp', 'replay', 'l2_replay', or 'carry'";
+        error = "mode must be 'csv', 'udp', 'replay', 'l2_replay', 'ws', or 'carry'";
         return false;
     }
 
-    if (cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay)
+    // The two L2 delivery modes. They share every optional flag, the book, the engine, the recorder
+    // and the paper broker; they differ only in whether the readers come from files or from a socket,
+    // which is why the flag block below treats them as one family rather than naming each flag twice.
+    const bool is_l2_family =
+        cfg.mode == AppMode::L2Replay || cfg.mode == AppMode::WebSocket;
+
+    if (cfg.mode == AppMode::Replay || is_l2_family)
     {
-        // No upper bound on the argument count: every optional flag is validated as it is parsed, so
-        // capping the total only rejected valid commands with a misleading message once the flags
-        // multiplied, which is exactly what happened when two were added at once.
-        if (argc < 5)
+        // The optional positional arguments differ between the two sources -- a replay takes two files
+        // and a symbol, a live session a host:port and a symbol -- so they are parsed here, and every
+        // optional flag after them is parsed once, below, for both.
+        int first_optional_flag = 0;
+        if (cfg.mode == AppMode::WebSocket)
         {
-            error = "replay requires trade file, market-state file, and symbol";
-            return false;
-        }
-        cfg.path_or_port = argv[2];
-        cfg.quotes_path = argv[3];
-        cfg.symbol = argv[4];
-        if (!std::filesystem::is_regular_file(to_abs_path(cfg.path_or_port)) ||
-            !std::filesystem::is_regular_file(to_abs_path(cfg.quotes_path)))
-        {
-            error = "replay input file does not exist";
-            return false;
-        }
-        if (argc >= 6 && (!parse_integer(argv[5], cfg.delay) || cfg.delay < 0))
-        {
-            error = "delay must be a non-negative integer";
-            return false;
-        }
-        if (argc >= 7) cfg.strategy_name = argv[6];
-        if (argc >= 8 && (!parse_unsigned(argv[7], cfg.quantity_scale) || cfg.quantity_scale == 0))
-        {
-            error = "quantity scale must be a positive integer";
-            return false;
-        }
-        // The queue model is optional, so an argument starting with -- is a flag rather than a model
-        // name. Without this, `... active_l2 1 --fast-validation` was read as the model being
-        // "--fast-validation" and failed, which made the optional positional impossible to omit.
-        int first_optional_flag = 8;
-        if (argc >= 9 && argv[8][0] != '-')
-        {
-            if (!parse_queue_model(argv[8], cfg.queue_model))
+            // ws <host:port> <symbol> [strategy] [quantity_scale] [queue_model]
+            if (argc < 4)
             {
-                error = "queue model must be conservative, prorata, lumpy, or optimistic";
+                error = "ws requires a host:port endpoint and a symbol";
                 return false;
             }
-            first_optional_flag = 9;
+            const std::string endpoint = argv[2];
+            const std::size_t colon = endpoint.find(':');
+            if (colon == std::string::npos || colon == 0 || colon + 1 >= endpoint.size())
+            {
+                error = "ws endpoint must be host:port";
+                return false;
+            }
+            cfg.ws_host = endpoint.substr(0, colon);
+            int port = 0;
+            if (!parse_integer(endpoint.substr(colon + 1), port) || port < 1 || port > 65535)
+            {
+                error = "ws port must be an integer from 1 to 65535";
+                return false;
+            }
+            cfg.ws_port = static_cast<uint16_t>(port);
+            cfg.path_or_port = endpoint;  // kept for the runtime header and the [WS] line
+            cfg.symbol = argv[3];
+            if (cfg.symbol.empty())
+            {
+                error = "ws symbol cannot be empty";
+                return false;
+            }
+            first_optional_flag = 4;
+            if (argc >= 5 && argv[4][0] != '-')
+            {
+                cfg.strategy_name = argv[4];
+                first_optional_flag = 5;
+            }
+            if (argc >= 6 && argv[5][0] != '-')
+            {
+                if (!parse_unsigned(argv[5], cfg.quantity_scale) || cfg.quantity_scale == 0)
+                {
+                    error = "quantity scale must be a positive integer";
+                    return false;
+                }
+                first_optional_flag = 6;
+            }
+            if (argc >= 7 && argv[6][0] != '-')
+            {
+                if (!parse_queue_model(argv[6], cfg.queue_model))
+                {
+                    error = "queue model must be conservative, prorata, lumpy, or optimistic";
+                    return false;
+                }
+                first_optional_flag = 7;
+            }
+        }
+        else
+        {
+            // No upper bound on the argument count: every optional flag is validated as it is parsed,
+            // so capping the total only rejected valid commands with a misleading message once the
+            // flags multiplied, which is exactly what happened when two were added at once.
+            if (argc < 5)
+            {
+                error = "replay requires trade file, market-state file, and symbol";
+                return false;
+            }
+            cfg.path_or_port = argv[2];
+            cfg.quotes_path = argv[3];
+            cfg.symbol = argv[4];
+            if (!std::filesystem::is_regular_file(to_abs_path(cfg.path_or_port)) ||
+                !std::filesystem::is_regular_file(to_abs_path(cfg.quotes_path)))
+            {
+                error = "replay input file does not exist";
+                return false;
+            }
+            if (argc >= 6 && (!parse_integer(argv[5], cfg.delay) || cfg.delay < 0))
+            {
+                error = "delay must be a non-negative integer";
+                return false;
+            }
+            if (argc >= 7) cfg.strategy_name = argv[6];
+            if (argc >= 8 &&
+                (!parse_unsigned(argv[7], cfg.quantity_scale) || cfg.quantity_scale == 0))
+            {
+                error = "quantity scale must be a positive integer";
+                return false;
+            }
+            // The queue model is optional, so an argument starting with -- is a flag rather than a
+            // model name. Without this, `... active_l2 1 --fast-validation` was read as the model
+            // being \"--fast-validation\" and failed, which made the optional positional impossible to
+            // omit.
+            first_optional_flag = 8;
+            if (argc >= 9 && argv[8][0] != '-')
+            {
+                if (!parse_queue_model(argv[8], cfg.queue_model))
+                {
+                    error = "queue model must be conservative, prorata, lumpy, or optimistic";
+                    return false;
+                }
+                first_optional_flag = 9;
+            }
         }
         // The broker's faults are all "every Nth order or fill" counts, so one parser serves them. Each
         // needs the broker itself: without it the number would be silently ignored, which is worse than
         // being refused.
-        const auto parse_fault_count = [&cfg, &error](const std::string& flag, std::string_view prefix,
-                                                     const char* name, uint64_t& target) -> bool
+        const auto parse_fault_count = [&cfg, &error, is_l2_family](const std::string& flag,
+                                                                    std::string_view prefix,
+                                                                    const char* name,
+                                                                    uint64_t& target) -> bool
         {
-            if (cfg.mode != AppMode::L2Replay)
+            if (!is_l2_family)
             {
-                error = std::string(name) + " is an l2_replay flag, beside --paper-broker";
+                error = std::string(name) + " is an l2_replay or ws flag, beside --paper-broker";
                 return false;
             }
             uint64_t count = 0;
@@ -324,10 +404,10 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 // file. The L1 replay's second stream is a BBO quote, and no replay CSV in this
                 // project holds one as rows, so asking to record there is refused rather than
                 // silently ignored.
-                if (cfg.mode != AppMode::L2Replay)
+                if (!is_l2_family)
                 {
-                    error = "--record is an l2_replay flag: the L1 replay's second stream is a BBO "
-                            "quote, which the replay CSV formats cannot carry as rows";
+                    error = "--record is an l2_replay or ws flag: the L1 replay's second stream is a "
+                            "BBO quote, which the replay CSV formats cannot carry as rows";
                     return false;
                 }
                 if (flag.size() == kRecordPrefix.size())
@@ -339,19 +419,34 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             }
             else if (flag == kFeedThreadFlag)
             {
-                if (cfg.mode != AppMode::L2Replay)
+                if (!is_l2_family)
                 {
-                    error = "--feed-thread is an l2_replay flag: the L1 replay's second stream is a "
-                            "BBO quote, and a quote is not what this hand-off carries";
+                    error = "--feed-thread is an l2_replay or ws flag: the L1 replay's second stream "
+                            "is a BBO quote, and a quote is not what this hand-off carries";
                     return false;
                 }
                 cfg.feed_thread = true;
             }
+            else if (flag.compare(0, kWebSocketTargetPrefix.size(), kWebSocketTargetPrefix) == 0)
+            {
+                if (cfg.mode != AppMode::WebSocket)
+                {
+                    error = "--ws-target is a ws flag: it is the HTTP path the live handshake asks for";
+                    return false;
+                }
+                const std::string target = flag.substr(kWebSocketTargetPrefix.size());
+                if (target.empty() || target.front() != '/')
+                {
+                    error = "--ws-target must be a path beginning with /";
+                    return false;
+                }
+                cfg.ws_target = target;
+            }
             else if (flag.compare(0, kRingCapacityPrefix.size(), kRingCapacityPrefix) == 0)
             {
-                if (cfg.mode != AppMode::L2Replay)
+                if (!is_l2_family)
                 {
-                    error = "--ring-capacity is an l2_replay flag, beside --feed-thread";
+                    error = "--ring-capacity is an l2_replay or ws flag, beside --feed-thread";
                     return false;
                 }
                 uint64_t capacity = 0;
@@ -364,9 +459,9 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             }
             else if (flag == kPaperBrokerFlag)
             {
-                if (cfg.mode != AppMode::L2Replay)
+                if (!is_l2_family)
                 {
-                    error = "--paper-broker is an l2_replay flag: it wraps that mode's engine";
+                    error = "--paper-broker is an l2_replay or ws flag: it wraps that mode's engine";
                     return false;
                 }
                 cfg.paper_broker = true;
@@ -642,29 +737,32 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 return false;
             }
         }
-        if (cfg.fast_validation && cfg.mode != AppMode::L2Replay)
+        if (cfg.fast_validation && !is_l2_family)
         {
-            error = "--fast-validation is only supported by l2_replay";
+            error = "--fast-validation is only supported by l2_replay or ws";
             return false;
         }
-        if (cfg.profile_sample_interval > 0 && cfg.mode != AppMode::L2Replay)
+        if (cfg.profile_sample_interval > 0 && !is_l2_family)
         {
-            error = "--profile-stages is only supported by l2_replay";
+            error = "--profile-stages is only supported by l2_replay or ws";
             return false;
         }
         if (cfg.live_pacing && cfg.mode != AppMode::L2Replay)
         {
+            // A live socket is paced by the venue, not by a file's clock, so pacing has no meaning
+            // there and is refused rather than silently ignored.
             error = "--live-pacing is only supported by l2_replay";
             return false;
         }
-        if (cfg.markout_cover && cfg.mode != AppMode::L2Replay)
+        if (cfg.markout_cover && !is_l2_family)
         {
-            error = "--markout-cover is only supported by l2_replay";
+            error = "--markout-cover is only supported by l2_replay or ws";
             return false;
         }
-        if (cfg.flatten_band > 0 && cfg.mode != AppMode::L2Replay)
+        if (cfg.flatten_band > 0 && !is_l2_family)
         {
-            error = "--flatten-band is only supported by l2_replay, whose decision layer carries the band";
+            error = "--flatten-band is only supported by l2_replay or ws, whose decision layer carries "
+                    "the band";
             return false;
         }
         if (!cfg.paper_broker &&
@@ -764,7 +862,9 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         return false;
     }
 
-    const bool is_replay_mode = cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay;
+    const bool is_replay_mode =
+        cfg.mode == AppMode::Replay || cfg.mode == AppMode::L2Replay ||
+        cfg.mode == AppMode::WebSocket;
     if (!is_replay_mode && argc >= 3) cfg.path_or_port = argv[2];
     if (cfg.mode == AppMode::LegacyCsv && cfg.path_or_port.empty())
     {

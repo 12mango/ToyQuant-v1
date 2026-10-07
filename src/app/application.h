@@ -7,6 +7,7 @@
 
 class Logger;
 class Pipeline;
+class IMarketEventReader;
 struct InstrumentSpec;
 struct MatchingEngineConfig;
 
@@ -36,7 +37,11 @@ class Application
     void configure_logger(Logger& logger) const;
     void run_legacy_csv_mode() const;
     void run_replay_mode() const;
-    void run_l2_replay_mode() const;
+    // The L2 delivery path, whose only variable is where its two readers come from: the file replay
+    // takes them from the depth and trade files, and the live session takes them from a websocket.
+    // Everything after the readers exist -- the book, the strategy, the engine, the recorder, the
+    // broker and the summary -- is the same code, which is what makes one strategy drive both.
+    void run_l2_session_mode() const;
     void run_carry_mode() const;
     void run_legacy_udp_mode() const;
 
