@@ -1131,13 +1131,17 @@ library in the tree. The first step is therefore a small Python relay, standard 
 secure connection, subscribes, decodes the venue's messages into the replay CSV rows this repository already
 reads, and re-serves them as plaintext `ws://` on localhost for the C++ feed to read -- which it already can, so
 the engine is untouched and the relay is the only thing that knows the venue. It landed as
-`tools/venue_relay.py`, with a capture mode and a replay mode so a window can be exercised with no network at
-all. Against OKX's public `BTC-USDT-SWAP` channel a six second run handed the engine 124 trades and 60 book
-messages, 4807 level rows, with **no sequence gap**, and the `ws` mode recorded it; a recorded window replays
-through the same relay to the same engine. The second step moves TLS and JSON into C++ so the feed is a
-first-class live client, and keeps the Python relay as the fallback. What the relay still leaves to that step is
-reconnect after a dropped connection. OKX is the lowest-friction first target, because its public channels need
-no key and its historical endpoint carries no order book.
+`tools/venue_relay.py`, standard library only, with three roles that share one decoder: it relays the venue to
+the engine, it writes the decoded rows straight to `PREFIX_trades.csv` and `PREFIX_depth.csv` (the direct route,
+with no engine), and it captures the venue's raw messages so a window runs again with no network. It subscribes,
+decodes, keeps its own sequence accounting -- a break in the venue's `prevSeqId`/`seqId` pair is a lost update
+and is counted -- and reconnects with a backoff after a drop, which the snapshot the venue re-sends on subscribe
+makes safe for the book. Against OKX's public `BTC-USDT-SWAP` channel a six second run handed the engine 124
+trades and 60 book messages, 4807 level rows, with **no sequence gap** and no reconnect; a six second direct
+recording wrote 205 trades and 4301 level rows with the same zero gap and replayed through `l2_replay` as a file.
+The second step moves TLS and JSON into C++ so the feed is a first-class live client, and keeps the Python relay
+as the reference, which is what the C++ side is checked against. OKX is the lowest-friction first target, because
+its public channels need no key and its historical endpoint carries no order book.
 
 
 ### The same code, second purpose: the demo and the interview

@@ -243,13 +243,33 @@ class Decoder:
         )
 
 
+class Recorder:
+    """The direct route: the decoded rows written straight to the replay CSV pair, no relay and no
+    engine. It is the counterpart of the relay's server role -- one connection to the venue, the same
+    decoder, the same rows -- and it is what makes a live window a file this repository can replay."""
+
+    def __init__(self, prefix):
+        self.trades = open(prefix + "_trades.csv", "w", encoding="utf-8")
+        self.depth = open(prefix + "_depth.csv", "w", encoding="utf-8")
+        self.trades.write(TRADE_HEADER)
+        self.depth.write(DEPTH_HEADER)
+
+    def write(self, row):
+        # A trade row has seven fields, a depth row eight, which is how the reader tells them apart.
+        (self.trades if row.count(",") == 6 else self.depth).write(row)
+
+    def close(self):
+        self.trades.close()
+        self.depth.close()
+
+
 # ---------------------------------------------------------------- the venue client and the local server
 
 class VenueClient(threading.Thread):
     """A client to the venue: subscribe, then decode every message into the row queue."""
 
     def __init__(self, url, instrument, books_channel, decoder, rows, capture=None, max_seconds=0,
-                 enqueue=True):
+                 enqueue=True, recorder=None):
         super().__init__(daemon=True)
         self.url = url
         self.instrument = instrument
@@ -259,8 +279,10 @@ class VenueClient(threading.Thread):
         self.capture = capture
         self.max_seconds = max_seconds
         self.enqueue = enqueue
+        self.recorder = recorder
         self.stop = threading.Event()
         self.connected = False
+        self.reconnects = 0
 
     def subscription(self):
         return json.dumps({
@@ -270,42 +292,69 @@ class VenueClient(threading.Thread):
         })
 
     def run(self):
+        """Connect, and reconnect with a backoff after a drop, until stopped or out of time."""
+        deadline = time.time() + self.max_seconds if self.max_seconds else None
         sink = open(self.capture, "a") if self.capture else None
+        backoff = 1.0
         try:
-            sock = websocket_client(self.url)
-            self.connected = True
-            send_masked(sock, self.subscription())
-            sock.settimeout(PING_AFTER_SECONDS)
-            deadline = time.time() + self.max_seconds if self.max_seconds else None
             while not self.stop.is_set():
                 if deadline is not None and time.time() >= deadline:
                     break
+                try:
+                    self.session(sink, deadline)
+                    backoff = 1.0
+                except (OSError, RuntimeError) as error:
+                    if self.stop.is_set():
+                        break
+                    self.reconnects += 1
+                    print(f"venue connection lost ({error}); reconnecting in {backoff:.0f}s", flush=True)
+                if self.stop.is_set():
+                    break
+                if deadline is not None and time.time() >= deadline:
+                    break
+                time.sleep(backoff)
+                backoff = min(backoff * 2.0, 8.0)
+        finally:
+            if sink is not None:
+                sink.close()
+            if self.enqueue:
+                self.rows.put(None)  # end of stream, so a waiting server stops cleanly
+
+    def session(self, sink, deadline):
+        """One venue connection, handshake to drop. Returns at a clean close or the deadline; a
+        transport failure is raised so run() can reconnect. A reconnect is safe for the book because
+        the venue re-sends a full snapshot on subscribe, which resets the decoder's sequence."""
+        sock = websocket_client(self.url)
+        self.connected = True
+        try:
+            send_masked(sock, self.subscription())
+            sock.settimeout(PING_AFTER_SECONDS)
+            while not self.stop.is_set():
+                if deadline is not None and time.time() >= deadline:
+                    return
                 try:
                     frame = read_frame(sock)
                 except socket.timeout:
                     send_masked(sock, "ping")  # keep an idle public connection alive
                     continue
                 if frame is None:
-                    break
+                    return
                 _, opcode, payload = frame
                 if opcode == 0x8:
-                    break
+                    return
                 if opcode not in (0x1, 0x0):
                     continue
                 text = payload.decode(errors="replace")
                 if sink is not None:
                     sink.write(text + "\n")
                     sink.flush()
-                if self.enqueue:
-                    for row in self.decoder.decode(text):
+                for row in self.decoder.decode(text):
+                    if self.recorder is not None:
+                        self.recorder.write(row)
+                    if self.enqueue:
                         self.rows.put(row)
-                else:
-                    self.decoder.decode(text)
         finally:
-            if sink is not None:
-                sink.close()
-            if self.enqueue:
-                self.rows.put(None)  # end of stream, so a waiting server stops cleanly
+            sock.close()
 
 
 def accept_client(listen):
@@ -425,6 +474,8 @@ def main():
     parser.add_argument("--listen", default="127.0.0.1:8765",
                         help="where to serve the engine; empty to only capture")
     parser.add_argument("--capture", help="write the venue's raw messages here, for a later --replay")
+    parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
+                                         "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
     parser.add_argument("--max-seconds", type=float, default=0.0)
     parser.add_argument("--self-test", action="store_true")
@@ -438,8 +489,13 @@ def main():
     rows = queue.Queue()
 
     if args.replay:
+        recorder = Recorder(args.record) if args.record else None
         for row in decode_file(args.replay, decoder):
+            if recorder is not None:
+                recorder.write(row)
             rows.put(row)
+        if recorder is not None:
+            recorder.close()
         rows.put(None)
         if not args.listen:
             print(decoder.summary(), flush=True)
@@ -458,8 +514,10 @@ def main():
     else:
         listener, conn = None, None
 
+    recorder = Recorder(args.record) if args.record else None
     client = VenueClient(args.venue, args.instrument, args.books_channel, decoder, rows,
-                         capture=args.capture, max_seconds=args.max_seconds, enqueue=conn is not None)
+                         capture=args.capture, max_seconds=args.max_seconds, enqueue=conn is not None,
+                         recorder=recorder)
     client.start()
     try:
         if conn is None:
@@ -471,13 +529,18 @@ def main():
     finally:
         client.stop.set()
         client.join(timeout=2)
+        if recorder is not None:
+            recorder.close()
         if conn is not None:
             conn.close()
         if listener is not None:
             listener.close()
     if args.capture:
         print(f"captured the venue's messages to {args.capture}", flush=True)
-    print(decoder.summary(), flush=True)
+    if args.record:
+        print(f"recorded the decoded rows to {args.record}_trades.csv and {args.record}_depth.csv",
+              flush=True)
+    print(f"{decoder.summary()} reconnects={client.reconnects}", flush=True)
     return 0
 
 
