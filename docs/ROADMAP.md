@@ -1037,7 +1037,11 @@ the replay already reads, refusing anything those formats cannot express — a t
 whose updates disagree about their local timestamp, a snapshot whose level count changes, or a stream that is both
 snapshots and batches at once, which is why the OKX archive cannot be recorded. The gate asserts the claim rather
 than describing it: tier 1 of `tools/verify_l2.sh` records the 200k slice, replays the recording, and requires both
-runs to report the same numbers. What is left of Stage A is the live reader itself.
+runs to report the same numbers. The reader itself has since landed too: `src/market/ws_feed.*` is a websocket
+transport behind `IMarketEventReader`, and the `ws` mode is the L2 path with its readers moved onto it. So what
+is left of Stage A is not a reader but a **venue** — an adapter that subscribes to one, decodes its messages,
+watches the sequence for gaps and reconnects. The route to one, and why it is two steps, is in
+[what is left to build by hand](#what-is-left-to-build-by-hand-in-learning-order).
 
 **Passes when** several hours are recorded without a drop and the recorded file reproduces the live summary.
 **Ends it when** the depth a retail account may legally subscribe to and read programmatically costs more than
@@ -1104,6 +1108,33 @@ parameter change needs out-of-sample evidence before it ships. Only then does si
 another symbol, then another market. The micro E-mini stays a candidate rather than the plan, because what
 failed there was the capture and not the fee.
 
+### What is left to build by hand, in learning order
+
+The stages above are the plan from a positive window to a running system. Read as a learning path instead — no
+profit goal, and no need for the statistical rigor the seven gates impose — the same material is a coverage
+checklist. The engine already speaks historical data, the L2 book, the queue, the fee, the market-making line,
+single-instrument accounting, funding, the paper broker, reconciliation and the recorder. What has not been built
+here by hand is the other half of a trading system, and each row points the existing book and engine at a new
+workload rather than rewriting them:
+
+| To build by hand | What it teaches |
+|---|---|
+| the order gateway and the order lifecycle behind it (Stage B) | submit, cancel and modify, partial fills, rejects, timeouts, and idempotent client order ids |
+| a strategy that is not market making | signal, then target position, then risk, then exit — the common workflow this repository does not walk |
+| live ingestion pointed at a real venue (Stage A) | the venue protocol, subscription, heartbeat, gap detection and reconnect |
+| multi-instrument accounting and a portfolio layer | from one instrument to a portfolio and a risk budget |
+| persistence and recovery | how a long-lived process keeps its state and asks the venue what is still working |
+
+**How the live reader would reach a venue, in two steps.** The venues whose data this repository already models
+publish live data over `wss://`, and the transport here speaks plaintext `ws://` with neither TLS nor a JSON
+library in the tree. The first step is therefore a small Python relay, standard library only, that opens the
+secure connection, subscribes, and re-serves plaintext `ws://` on localhost for the C++ feed to read, which it
+already can: the venue's message decoding, gap detection and reconnect are written in C++ while TLS terminates
+outside it. The second step moves TLS and JSON into C++ so the feed is a first-class live client. OKX is the
+lowest-friction first target, because its public channels need no key and its historical endpoint carries no
+order book.
+
+
 ### The same code, second purpose: the demo and the interview
 
 Everything below is live-path work or a measurement of it, so the demo and the deployment share one codebase
@@ -1134,9 +1165,9 @@ The benchmark measured the hand-off at 18.3 ns/message for a trivial payload and
 carries, 1.8x the mutex and condition variable alternative, with the event's own move and destructor as the
 dominant term. The table is in
 [the performance reference](PERFORMANCE.md#39-the-hand-off-between-two-threads), and the part of it no gate
-asserts is exactly the part that cannot be: a time. The feed is still a file reader, so what is left of the
-live reader is the transport, and the deliverable still outstanding is the before and after `perf` table for
-one optimisation.
+asserts is exactly the part that cannot be: a time. The transport has since landed as `src/market/ws_feed.*`, so
+what is left of the live reader is the venue adapter rather than the pipe, and the deliverable still outstanding
+is the before and after `perf` table for one optimisation.
 
 ### What has to be done by hand
 
