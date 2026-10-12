@@ -1125,14 +1125,19 @@ workload rather than rewriting them:
 | multi-instrument accounting and a portfolio layer | from one instrument to a portfolio and a risk budget |
 | persistence and recovery | how a long-lived process keeps its state and asks the venue what is still working |
 
-**How the live reader would reach a venue, in two steps.** The venues whose data this repository already models
+**How the live reader reaches a venue, in two steps.** The venues whose data this repository already models
 publish live data over `wss://`, and the transport here speaks plaintext `ws://` with neither TLS nor a JSON
 library in the tree. The first step is therefore a small Python relay, standard library only, that opens the
-secure connection, subscribes, and re-serves plaintext `ws://` on localhost for the C++ feed to read, which it
-already can: the venue's message decoding, gap detection and reconnect are written in C++ while TLS terminates
-outside it. The second step moves TLS and JSON into C++ so the feed is a first-class live client. OKX is the
-lowest-friction first target, because its public channels need no key and its historical endpoint carries no
-order book.
+secure connection, subscribes, decodes the venue's messages into the replay CSV rows this repository already
+reads, and re-serves them as plaintext `ws://` on localhost for the C++ feed to read -- which it already can, so
+the engine is untouched and the relay is the only thing that knows the venue. It landed as
+`tools/venue_relay.py`, with a capture mode and a replay mode so a window can be exercised with no network at
+all. Against OKX's public `BTC-USDT-SWAP` channel a six second run handed the engine 124 trades and 60 book
+messages, 4807 level rows, with **no sequence gap**, and the `ws` mode recorded it; a recorded window replays
+through the same relay to the same engine. The second step moves TLS and JSON into C++ so the feed is a
+first-class live client, and keeps the Python relay as the fallback. What the relay still leaves to that step is
+reconnect after a dropped connection. OKX is the lowest-friction first target, because its public channels need
+no key and its historical endpoint carries no order book.
 
 
 ### The same code, second purpose: the demo and the interview
