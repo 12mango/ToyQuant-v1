@@ -433,6 +433,7 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--feed-thread` | Read on a second thread and hand each event to the strategy thread over a ring, reported as a `[LATENCY]` line | Off, the feed reads in front of the strategy |
 | `--ring-capacity=N` | Slots in that ring, rounded up to a power of two | 4096 |
 | `--ws-target=/path` | The HTTP path the live `ws` handshake asks for | `/` |
+| `--ws-seconds=N` | Stop a live `ws` session after N wall-clock seconds and drain what arrived, for a capture whose peer never closes the socket | Off: run until the peer closes |
 | `--paper-broker` | Put a broker between the strategy and the engine that keeps its own statement of what the venue executed, reported as `[BROKER]` and compared with the portfolio as `[RECON]` | Off, the plain engine |
 | `--broker-reject-every=N` | Refuse every Nth order at the broker, counted | 0, refuse none |
 | `--broker-partial-every=N` | Deliver every Nth of the strategy's fills as two prints, with the fee split the same way | 0, split none |
@@ -619,11 +620,15 @@ python3 tools/websocket_sender.py --port 8765 \
 ```
 
 The session ends when the peer closes the connection, and the run reports it as a `[WS]` line: the frames and
-messages it read, the trades and depth updates it decoded, and whether the close was clean. `--ws-target=/path`
-sets the HTTP path the handshake asks for; it defaults to `/`. Pacing has no meaning on this mode -- the venue
-sets the speed, not a file's clock -- so `--live-pacing` is refused there, and every other `l2_replay` flag
-(`--record`, `--feed-thread`, `--ring-capacity`, `--fast-validation`, `--profile-stages`, `--paper-broker` and
-its faults, and the strategy and risk flags) is accepted unchanged.
+messages it read, the trades and depth updates it decoded, whether the close was clean, and whether the run
+stopped on its own `--ws-seconds=N` instead. A live capture usually needs that bound, because a venue's socket
+does not close itself, and the rows that arrived before the deadline are still drained rather than dropped. The
+connect and the opening handshake share a five-second budget, so a host that accepts the connection and then
+says nothing fails the run instead of hanging it. `--ws-target=/path` sets the HTTP path the handshake asks
+for; it defaults to `/`. Pacing has no meaning on this mode -- the venue sets the speed, not a file's clock --
+so `--live-pacing` is refused there, and every other `l2_replay` flag (`--record`, `--feed-thread`,
+`--ring-capacity`, `--fast-validation`, `--profile-stages`, `--paper-broker` and its faults, and the strategy
+and risk flags) is accepted unchanged.
 
 ## Carry: Two Legs Over Two Funding Histories
 

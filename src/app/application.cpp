@@ -465,7 +465,8 @@ void Application::run_l2_session_mode() const
     if (live)
     {
         live_feed = std::make_unique<WebSocketFeed>(
-            WebSocketFeed::Endpoint{cfg_.ws_host, cfg_.ws_port, cfg_.ws_target});
+            WebSocketFeed::Endpoint{cfg_.ws_host, cfg_.ws_port, cfg_.ws_target},
+            WebSocketFeed::Options{.live_seconds = cfg_.ws_seconds});
         live_feed->start();
         trades_reader = live_feed->trades_reader();
         depth_reader = live_feed->depth_reader();

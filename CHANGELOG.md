@@ -23,6 +23,9 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
 - **One mode, reused.** `ws` accepts every `l2_replay` flag -- the recorder, the feed thread, the profiler and
   the paper broker -- because it is that mode with the readers swapped, and `run_l2_replay_mode` is now
   `run_l2_session_mode`, which owns both sources.
+- **A bounded session and a bounded handshake.** `--ws-seconds=N` ends a capture whose peer never closes the
+  socket, draining what already arrived first, and the connect and the opening handshake share a five-second
+  budget, so a host that accepts the connection and then says nothing fails the run rather than hanging it.
 
 ## The measured line
 

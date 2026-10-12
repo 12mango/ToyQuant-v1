@@ -11,7 +11,9 @@
 
 #include <cassert>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -105,7 +107,18 @@ void send_all(int fd, std::string_view data)
 class LoopbackServer
 {
    public:
-    explicit LoopbackServer(std::vector<std::string> rows) : rows_(std::move(rows))
+    // What the stand-in venue does after it accepts. SendRows is the happy path; Silent accepts and
+    // answers nothing, so only the client's handshake budget can end it; SendRowsThenHold streams the
+    // rows and then keeps the socket open, so only the client's own session length can end the run.
+    enum class Behavior
+    {
+        SendRows,
+        Silent,
+        SendRowsThenHold
+    };
+
+    explicit LoopbackServer(std::vector<std::string> rows, Behavior behavior = Behavior::SendRows)
+        : rows_(std::move(rows)), behavior_(behavior)
     {
         listener_ = ::socket(AF_INET, SOCK_STREAM, 0);
         assert(listener_ >= 0);
@@ -140,6 +153,13 @@ class LoopbackServer
     {
         const int conn = ::accept(listener_, nullptr, nullptr);
         if (conn < 0) return;
+        if (behavior_ == Behavior::Silent)
+        {
+            // Accept the connection and answer nothing, for longer than the client's handshake budget.
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+            ::close(conn);
+            return;
+        }
         const std::string request = read_http_request(conn);
         const std::string key = header(request, "sec-websocket-key");
         assert(!key.empty());
@@ -151,7 +171,15 @@ class LoopbackServer
                                      accept + "\r\n\r\n";
         send_all(conn, response);
         for (const std::string& row : rows_) send_all(conn, frame(row + "\n"));
-        send_all(conn, frame("", 0x8));
+        if (behavior_ == Behavior::SendRowsThenHold)
+        {
+            // The peer keeps the socket open, so only the client's own deadline ends the session.
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        }
+        else
+        {
+            send_all(conn, frame("", 0x8));
+        }
         ::shutdown(conn, SHUT_WR);
         ::close(conn);
     }
@@ -159,6 +187,7 @@ class LoopbackServer
     int listener_{-1};
     uint16_t port_{0};
     std::vector<std::string> rows_;
+    Behavior behavior_{Behavior::SendRows};
     std::thread thread_;
 };
 }  // namespace
@@ -238,6 +267,47 @@ int main()
     assert(summary.trades == 2);
     assert(summary.depth_updates == 3);
     assert(summary.parse_errors == 0);
+
+    {
+        // A session that runs out on its own clock: the peer keeps the socket open, so only the feed's
+        // session length can end the run, and the row that arrived before the deadline is still
+        // delivered first rather than dropped.
+        LoopbackServer holding({"ws,ETH-PERPETUAL,1000,1,buy,100.5,3"},
+                               LoopbackServer::Behavior::SendRowsThenHold);
+        holding.serve();
+        WebSocketFeed live(WebSocketFeed::Endpoint{"127.0.0.1", holding.port(), "/"},
+                           WebSocketFeed::Options{.live_seconds = 0.15});
+        live.start();
+        auto trades_reader = live.trades_reader();
+        auto depth_reader = live.depth_reader();
+        MarketEvent event;
+        assert(trades_reader->next(event));
+        assert(std::holds_alternative<MarketTrade>(event));
+        assert(!trades_reader->next(event));  // the deadline ended it, not a close
+        assert(!depth_reader->next(event));
+        live.stop();
+        assert(live.summary().stopped_by_deadline);
+        assert(!live.summary().clean_close);
+        assert(live.summary().trades == 1);
+    }
+    {
+        // A peer that accepts the connection and then says nothing: the handshake has to fail on its
+        // budget rather than wait forever for a response that is never coming.
+        LoopbackServer silent({}, LoopbackServer::Behavior::Silent);
+        silent.serve();
+        WebSocketFeed feed(WebSocketFeed::Endpoint{"127.0.0.1", silent.port(), "/"},
+                           WebSocketFeed::Options{.connect_timeout_ms = 150});
+        bool threw = false;
+        try
+        {
+            feed.start();
+        }
+        catch (const std::runtime_error&)
+        {
+            threw = true;
+        }
+        assert(threw);
+    }
 
     return 0;
 }

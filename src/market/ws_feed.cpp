@@ -1,11 +1,14 @@
 #include "market/ws_feed.h"
 
+#include <fcntl.h>
 #include <netdb.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <exception>
 #include <random>
@@ -23,6 +26,15 @@ namespace
 constexpr uint64_t kMaxFrameBytes = std::size_t{1} << 20;  // 1 MiB
 // The magic the protocol appends to the client key before hashing, from RFC 6455 section 1.3.
 constexpr std::string_view kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+// A monotonic millisecond clock, the unit both deadlines are measured in. Steady, so a wall-clock
+// adjustment in the middle of a session cannot make a deadline fire early or never.
+int64_t monotonic_now_ms()
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
 
 // SHA-1, RFC 3174, the whole of what the opening handshake needs. It is written out rather than
 // linked because the only thing that consumes it is one hash of a sixty byte string, and pulling a
@@ -257,18 +269,28 @@ std::string WebSocketFeedSummary::to_log_string() const
 {
     return "connected=" + std::to_string(connected ? 1 : 0) +
            " clean_close=" + std::to_string(clean_close ? 1 : 0) +
+           " stopped_by_deadline=" + std::to_string(stopped_by_deadline ? 1 : 0) +
            " frames=" + std::to_string(frames) + " messages=" + std::to_string(messages) +
            " trades=" + std::to_string(trades) + " depth_updates=" + std::to_string(depth_updates) +
            " control_frames=" + std::to_string(control_frames) +
            " parse_errors=" + std::to_string(parse_errors);
 }
 
-WebSocketFeed::WebSocketFeed(Endpoint endpoint, std::size_t ring_capacity)
-    : endpoint_(std::move(endpoint)), trades_(ring_capacity), depth_(ring_capacity)
+WebSocketFeed::WebSocketFeed(Endpoint endpoint) : WebSocketFeed(std::move(endpoint), Options{}) {}
+
+WebSocketFeed::WebSocketFeed(Endpoint endpoint, Options options)
+    : endpoint_(std::move(endpoint)),
+      options_(options),
+      trades_(options.ring_capacity),
+      depth_(options.ring_capacity)
 {
     if (endpoint_.host.empty()) throw std::invalid_argument("a websocket endpoint needs a host");
     if (endpoint_.port == 0) throw std::invalid_argument("a websocket endpoint needs a port");
     if (endpoint_.target.empty()) endpoint_.target = "/";
+    if (options_.live_seconds < 0.0)
+        throw std::invalid_argument("a websocket session length cannot be negative");
+    if (options_.connect_timeout_ms < 0)
+        throw std::invalid_argument("a websocket connect timeout cannot be negative");
 }
 
 WebSocketFeed::~WebSocketFeed()
@@ -290,9 +312,41 @@ bool WebSocketFeed::connect_socket()
     {
         fd = ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if (fd < 0) continue;
-        if (::connect(fd, address->ai_addr, address->ai_addrlen) == 0) break;
-        ::close(fd);
-        fd = -1;
+
+        if (options_.connect_timeout_ms <= 0)
+        {
+            if (::connect(fd, address->ai_addr, address->ai_addrlen) == 0) break;
+            ::close(fd);
+            fd = -1;
+            continue;
+        }
+
+        // A non-blocking connect plus a wait on writability is how a connect gets a deadline: the
+        // kernel will not honour one on a blocking socket, and a filtered port otherwise leaves that
+        // waiting rather than refused.
+        const int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        const int rc = ::connect(fd, address->ai_addr, address->ai_addrlen);
+        bool connected = rc == 0;
+        if (!connected && errno == EINPROGRESS)
+        {
+            pollfd waiting{fd, POLLOUT, 0};
+            if (::poll(&waiting, 1, static_cast<int>(options_.connect_timeout_ms)) > 0)
+            {
+                int error = 0;
+                socklen_t length = sizeof(error);
+                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0 && error == 0)
+                    connected = true;
+            }
+        }
+        if (!connected)
+        {
+            ::close(fd);
+            fd = -1;
+            continue;
+        }
+        fcntl(fd, F_SETFL, flags);  // back to blocking, which is how the receive loop reads
+        break;
     }
     freeaddrinfo(result);
     if (fd < 0) return false;
@@ -307,7 +361,7 @@ bool WebSocketFeed::connect_socket()
     return true;
 }
 
-bool WebSocketFeed::read_exact(void* destination, std::size_t count)
+bool WebSocketFeed::read_exact(void* destination, std::size_t count, int64_t deadline_ms)
 {
     auto* out = static_cast<unsigned char*>(destination);
     std::size_t done = 0;
@@ -324,6 +378,7 @@ bool WebSocketFeed::read_exact(void* destination, std::size_t count)
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
             if (!running_.load(std::memory_order_acquire)) return false;
+            if (deadline_ms > 0 && monotonic_now_ms() >= deadline_ms) return false;
             continue;
         }
         return false;
@@ -348,12 +403,19 @@ void WebSocketFeed::perform_handshake()
     if (!write_all(sock_, request))
         throw std::runtime_error("websocket handshake could not be written");
 
+    const int64_t deadline = options_.connect_timeout_ms > 0
+                                 ? monotonic_now_ms() + options_.connect_timeout_ms
+                                 : 0;
     std::string response;
     char byte = 0;
     while (response.find("\r\n\r\n") == std::string::npos)
     {
-        if (!read_exact(&byte, 1))
+        if (!read_exact(&byte, 1, deadline))
+        {
+            if (deadline > 0 && monotonic_now_ms() >= deadline)
+                throw std::runtime_error("the websocket handshake timed out");
             throw std::runtime_error("the connection closed during the websocket handshake");
+        }
         response.push_back(byte);
         if (response.size() > 16 * 1024)
             throw std::runtime_error("the websocket handshake response is too large");
@@ -409,10 +471,10 @@ void WebSocketFeed::stop()
     producer_done_.store(true, std::memory_order_release);
 }
 
-bool WebSocketFeed::read_frame(std::string& payload, int& opcode, bool& fin)
+bool WebSocketFeed::read_frame(std::string& payload, int& opcode, bool& fin, int64_t deadline_ms)
 {
     unsigned char header[2];
-    if (!read_exact(header, 2)) return false;
+    if (!read_exact(header, 2, deadline_ms)) return false;
     fin = (header[0] & 0x80) != 0;
     opcode = header[0] & 0x0F;
     const bool masked = (header[1] & 0x80) != 0;
@@ -420,13 +482,13 @@ bool WebSocketFeed::read_frame(std::string& payload, int& opcode, bool& fin)
     if (length == 126)
     {
         unsigned char extended[2];
-        if (!read_exact(extended, 2)) return false;
+        if (!read_exact(extended, 2, deadline_ms)) return false;
         length = (static_cast<uint64_t>(extended[0]) << 8) | extended[1];
     }
     else if (length == 127)
     {
         unsigned char extended[8];
-        if (!read_exact(extended, 8)) return false;
+        if (!read_exact(extended, 8, deadline_ms)) return false;
         length = 0;
         for (unsigned char byte : extended) length = (length << 8) | byte;
     }
@@ -435,10 +497,11 @@ bool WebSocketFeed::read_frame(std::string& payload, int& opcode, bool& fin)
                                  " exceeds the cap");
 
     unsigned char mask[4] = {0, 0, 0, 0};
-    if (masked && !read_exact(mask, 4)) return false;
+    if (masked && !read_exact(mask, 4, deadline_ms)) return false;
 
     payload.resize(static_cast<std::size_t>(length));
-    if (length > 0 && !read_exact(payload.data(), static_cast<std::size_t>(length))) return false;
+    if (length > 0 && !read_exact(payload.data(), static_cast<std::size_t>(length), deadline_ms))
+        return false;
     if (masked)
         for (uint64_t index = 0; index < length; ++index)
             payload[static_cast<std::size_t>(index)] ^= mask[index & 3];
@@ -483,13 +546,29 @@ void WebSocketFeed::receive_loop()
 {
     std::string payload;
     std::string assembled;
+    // The session deadline, checked between frames and on every receive timeout, so a live capture
+    // ends on its own clock with what already arrived still in the queues for the readers to drain.
+    const int64_t deadline =
+        options_.live_seconds > 0.0
+            ? monotonic_now_ms() + static_cast<int64_t>(options_.live_seconds * 1000.0)
+            : 0;
     try
     {
         while (running_.load(std::memory_order_relaxed))
         {
+            if (deadline > 0 && monotonic_now_ms() >= deadline)
+            {
+                summary_.stopped_by_deadline = true;
+                break;
+            }
             int opcode = 0;
             bool fin = true;
-            if (!read_frame(payload, opcode, fin)) break;
+            if (!read_frame(payload, opcode, fin, deadline))
+            {
+                if (deadline > 0 && monotonic_now_ms() >= deadline)
+                    summary_.stopped_by_deadline = true;
+                break;
+            }
             ++summary_.frames;
 
             if (opcode == 0x1 || opcode == 0x0)

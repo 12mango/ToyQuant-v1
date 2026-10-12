@@ -39,6 +39,7 @@ constexpr std::string_view kRecordPrefix = "--record=";
 constexpr std::string_view kFeedThreadFlag = "--feed-thread";
 constexpr std::string_view kRingCapacityPrefix = "--ring-capacity=";
 constexpr std::string_view kWebSocketTargetPrefix = "--ws-target=";
+constexpr std::string_view kWebSocketSecondsPrefix = "--ws-seconds=";
 constexpr std::string_view kPaperBrokerFlag = "--paper-broker";
 constexpr std::string_view kBrokerRejectPrefix = "--broker-reject-every=";
 constexpr std::string_view kBrokerPartialPrefix = "--broker-partial-every=";
@@ -123,9 +124,10 @@ void print_usage(const char* executable)
                          "[--fast-validation] [--profile-stages[=interval]] [--live-pacing[=speed]]\n";
         std::cerr << "   or: " << executable
                       << " ws <host:port> <symbol> [strategy] [quantity_scale] [queue_model] "
-                         "[--ws-target=/path] [--no-output] [--fast-validation] [--record=PREFIX] "
-                         "[--feed-thread] [--paper-broker]; the live twin of l2_replay, reading the "
-                         "same replay shapes over a websocket instead of from files\n";
+                         "[--ws-target=/path] [--ws-seconds=N] [--no-output] [--fast-validation] "
+                         "[--record=PREFIX] [--feed-thread] [--paper-broker]; the live twin of "
+                         "l2_replay, reading the same replay shapes over a websocket instead of from "
+                         "files\n";
         std::cerr << "   or: " << executable
                       << " carry <leg_a_funding_csv> <leg_b_funding_csv> --symbol-a=SYM --symbol-b=SYM "
                          "[--notional-usd=N] [--long=b]\n";
@@ -441,6 +443,21 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.ws_target = target;
+            }
+            else if (flag.compare(0, kWebSocketSecondsPrefix.size(), kWebSocketSecondsPrefix) == 0)
+            {
+                if (cfg.mode != AppMode::WebSocket)
+                {
+                    error = "--ws-seconds is a ws flag: it bounds a live session, which a file replay "
+                            "does not need";
+                    return false;
+                }
+                std::istringstream stream(flag.substr(kWebSocketSecondsPrefix.size()));
+                if (!(stream >> cfg.ws_seconds) || !(cfg.ws_seconds > 0.0))
+                {
+                    error = "--ws-seconds must be a positive number of seconds";
+                    return false;
+                }
             }
             else if (flag.compare(0, kRingCapacityPrefix.size(), kRingCapacityPrefix) == 0)
             {

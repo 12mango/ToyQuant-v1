@@ -32,6 +32,9 @@ struct AppConfig
     std::string ws_host;
     uint16_t ws_port = 0;
     std::string ws_target = "/";
+    // Wall-clock seconds a ws session streams before it stops on its own; 0 runs until the peer
+    // closes the connection. It is what a real capture needs, where no one closes the socket for you.
+    double ws_seconds = 0.0;
     int delay = 0;
     std::string strategy_name = "optimized";
     uint64_t quantity_scale = 1000000;

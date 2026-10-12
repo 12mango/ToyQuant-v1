@@ -1,6 +1,6 @@
 # The main line: the order to read this repository in, and what to drop
 
-This repository is 16,519 lines of source and 22 test binaries, and most of that is not the thing worth learning from.
+This repository is 16,646 lines of source and 22 test binaries, and most of that is not the thing worth learning from.
 **The main line is about 5,000 lines**, and it is the path a single market event takes: a file becomes an event, an
 event becomes a book, a book becomes a decision, a decision becomes an order, an order becomes a fill, a fill becomes
 cash, and cash becomes the number a document quotes. Everything else is either evidence for a closed line, a
