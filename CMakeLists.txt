@@ -154,6 +154,24 @@ target_include_directories(ring_bench PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(ring_bench PRIVATE Threads::Threads)
 set_target_properties(ring_bench PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# ==================== Venue relay ====================
+# The C++ twin of tools/venue_relay.py. TLS is optional on purpose: a `wss://` venue is spoken directly
+# only when OpenSSL's headers are present, and without them the relay speaks plaintext `ws://` and the
+# Python relay is kept as the TLS terminator. ws_feed.cpp is compiled in rather than linked so the
+# target needs no layer library; the relay uses one thing from it, the accept-key helper.
+find_package(OpenSSL QUIET)
+add_executable(venue_relay
+    src/lines/venue_relay.cpp
+    src/lines/venue_relay_main.cpp
+    src/market/ws_feed.cpp)
+target_include_directories(venue_relay PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_libraries(venue_relay PRIVATE Threads::Threads)
+if(OpenSSL_FOUND)
+    target_link_libraries(venue_relay PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(venue_relay PRIVATE TOYQUANT_HAVE_OPENSSL)
+endif()
+set_target_properties(venue_relay PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # ==================== Tests ====================
 enable_testing()
 
