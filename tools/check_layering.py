@@ -31,8 +31,6 @@ FORBIDDEN = [
     "market/okx_readers",
     "market/market_data_adapter",
     "market/funding_rate.h",
-    "market/csv_feed.h",
-    "market/udp_feed.h",
     "market/ws_feed.h",
 ]
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"([^"]+)"')

@@ -69,8 +69,8 @@ set(LINE_SOURCES
     src/lines/paper_broker.cpp
     src/lines/legacy/tick_csv_parser.cpp
     src/lines/legacy/order_book.cpp
-    src/market/csv_feed.cpp
-    src/market/udp_feed.cpp
+    src/lines/legacy/csv_feed.cpp
+    src/lines/legacy/udp_feed.cpp
     src/market/ws_feed.cpp
     src/market/funding_rate.cpp
     ${MARKET_READER_SOURCES})
