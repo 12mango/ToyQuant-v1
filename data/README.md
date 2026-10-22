@@ -54,7 +54,7 @@ they do not currently suppress strategy decisions.
 Run this command from the project root:
 
 ```bash
-python3 tools/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
+python3 tools/legacy/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
 ```
 
 This command creates files such as:

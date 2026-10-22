@@ -153,7 +153,7 @@ ctest --preset linux-debug
 
 ```bash
 ./out/build/linux-debug/toy_quant udp 9000 naive
-python3 tools/udp_sender.py --port 9000
+python3 tools/legacy/udp_sender.py --port 9000
 ```
 
 **Replay Binance Trade+BBO data**:
@@ -228,7 +228,7 @@ reproducible from its command line, and a fault the run cannot show is refused.
 Generate your own scenarios with a fixed seed for reproducible runs:
 
 ```bash
-python3 tools/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
+python3 tools/legacy/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
 ```
 
 ## Output

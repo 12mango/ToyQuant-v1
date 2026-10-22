@@ -79,7 +79,7 @@ Start the simulator:
 In another terminal, send a scenario:
 
 ```bash
-python3 tools/udp_sender.py 127.0.0.1 9000 data/scenarios/sample_ticks.csv 0
+python3 tools/legacy/udp_sender.py 127.0.0.1 9000 data/scenarios/sample_ticks.csv 0
 ```
 
 CSV mode is easier for repeatable experiments; UDP mode is useful for observing a streaming feed.
@@ -715,7 +715,7 @@ remember that runtime CSV files are overwritten by the next simulation.
 Generate reproducible scenarios with a fixed seed:
 
 ```bash
-python3 tools/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
+python3 tools/legacy/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
 ```
 
 Using the same seed recreates the same ticks. For a controlled experiment, keep the scenario and

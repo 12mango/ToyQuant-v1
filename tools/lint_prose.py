@@ -29,7 +29,10 @@ FLAG_LITERAL = re.compile(r'"(--[\w-]+)=?"')
 MODEL_ENUM = re.compile(r"enum class QueueModel[^}]*\{(?P<body>[^}]*)\}", re.DOTALL)
 MODEL_NAME_CASE = re.compile(r'case QueueModel::\w+:\s*\n\s*return "(\w+)"')
 DOCUMENTED_FLAG = re.compile(r"`(--[\w-]+)")
-TOOL_PATH = re.compile(r"\b(tools/[\w.]+\.(?:sh|py))\b")
+# A tool path may now name a subdirectory -- `tools/legacy/udp_sender.py` -- so `/` is part of the
+# character class. Without it a moved tool's path silently stopped being checked, which is the one
+# failure this line exists to prevent.
+TOOL_PATH = re.compile(r"\b(tools/[\w/]+\.(?:sh|py))\b")
 SOURCE_FILE = re.compile(r"\.(?:h|cpp)$")
 # The tree's size as the documents state it, and the two shorter ways the same claim is made. Each pattern
 # is required to match: a checker that goes quiet because a sentence was reworded is worse than no checker,
