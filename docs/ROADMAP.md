@@ -1164,22 +1164,30 @@ the same book, strategy, engine and portfolio, and the recorder is the bridge: a
 a replay CSV and replayed by the pull chain has to report the same numbers. The cheapest order is to close
 that loop before broadening the venue list, because it reuses files already on disk and code already written.
 
-1. **Close the pull chain.** Run an equity day already under `data/v2/equities/` through `l2_replay` with a
-   slow, inventory-driven configuration, and quote its `fees_paid`, `net_pnl_usd` and `avg_abs_inventory`
-   rather than its lateness. No new data and no new code; it is the proof that the two chains are one engine.
+The pull chain needs no phase of its own. It is the historical path the gate and the eight closed markets
+already run on, and the recorder already proves the two chains meet: a push session written back to a replay
+CSV and replayed by `l2_replay` reports the same numbers. What is left is new capability rather than more
+proof, so the order below is by cost and by how much of the system each one adds.
+
+1. **A second venue decoder.** Binance's public streams (`@depth`, `@aggTrade`) are a different JSON shape
+   and a different sequence pair (`U`/`u`), which is the cheapest way to prove the decoder seam is real
+   rather than an OKX-shaped special case.
 2. **Multi-instrument, the one structural change.** The relay's instrument argument becomes a list on a single
    connection -- one socket and one subscription, because a connection per symbol is what rate limits punish
    -- and the engine grows from one `L2OrderBook` to one per symbol. The book is the small part: the position,
    the strategy state, the matching engine's queue bookkeeping and the portfolio are per-symbol too, so this
    is a refactor of the pipeline rather than a map in the feed. Rows route by their `symbol` column (the
-   second, not the first), and an instrument with no `InstrumentSpec` still refuses the run.
-3. **A second venue decoder.** Binance's public streams (`@depth`, `@aggTrade`) are a different JSON shape
-   and a different sequence pair (`U`/`u`), which is the cheapest way to prove the decoder seam is real
-   rather than an OKX-shaped special case.
-4. **Only if it is wanted, the simulated UDP chain.** A `MarketEvent` feed with a sequenced header, gap
+   second, not the first), and an instrument with no `InstrumentSpec` still refuses the run. It is worth doing
+   only when a cross-instrument use case -- a hedge, an arb -- is what the demo is for; without one it is a
+   refactor that buys no new behaviour.
+3. **The simulated UDP chain, only if it is wanted.** A `MarketEvent` feed with a sequenced header, gap
    detection and a snapshot recovery hook, plus a local sender that drops and reorders datagrams so the
    recovery is exercised. It teaches loss, ordering and backpressure; it is not a route any account here can
    trade on.
+
+If the next goal is a fuller trading system rather than more ingestion, the order gateway and persistence and
+recovery in the table above come before multi-instrument: they add a part of the system that no file or
+socket already exercises.
 
 **Not planned, and why.** Kernel bypass (`DPDK`, `SO_BUSY_POLL`), `O_DIRECT` and DTLS are production answers
 to a licensed multicast feed this demo does not have; the recorder's buffered stream and the relay's
