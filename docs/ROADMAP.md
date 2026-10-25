@@ -1147,6 +1147,45 @@ a `wss://` venue is spoken directly, and without them the C++ relay speaks `ws:/
 as the TLS terminator, which is why both are kept. OKX is the lowest-friction first target, because its public
 channels need no key and its historical endpoint carries no order book.
 
+**Why UDP is not part of this yet.** The only UDP in the tree is the legacy receiver in
+`src/lines/legacy/udp_feed.*`, and it is a receiver for the frozen `Tick` line: one CSV row per datagram, no
+sequence, no gap detection, no recovery, and a datagram dropped silently when its ring is full. A live
+`MarketEvent` feed over UDP is a different thing -- an exchange-native multicast feed needs a licensed or
+colocated source, a sequenced packet header, A/B line arbitration, and a second channel that fills a gap from
+a snapshot or a TCP replay. This demo has none of those, and inventing them against a public venue would
+model something the account cannot legally receive. So the two representative chains stay on the transports
+they can actually get: `wss://` for the push chain and files for the pull chain. A UDP chain, if it is ever
+wanted, is a third, simulated one with its own header, gap detection and recovery, not a promotion of the
+legacy receiver.
+
+**The two chains, and the order of the next iterations.** The push chain is a venue's public stream, decoded
+by the relay and read by `WebSocketFeed`; the pull chain is a day file read by the venue readers. Both end at
+the same book, strategy, engine and portfolio, and the recorder is the bridge: a push session written back to
+a replay CSV and replayed by the pull chain has to report the same numbers. The cheapest order is to close
+that loop before broadening the venue list, because it reuses files already on disk and code already written.
+
+1. **Close the pull chain.** Run an equity day already under `data/v2/equities/` through `l2_replay` with a
+   slow, inventory-driven configuration, and quote its `fees_paid`, `net_pnl_usd` and `avg_abs_inventory`
+   rather than its lateness. No new data and no new code; it is the proof that the two chains are one engine.
+2. **Multi-instrument, the one structural change.** The relay's instrument argument becomes a list on a single
+   connection -- one socket and one subscription, because a connection per symbol is what rate limits punish
+   -- and the engine grows from one `L2OrderBook` to one per symbol. The book is the small part: the position,
+   the strategy state, the matching engine's queue bookkeeping and the portfolio are per-symbol too, so this
+   is a refactor of the pipeline rather than a map in the feed. Rows route by their `symbol` column (the
+   second, not the first), and an instrument with no `InstrumentSpec` still refuses the run.
+3. **A second venue decoder.** Binance's public streams (`@depth`, `@aggTrade`) are a different JSON shape
+   and a different sequence pair (`U`/`u`), which is the cheapest way to prove the decoder seam is real
+   rather than an OKX-shaped special case.
+4. **Only if it is wanted, the simulated UDP chain.** A `MarketEvent` feed with a sequenced header, gap
+   detection and a snapshot recovery hook, plus a local sender that drops and reorders datagrams so the
+   recovery is exercised. It teaches loss, ordering and backpressure; it is not a route any account here can
+   trade on.
+
+**Not planned, and why.** Kernel bypass (`DPDK`, `SO_BUSY_POLL`), `O_DIRECT` and DTLS are production answers
+to a licensed multicast feed this demo does not have; the recorder's buffered stream and the relay's
+background socket are enough for the volumes a public stream produces. If a capture ever drops a row, the
+first fix is a writer thread behind a queue, not direct I/O.
+
 
 ### The same code, second purpose: the demo and the interview
 
