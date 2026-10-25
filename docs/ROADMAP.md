@@ -1139,7 +1139,9 @@ the engine, it writes the decoded rows straight to `PREFIX_trades.csv` and `PREF
 with no engine), and it captures the venue's raw messages so a window runs again with no network. It subscribes,
 decodes, keeps its own sequence accounting -- a break in the venue's `prevSeqId`/`seqId` pair is a lost update
 and is counted -- and reconnects with a backoff after a drop, which the snapshot the venue re-sends on subscribe
-makes safe for the book. Against OKX's public `BTC-USDT-SWAP` channel a six second run handed the engine 124
+makes safe for the book. It answers both heartbeat forms a venue can send, a text `ping` and a control ping,
+which a six second run never exercises, and it bounds its hand-off to the engine: a full queue waits rather than
+growing, and the wait and its high-water mark are printed with the summary. Against OKX's public `BTC-USDT-SWAP` channel a six second run handed the engine 124
 trades and 60 book messages, 4807 level rows, with **no sequence gap** and no reconnect; a six second direct
 recording wrote 205 trades and 4301 level rows with the same zero gap and replayed through `l2_replay` as a file.
 The second step landed too: `venue_relay` (C++, in `src/lines/`) is the same tool with the same flags and the

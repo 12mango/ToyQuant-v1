@@ -53,6 +53,10 @@ DEFAULT_CONTRACT_SIZE = 0.01
 DEFAULT_QUANTITY_SCALE = 1000000
 # OKX closes an idle public connection, and asks for a text ping when nothing has been sent for 30 s.
 PING_AFTER_SECONDS = 25
+# Rows in flight between the venue thread and the thread serving the engine. Bounded, because an engine
+# that falls behind must slow the venue down rather than grow this process without limit; the wait is
+# counted and printed, so a stalled consumer is visible in the run's own summary rather than only as RSS.
+ROW_QUEUE_CAPACITY = 200000
 
 
 # ---------------------------------------------------------------- WebSocket framing
@@ -253,10 +257,17 @@ class Recorder:
         self.depth = open(prefix + "_depth.csv", "w", encoding="utf-8")
         self.trades.write(TRADE_HEADER)
         self.depth.write(DEPTH_HEADER)
+        self.rows = 0
 
     def write(self, row):
         # A trade row has seven fields, a depth row eight, which is how the reader tells them apart.
         (self.trades if row.count(",") == 6 else self.depth).write(row)
+        self.rows += 1
+        # A long recording is flushed as it goes, so a session that is stopped rather than closed loses
+        # at most this many rows instead of whatever the file object was holding.
+        if self.rows % 4096 == 0:
+            self.trades.flush()
+            self.depth.flush()
 
     def close(self):
         self.trades.close()
@@ -283,6 +294,11 @@ class VenueClient(threading.Thread):
         self.stop = threading.Event()
         self.connected = False
         self.reconnects = 0
+        # Backpressure and heartbeat, both of which a six second run never exercises.
+        self.queue_waits = 0
+        self.queue_high_water = 0
+        self.pings_sent = 0
+        self.pongs_sent = 0
 
     def subscription(self):
         return json.dumps({
@@ -290,6 +306,21 @@ class VenueClient(threading.Thread):
             "args": [{"channel": self.books_channel, "instId": self.instrument},
                      {"channel": "trades", "instId": self.instrument}],
         })
+
+    def enqueue_row(self, row):
+        """Hands a row to the server thread, waiting for room rather than dropping it.
+
+        A full queue is backpressure: the venue connection stops being read until the engine catches
+        up, which is the same rule the engine's own rings follow. The wait and the high-water mark are
+        counted so a slow consumer is visible in the summary instead of only as growing memory.
+        """
+        while not self.stop.is_set():
+            try:
+                self.rows.put(row, timeout=0.2)
+                self.queue_high_water = max(self.queue_high_water, self.rows.qsize())
+                return
+            except queue.Full:
+                self.queue_waits += 1
 
     def run(self):
         """Connect, and reconnect with a backoff after a drop, until stopped or out of time."""
@@ -336,15 +367,35 @@ class VenueClient(threading.Thread):
                     frame = read_frame(sock)
                 except socket.timeout:
                     send_masked(sock, "ping")  # keep an idle public connection alive
+                    self.pings_sent += 1
                     continue
                 if frame is None:
                     return
                 _, opcode, payload = frame
                 if opcode == 0x8:
                     return
+                if opcode == 0x9:
+                    # A control ping is owed a control pong with the same payload, masked as a client's
+                    # frames must be. A session that answers neither this nor the text form is closed
+                    # by the venue once its heartbeat times out, which is exactly the failure a six
+                    # second run cannot see.
+                    send_masked(sock, payload, opcode=0xA)
+                    self.pongs_sent += 1
+                    continue
+                if opcode == 0xA:
+                    continue
                 if opcode not in (0x1, 0x0):
                     continue
                 text = payload.decode(errors="replace")
+                token = text.strip()
+                # OKX's heartbeat is a text frame rather than a control frame, and it is answered the
+                # same way: a pong for a ping, and neither is a market message to record.
+                if token == "ping":
+                    send_masked(sock, "pong")
+                    self.pongs_sent += 1
+                    continue
+                if token == "pong":
+                    continue
                 if sink is not None:
                     sink.write(text + "\n")
                     sink.flush()
@@ -352,7 +403,7 @@ class VenueClient(threading.Thread):
                     if self.recorder is not None:
                         self.recorder.write(row)
                     if self.enqueue:
-                        self.rows.put(row)
+                        self.enqueue_row(row)
         finally:
             sock.close()
 
@@ -486,7 +537,9 @@ def main():
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()
-    rows = queue.Queue()
+    # Bounded for a live relay, where a stalled engine must slow the venue down. A replay reads a finite
+    # file, so it keeps the unbounded queue and never blocks on a consumer that has already gone away.
+    rows = queue.Queue(maxsize=ROW_QUEUE_CAPACITY if args.listen and not args.replay else 0)
 
     if args.replay:
         recorder = Recorder(args.record) if args.record else None
@@ -540,7 +593,9 @@ def main():
     if args.record:
         print(f"recorded the decoded rows to {args.record}_trades.csv and {args.record}_depth.csv",
               flush=True)
-    print(f"{decoder.summary()} reconnects={client.reconnects}", flush=True)
+    print(f"{decoder.summary()} reconnects={client.reconnects} "
+          f"queue_high_water={client.queue_high_water} queue_waits={client.queue_waits} "
+          f"pings_sent={client.pings_sent} pongs_sent={client.pongs_sent}", flush=True)
     return 0
 
 

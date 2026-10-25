@@ -652,8 +652,11 @@ python3 tools/websocket_sender.py --port 8765 \
 
 The session ends when the peer closes the connection, and the run reports it as a `[WS]` line: the frames and
 messages it read, the trades and depth updates it decoded, whether the close was clean, and whether the run
-stopped on its own `--ws-seconds=N` instead. A live capture usually needs that bound, because a venue's socket
-does not close itself, and the rows that arrived before the deadline are still drained rather than dropped. The
+stopped on its own `--ws-seconds=N` instead. `ring_waits` is the number of times a receive-side ring was
+full: a full ring waits rather than dropping the row, so the socket is what slows down, and this is the one
+counter that says the engine rather than the venue was the limit. A live capture usually needs that bound,
+because a venue's socket does not close itself, and the rows that arrived before the deadline are still
+drained rather than dropped. The
 connect and the opening handshake share a five-second budget, so a host that accepts the connection and then
 says nothing fails the run instead of hanging it. `--ws-target=/path` sets the HTTP path the handshake asks
 for; it defaults to `/`. Pacing has no meaning on this mode -- the venue sets the speed, not a file's clock --

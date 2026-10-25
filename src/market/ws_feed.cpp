@@ -273,7 +273,8 @@ std::string WebSocketFeedSummary::to_log_string() const
            " frames=" + std::to_string(frames) + " messages=" + std::to_string(messages) +
            " trades=" + std::to_string(trades) + " depth_updates=" + std::to_string(depth_updates) +
            " control_frames=" + std::to_string(control_frames) +
-           " parse_errors=" + std::to_string(parse_errors);
+           " parse_errors=" + std::to_string(parse_errors) +
+           " ring_waits=" + std::to_string(ring_waits);
 }
 
 WebSocketFeed::WebSocketFeed(Endpoint endpoint) : WebSocketFeed(std::move(endpoint), Options{}) {}
@@ -653,6 +654,7 @@ void WebSocketFeed::handle_message(std::string_view message)
                         while (!trades_.try_push(std::move(trade)))
                         {
                             if (!running_.load(std::memory_order_acquire)) return;
+                            ++summary_.ring_waits;
                             concurrency::spin_relax();
                         }
                         ++summary_.trades;
@@ -676,6 +678,7 @@ void WebSocketFeed::handle_message(std::string_view message)
                         while (!depth_.try_push(std::move(row)))
                         {
                             if (!running_.load(std::memory_order_acquire)) return;
+                            ++summary_.ring_waits;
                             concurrency::spin_relax();
                         }
                         ++summary_.depth_updates;

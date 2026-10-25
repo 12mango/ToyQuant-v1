@@ -26,6 +26,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
 - **A bounded session and a bounded handshake.** `--ws-seconds=N` ends a capture whose peer never closes the
   socket, draining what already arrived first, and the connect and the opening handshake share a five-second
   budget, so a host that accepts the connection and then says nothing fails the run rather than hanging it.
+- **A relay that survives an idle socket and a slow reader.** Both heartbeat forms are answered -- a text
+  `ping` and a control ping -- which a six second run never exercises; the hand-off to the engine is bounded,
+  so a slow reader slows the venue down instead of growing the process, and the wait and its high-water mark
+  are printed with the relay's summary. The feed reports its own `ring_waits`, and both recorders are flushed
+  as they go, so a stopped session loses at most the last few thousand rows.
 - **The client's half of the order path.** `OrderGateway` (`src/lines/order_gateway.*`) is a second decorator
   over the engine, wrapped outside the broker: it keeps the table of orders from submission to answer, absorbs
   a retry under the same client id, counts an order the venue has not answered within a timeout of market

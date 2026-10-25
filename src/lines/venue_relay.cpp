@@ -314,13 +314,24 @@ struct RelayStats
     uint64_t gaps{0};
     uint64_t reconnects{0};
     uint64_t parse_errors{0};
+    // Backpressure and heartbeat, both of which a six second run never exercises: the high-water mark
+    // is how deep the hand-off to the engine got, the waits are how often it was full, and the two
+    // heartbeat counters say the keepalive path ran at all.
+    uint64_t queue_high_water{0};
+    uint64_t queue_waits{0};
+    uint64_t pings_sent{0};
+    uint64_t pongs_sent{0};
 
     std::string to_log_string() const
     {
         return "trades=" + std::to_string(trades) + " book_messages=" +
                std::to_string(book_messages) + " depth_rows=" + std::to_string(depth_rows) +
                " gaps=" + std::to_string(gaps) + " reconnects=" + std::to_string(reconnects) +
-               " parse_errors=" + std::to_string(parse_errors);
+               " parse_errors=" + std::to_string(parse_errors) +
+               " queue_high_water=" + std::to_string(queue_high_water) +
+               " queue_waits=" + std::to_string(queue_waits) +
+               " pings_sent=" + std::to_string(pings_sent) +
+               " pongs_sent=" + std::to_string(pongs_sent);
     }
 };
 
@@ -922,17 +933,35 @@ enum class Pop
 class RowQueue
 {
    public:
-    void push(std::string row)
+    // Rows in flight between the venue thread and the thread serving the engine. Bounded for a live
+    // relay, because an engine that falls behind must slow the venue down rather than grow this process
+    // without limit; a replay reads a finite file, so it keeps the unbounded queue.
+    static constexpr std::size_t kCapacity = 200000;
+
+    explicit RowQueue(bool bounded) : bounded_(bounded) {}
+
+    // Waits for room rather than dropping the row. Returns false once the queue is closed, so a stop
+    // does not leave the venue thread blocked in a push nobody will consume.
+    bool push(std::string row, RelayStats& stats)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (bounded_ && rows_.size() >= kCapacity)
+        {
+            ++stats.queue_waits;
+            room_.wait(lock, [this] { return rows_.size() < kCapacity || closed_; });
+            if (closed_) return false;
+        }
         rows_.push_back(std::move(row));
+        stats.queue_high_water = std::max<uint64_t>(stats.queue_high_water, rows_.size());
         ready_.notify_one();
+        return true;
     }
 
     void close()
     {
         std::lock_guard<std::mutex> lock(mutex_);
         closed_ = true;
+        room_.notify_all();
         ready_.notify_all();
     }
 
@@ -945,14 +974,17 @@ class RowQueue
         if (rows_.empty()) return Pop::Closed;
         row = std::move(rows_.front());
         rows_.pop_front();
+        room_.notify_one();
         return Pop::Row;
     }
 
    private:
     std::mutex mutex_;
     std::condition_variable ready_;
+    std::condition_variable room_;
     std::deque<std::string> rows_;
     bool closed_{false};
+    bool bounded_{false};
 };
 
 class Recorder
@@ -975,6 +1007,9 @@ class Recorder
         for (const char c : row)
             if (c == ',') ++commas;
         (commas == 6 ? trades_ : depth_) << row;
+        // Flushed as it goes, so a session that is stopped rather than closed loses at most this many
+        // rows instead of whatever the stream was holding.
+        if (++rows_ % 4096 == 0) flush();
     }
 
     void flush()
@@ -986,6 +1021,7 @@ class Recorder
    private:
     std::ofstream trades_;
     std::ofstream depth_;
+    std::size_t rows_{0};
 };
 
 class VenueClient
@@ -1061,11 +1097,30 @@ class VenueClient
             if (status == -2)
             {
                 send_frame(stream, 0x9, "ping", true);  // keep an idle public connection alive
+                ++stats_.pings_sent;
                 continue;
             }
             if (status != 1) return;  // closed or broken
             if (opcode == 0x8) return;
+            if (opcode == 0x9)
+            {
+                // A control ping is owed a control pong with the same payload. A session that answers
+                // neither this nor the text form is dropped by the venue once its heartbeat expires.
+                send_frame(stream, 0xA, payload, true);
+                ++stats_.pongs_sent;
+                continue;
+            }
+            if (opcode == 0xA) continue;
             if (opcode != 0x1 && opcode != 0x0) continue;
+            // OKX's heartbeat is a text frame rather than a control frame, and neither it nor its
+            // answer is a market message to capture or decode.
+            if (payload == "ping")
+            {
+                send_frame(stream, 0x1, "pong", true);
+                ++stats_.pongs_sent;
+                continue;
+            }
+            if (payload == "pong") continue;
             if (capture_.is_open())
             {
                 capture_ << payload << "\n";
@@ -1076,7 +1131,7 @@ class VenueClient
             for (std::string& row : decoded)
             {
                 if (recorder_ != nullptr) recorder_->write(row);
-                if (enqueue_) rows_.push(std::move(row));
+                if (enqueue_ && !rows_.push(std::move(row), stats_)) return;
             }
         }
     }
@@ -1120,7 +1175,7 @@ int run_relay_impl(const RelayConfig& config)
         if (!capture.is_open()) throw std::runtime_error("could not open " + config.replay);
         std::unique_ptr<Recorder> recorder;
         if (!config.record.empty()) recorder = std::make_unique<Recorder>(config.record);
-        RowQueue rows;
+        RowQueue rows(false);  // a replay reads a finite file, so it needs no bound
         std::string line;
         while (std::getline(capture, line))
         {
@@ -1130,7 +1185,7 @@ int run_relay_impl(const RelayConfig& config)
             for (std::string& row : decoded)
             {
                 if (recorder != nullptr) recorder->write(row);
-                rows.push(std::move(row));
+                rows.push(std::move(row), stats);
             }
         }
         if (recorder != nullptr) recorder->flush();
@@ -1154,7 +1209,7 @@ int run_relay_impl(const RelayConfig& config)
 
     std::unique_ptr<Recorder> recorder;
     if (!config.record.empty()) recorder = std::make_unique<Recorder>(config.record);
-    RowQueue rows;
+    RowQueue rows(true);  // a live relay bounds the hand-off, so a stalled engine slows the venue down
     const bool serve = !config.listen.empty();
     Stream engine;
     if (serve) accept_engine(config.listen, engine);

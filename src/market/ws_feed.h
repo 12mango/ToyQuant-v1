@@ -56,6 +56,11 @@ struct WebSocketFeedSummary
     uint64_t depth_updates{0};
     uint64_t control_frames{0};
     uint64_t parse_errors{0};
+    // Times a receive-side ring was full. A full ring is backpressure -- the receive thread waits
+    // instead of dropping the row, so the socket is what slows down -- and this is the only counter
+    // that says the engine, rather than the venue, was the limit. Zero after an hour is the answer a
+    // soak is looking for.
+    uint64_t ring_waits{0};
     // True when the session ended on its own --live-seconds rather than because the peer closed; the
     // two are different events and a run wants to know which one it got.
     bool stopped_by_deadline{false};
