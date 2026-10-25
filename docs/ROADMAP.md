@@ -1152,6 +1152,17 @@ a `wss://` venue is spoken directly, and without them the C++ relay speaks `ws:/
 as the TLS terminator, which is why both are kept. OKX is the lowest-friction first target, because its public
 channels need no key and its historical endpoint carries no order book.
 
+**A thirty-minute live soak, and the replay that matches it.** The relay served OKX's public
+`BTC-USDT-SWAP` channel to the engine, with the paper broker and both recorders on, for 1,800 seconds:
+697,400 frames, 6,719 trades and 690,679 depth updates in 17,690 batches, with **0 sequence gaps, 0
+reconnects, 0 parse errors and 0 ring waits**, and both processes' RSS flat from the first minute (relay
+26.7 to 26.8 MB, engine 7.1 to 7.15 MB). The hand-off queued at most 1,159 rows of its 200,000, so
+backpressure never engaged. Replaying the engine's own recording through `l2_replay` reproduced the live
+summary field for field -- 323 orders, 6 fills, the same P&L and fees -- and the broker's reconciliation
+stayed `status=ok` in both. The heartbeat counters read zero because the stream never went idle for 25
+seconds, so that path is verified against a local stand-in that sends both a text ping and a control ping,
+not against the venue.
+
 **Why UDP is not part of this yet.** The only UDP in the tree is the legacy receiver in
 `src/lines/legacy/udp_feed.*`, and it is a receiver for the frozen `Tick` line: one CSV row per datagram, no
 sequence, no gap detection, no recovery, and a datagram dropped silently when its ring is full. A live

@@ -31,6 +31,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   so a slow reader slows the venue down instead of growing the process, and the wait and its high-water mark
   are printed with the relay's summary. The feed reports its own `ring_waits`, and both recorders are flushed
   as they go, so a stopped session loses at most the last few thousand rows.
+- **A thirty-minute live soak that replays into itself.** OKX's public `BTC-USDT-SWAP` channel, the paper
+  broker and both recorders for 1,800 seconds: 697,400 frames, 6,719 trades, 690,679 depth updates, with no
+  sequence gap, no reconnect, no parse error and no ring wait, flat RSS in both processes, and a replay of the
+  engine's recording that reproduces the live summary field for field. The heartbeat path stayed idle, so it
+  is covered by a local stand-in rather than claimed against the venue.
 - **The client's half of the order path.** `OrderGateway` (`src/lines/order_gateway.*`) is a second decorator
   over the engine, wrapped outside the broker: it keeps the table of orders from submission to answer, absorbs
   a retry under the same client id, counts an order the venue has not answered within a timeout of market
