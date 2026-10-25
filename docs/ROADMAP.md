@@ -1163,6 +1163,12 @@ stayed `status=ok` in both. The heartbeat counters read zero because the stream 
 seconds, so that path is verified against a local stand-in that sends both a text ping and a control ping,
 not against the venue.
 
+The relay carries two hooks for exactly that: `--ping-seconds=N` sends a ping on a fixed cadence even while
+data flows (0 keeps the idle-only keepalive), and `--drop-after-seconds=N` deliberately closes and reopens
+the venue connection, so the reconnect path is exercised against the real venue rather than only against a
+stand-in. A local stand-in that accepts twice and replies to both pings shows two connections, two pings,
+two pongs received and two snapshots, which is the shape the long run has to reproduce against OKX.
+
 **Why UDP is not part of this yet.** The only UDP in the tree is the legacy receiver in
 `src/lines/legacy/udp_feed.*`, and it is a receiver for the frozen `Tick` line: one CSV row per datagram, no
 sequence, no gap detection, no recovery, and a datagram dropped silently when its ring is full. A live

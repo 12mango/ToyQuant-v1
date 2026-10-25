@@ -321,6 +321,8 @@ struct RelayStats
     uint64_t queue_waits{0};
     uint64_t pings_sent{0};
     uint64_t pongs_sent{0};
+    // A pong the venue sent back, which is what makes a keepalive a round trip rather than a write.
+    uint64_t pongs_received{0};
 
     std::string to_log_string() const
     {
@@ -331,7 +333,8 @@ struct RelayStats
                " queue_high_water=" + std::to_string(queue_high_water) +
                " queue_waits=" + std::to_string(queue_waits) +
                " pings_sent=" + std::to_string(pings_sent) +
-               " pongs_sent=" + std::to_string(pongs_sent);
+               " pongs_sent=" + std::to_string(pongs_sent) +
+               " pongs_received=" + std::to_string(pongs_received);
     }
 };
 
@@ -1110,7 +1113,11 @@ class VenueClient
                 ++stats_.pongs_sent;
                 continue;
             }
-            if (opcode == 0xA) continue;
+            if (opcode == 0xA)
+            {
+                ++stats_.pongs_received;
+                continue;
+            }
             if (opcode != 0x1 && opcode != 0x0) continue;
             // OKX's heartbeat is a text frame rather than a control frame, and neither it nor its
             // answer is a market message to capture or decode.
@@ -1120,7 +1127,11 @@ class VenueClient
                 ++stats_.pongs_sent;
                 continue;
             }
-            if (payload == "pong") continue;
+            if (payload == "pong")
+            {
+                ++stats_.pongs_received;
+                continue;
+            }
             if (capture_.is_open())
             {
                 capture_ << payload << "\n";

@@ -30,6 +30,10 @@ Usage:
     python3 tools/venue_relay.py --capture /tmp/okx.jsonl --max-seconds 60
     python3 tools/venue_relay.py --replay /tmp/okx.jsonl --listen 127.0.0.1:8765
 
+    # a long run that exercises the keepalive and the reconnect path against the venue
+    python3 tools/venue_relay.py --instrument BTC-USDT-SWAP --listen 127.0.0.1:8765 \
+        --capture /tmp/okx.jsonl --max-seconds 7200 --ping-seconds 20 --drop-after-seconds 1500
+
     python3 tools/venue_relay.py --self-test
 """
 
@@ -57,6 +61,9 @@ PING_AFTER_SECONDS = 25
 # that falls behind must slow the venue down rather than grow this process without limit; the wait is
 # counted and printed, so a stalled consumer is visible in the run's own summary rather than only as RSS.
 ROW_QUEUE_CAPACITY = 200000
+# How often a session with a fixed-cadence ping looks at the clock. Small, because a ping that is due
+# must not wait behind a socket read that has twenty-five seconds to time out.
+PING_POLL_SECONDS = 0.25
 
 
 # ---------------------------------------------------------------- WebSocket framing
@@ -280,7 +287,7 @@ class VenueClient(threading.Thread):
     """A client to the venue: subscribe, then decode every message into the row queue."""
 
     def __init__(self, url, instrument, books_channel, decoder, rows, capture=None, max_seconds=0,
-                 enqueue=True, recorder=None):
+                 enqueue=True, recorder=None, ping_seconds=0.0, drop_after_seconds=0.0):
         super().__init__(daemon=True)
         self.url = url
         self.instrument = instrument
@@ -291,6 +298,8 @@ class VenueClient(threading.Thread):
         self.max_seconds = max_seconds
         self.enqueue = enqueue
         self.recorder = recorder
+        self.ping_seconds = ping_seconds
+        self.drop_after_seconds = drop_after_seconds
         self.stop = threading.Event()
         self.connected = False
         self.reconnects = 0
@@ -299,6 +308,9 @@ class VenueClient(threading.Thread):
         self.queue_high_water = 0
         self.pings_sent = 0
         self.pongs_sent = 0
+        # A pong the venue sent back. Non-zero proves the keepalive completed a round trip rather than
+        # merely being written to a socket the venue had already stopped reading.
+        self.pongs_received = 0
 
     def subscription(self):
         return json.dumps({
@@ -357,17 +369,36 @@ class VenueClient(threading.Thread):
         the venue re-sends a full snapshot on subscribe, which resets the decoder's sequence."""
         sock = websocket_client(self.url)
         self.connected = True
+        session_start = time.monotonic()
+        last_ping = session_start
         try:
             send_masked(sock, self.subscription())
-            sock.settimeout(PING_AFTER_SECONDS)
+            # A fixed-cadence ping has to look at the clock between frames, because a busy stream never
+            # lets the read time out; the idle keepalive keeps the long timeout it always had.
+            sock.settimeout(PING_POLL_SECONDS if self.ping_seconds > 0 else PING_AFTER_SECONDS)
             while not self.stop.is_set():
                 if deadline is not None and time.time() >= deadline:
                     return
+                if (self.drop_after_seconds > 0 and
+                        time.monotonic() - session_start >= self.drop_after_seconds):
+                    # A deliberate drop, so the reconnect path is exercised against the real venue and
+                    # not only against a local stand-in. run() counts it and backs off like any other
+                    # lost connection.
+                    raise RuntimeError(
+                        f"dropped after {self.drop_after_seconds:.0f}s for the reconnect test")
+                if self.ping_seconds > 0:
+                    now = time.monotonic()
+                    if now - last_ping >= self.ping_seconds:
+                        send_masked(sock, "ping")
+                        self.pings_sent += 1
+                        last_ping = now
                 try:
                     frame = read_frame(sock)
                 except socket.timeout:
-                    send_masked(sock, "ping")  # keep an idle public connection alive
-                    self.pings_sent += 1
+                    if self.ping_seconds <= 0:
+                        send_masked(sock, "ping")  # keep an idle public connection alive
+                        self.pings_sent += 1
+                        last_ping = time.monotonic()
                     continue
                 if frame is None:
                     return
@@ -383,6 +414,7 @@ class VenueClient(threading.Thread):
                     self.pongs_sent += 1
                     continue
                 if opcode == 0xA:
+                    self.pongs_received += 1
                     continue
                 if opcode not in (0x1, 0x0):
                     continue
@@ -395,6 +427,7 @@ class VenueClient(threading.Thread):
                     self.pongs_sent += 1
                     continue
                 if token == "pong":
+                    self.pongs_received += 1
                     continue
                 if sink is not None:
                     sink.write(text + "\n")
@@ -529,6 +562,10 @@ def main():
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
     parser.add_argument("--max-seconds", type=float, default=0.0)
+    parser.add_argument("--ping-seconds", type=float, default=0.0,
+                        help="send a ping every N seconds even while data flows; 0 pings only when idle")
+    parser.add_argument("--drop-after-seconds", type=float, default=0.0,
+                        help="close and reopen the venue connection every N seconds, for the reconnect test")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -570,7 +607,8 @@ def main():
     recorder = Recorder(args.record) if args.record else None
     client = VenueClient(args.venue, args.instrument, args.books_channel, decoder, rows,
                          capture=args.capture, max_seconds=args.max_seconds, enqueue=conn is not None,
-                         recorder=recorder)
+                         recorder=recorder, ping_seconds=args.ping_seconds,
+                         drop_after_seconds=args.drop_after_seconds)
     client.start()
     try:
         if conn is None:
@@ -595,7 +633,8 @@ def main():
               flush=True)
     print(f"{decoder.summary()} reconnects={client.reconnects} "
           f"queue_high_water={client.queue_high_water} queue_waits={client.queue_waits} "
-          f"pings_sent={client.pings_sent} pongs_sent={client.pongs_sent}", flush=True)
+          f"pings_sent={client.pings_sent} pongs_sent={client.pongs_sent} "
+          f"pongs_received={client.pongs_received}", flush=True)
     return 0
 
 

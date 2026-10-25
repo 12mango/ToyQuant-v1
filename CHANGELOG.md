@@ -30,7 +30,9 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   `ping` and a control ping -- which a six second run never exercises; the hand-off to the engine is bounded,
   so a slow reader slows the venue down instead of growing the process, and the wait and its high-water mark
   are printed with the relay's summary. The feed reports its own `ring_waits`, and both recorders are flushed
-  as they go, so a stopped session loses at most the last few thousand rows.
+  as they go, so a stopped session loses at most the last few thousand rows. Two test hooks make the two
+  paths executable against a venue: `--ping-seconds=N` sends a ping on a fixed cadence even while data
+  flows, and `--drop-after-seconds=N` closes and reopens the venue connection.
 - **A thirty-minute live soak that replays into itself.** OKX's public `BTC-USDT-SWAP` channel, the paper
   broker and both recorders for 1,800 seconds: 697,400 frames, 6,719 trades, 690,679 depth updates, with no
   sequence gap, no reconnect, no parse error and no ring wait, flat RSS in both processes, and a replay of the
