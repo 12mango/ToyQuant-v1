@@ -38,6 +38,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   sequence gap, no reconnect, no parse error and no ring wait, flat RSS in both processes, and a replay of the
   engine's recording that reproduces the live summary field for field. The heartbeat path stayed idle, so it
   is covered by a local stand-in rather than claimed against the venue.
+- **A live merge that cannot deadlock on a trade gap.** A two-hour run with a forced reconnect every 25
+  minutes stopped at the second drop: the merge waits for the next trade, depth keeps arriving, and the
+  4,096-row depth ring (10.7 s at the measured 384 rows/s) filled while the receive thread blocked on a push
+  the merge could not drain. The live input rings are now 131,072 rows, about 5.7 minutes of depth, and the
+  feed reports `ring_high_water`. The structural fix -- one ordered stream instead of two blocking readers --
+  is recorded in the roadmap.
 - **The client's half of the order path.** `OrderGateway` (`src/lines/order_gateway.*`) is a second decorator
   over the engine, wrapped outside the broker: it keeps the table of orders from submission to answer, absorbs
   a retry under the same client id, counts an order the venue has not answered within a timeout of market

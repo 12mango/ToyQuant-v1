@@ -61,6 +61,9 @@ struct WebSocketFeedSummary
     // that says the engine, rather than the venue, was the limit. Zero after an hour is the answer a
     // soak is looking for.
     uint64_t ring_waits{0};
+    // How deep either input ring got. It is the number that says how much of the ring's capacity a
+    // session actually used, which is what makes the capacity above a measurement rather than a guess.
+    uint64_t ring_high_water{0};
     // True when the session ended on its own --live-seconds rather than because the peer closed; the
     // two are different events and a run wants to know which one it got.
     bool stopped_by_deadline{false};
@@ -81,6 +84,16 @@ class WebSocketFeed
     };
 
     static constexpr std::size_t kDefaultRingCapacity = 4096;
+
+    // The live feed's two input rings. Much larger than the default because of a measured deadlock:
+    // the L2 merge waits for the next trade while the depth stream keeps arriving, so when a trade gap
+    // outlasts the depth ring the producer blocks on a push the merge cannot drain, and the session
+    // hangs. The longest trade gap in a measured thirty-minute run was 10.2 seconds (15.7 in a longer
+    // one) and depth arrives at about 384 rows a second, so 4,096 rows is 10.7 seconds: the ring filled
+    // exactly in the window the merge was waiting. 131,072 rows is about 5.7 minutes of depth, more than
+    // twenty times the longest observed gap. The structural fix is one ordered stream instead of two
+    // blocking readers; this bound is what makes the current design safe until then.
+    static constexpr std::size_t kLiveRingCapacity = 131072;
 
     // Everything that is not the address. A struct rather than more constructor arguments, because a
     // feed that gains a knob should not change every call site, and the three defaults are what both a

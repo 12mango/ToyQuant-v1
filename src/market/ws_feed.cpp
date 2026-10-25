@@ -274,7 +274,8 @@ std::string WebSocketFeedSummary::to_log_string() const
            " trades=" + std::to_string(trades) + " depth_updates=" + std::to_string(depth_updates) +
            " control_frames=" + std::to_string(control_frames) +
            " parse_errors=" + std::to_string(parse_errors) +
-           " ring_waits=" + std::to_string(ring_waits);
+           " ring_waits=" + std::to_string(ring_waits) +
+           " ring_high_water=" + std::to_string(ring_high_water);
 }
 
 WebSocketFeed::WebSocketFeed(Endpoint endpoint) : WebSocketFeed(std::move(endpoint), Options{}) {}
@@ -658,6 +659,9 @@ void WebSocketFeed::handle_message(std::string_view message)
                             concurrency::spin_relax();
                         }
                         ++summary_.trades;
+                        const std::size_t depth_high = trades_.consumer_occupancy();
+                        if (depth_high > summary_.ring_high_water)
+                            summary_.ring_high_water = depth_high;
                     }
                 }
                 else if (fields.size() == 8)
@@ -682,6 +686,9 @@ void WebSocketFeed::handle_message(std::string_view message)
                             concurrency::spin_relax();
                         }
                         ++summary_.depth_updates;
+                        const std::size_t depth_high = depth_.consumer_occupancy();
+                        if (depth_high > summary_.ring_high_water)
+                            summary_.ring_high_water = depth_high;
                     }
                 }
                 else

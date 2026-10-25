@@ -478,7 +478,10 @@ void Application::run_l2_session_mode() const
     {
         live_feed = std::make_unique<WebSocketFeed>(
             WebSocketFeed::Endpoint{cfg_.ws_host, cfg_.ws_port, cfg_.ws_target},
-            WebSocketFeed::Options{.live_seconds = cfg_.ws_seconds});
+            // The input rings are sized for a live merge, not for a file: a trade gap outlasting the
+            // depth ring is a deadlock (see kLiveRingCapacity), and the measured gap is seconds.
+            WebSocketFeed::Options{.ring_capacity = WebSocketFeed::kLiveRingCapacity,
+                                   .live_seconds = cfg_.ws_seconds});
         live_feed->start();
         trades_reader = live_feed->trades_reader();
         depth_reader = live_feed->depth_reader();

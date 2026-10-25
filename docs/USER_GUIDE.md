@@ -654,7 +654,11 @@ The session ends when the peer closes the connection, and the run reports it as 
 messages it read, the trades and depth updates it decoded, whether the close was clean, and whether the run
 stopped on its own `--ws-seconds=N` instead. `ring_waits` is the number of times a receive-side ring was
 full: a full ring waits rather than dropping the row, so the socket is what slows down, and this is the one
-counter that says the engine rather than the venue was the limit. A live capture usually needs that bound,
+counter that says the engine rather than the venue was the limit. `ring_high_water` is the deepest either
+input ring got. The live rings hold 131,072 rows rather than the 4,096 a replay uses, because the merge
+waits for the next trade while depth keeps arriving: the longest trade gap in a measured 30-minute run was
+10.2 s, and 4,096 depth rows at 384 rows a second is 10.7 s, which is exactly the window in which the
+receive thread used to block on a push the merge could not drain. A live capture usually needs that bound,
 because a venue's socket does not close itself, and the rows that arrived before the deadline are still
 drained rather than dropped. The
 connect and the opening handshake share a five-second budget, so a host that accepts the connection and then

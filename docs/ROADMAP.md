@@ -1169,6 +1169,16 @@ the venue connection, so the reconnect path is exercised against the real venue 
 stand-in. A local stand-in that accepts twice and replies to both pings shows two connections, two pings,
 two pongs received and two snapshots, which is the shape the long run has to reproduce against OKX.
 
+**The two-hour run found a deadlock, and the bound that fixes it.** With a forced drop every 25 minutes, the
+run stopped at the second drop: the engine's recorded rows froze while the relay kept producing and the
+process spun at one core. The cause is the merge between the two blocking readers. It waits for the next
+trade while depth keeps arriving, so a trade gap longer than the depth ring fills the ring and the receive
+thread blocks on a push the merge cannot drain. The numbers line up exactly: 384 depth rows a second against
+4,096 slots is 10.7 seconds, and the longest trade gap measured here is 10.2 seconds in thirty minutes and
+15.7 seconds in the longer recording. The live input rings are now 131,072 rows -- about 5.7 minutes of
+depth -- and the feed reports `ring_high_water`, so the margin is a measurement. The structural fix is one
+ordered stream instead of two blocking readers, which is the next refactor rather than another constant.
+
 **Why UDP is not part of this yet.** The only UDP in the tree is the legacy receiver in
 `src/lines/legacy/udp_feed.*`, and it is a receiver for the frozen `Tick` line: one CSV row per datagram, no
 sequence, no gap detection, no recovery, and a datagram dropped silently when its ring is full. A live
