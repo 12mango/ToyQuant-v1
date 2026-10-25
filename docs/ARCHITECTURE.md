@@ -349,6 +349,18 @@ fill count and fees, which is the check the strategy already runs against the en
 out. Cash is deliberately outside that comparison: the broker's USD arithmetic would be a second
 implementation of the instrument model, and a copy that agrees because it was copied is not a check.
 
+The other half of that seam is the client's. `OrderGateway` (`src/lines/order_gateway.*`) is a second
+decorator over the same interface, wrapped outside the broker, and it holds the state the engine does not
+have because the engine's `send_order` is synchronous: the order sits in the gateway's table from the moment
+it is submitted until the venue answers. That is where an idempotent submit lives. The client order id is
+the order's id, a second submission under an id already in the table is absorbed rather than forwarded, and
+a retry after a timeout goes out under the same id, so the venue's duplicate check — the same one that
+refuses a repeated id in `send_order_now` — is what stops a second position rather than the client's
+optimism. The timeout is measured on the market's clock, the only clock a replay and a live session share,
+and a cancel for an order that has already finished is counted rather than sent. The gateway reports its
+counts as a `[GATEWAY]` line; with every knob at zero it forwards every call and every report, which is what
+makes a run with it comparable to one without.
+
 Levels are held in `TickLadder`, a flat array indexed by price tick. A `std::map` access descends
 about ten pointer levels, and a sorted vector moves several kilobytes per insertion once a book holds
 a thousand levels; Deribit BTC-PERPETUAL keeps more than a thousand live levels per side across a

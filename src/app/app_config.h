@@ -119,6 +119,16 @@ struct AppConfig
     uint64_t broker_drop_every = 0;
     uint64_t broker_outage_after = 0;
     uint64_t broker_outage_holds = 0;
+    // The order gateway: the client side of the order path, wrapped outside the broker. It keeps the
+    // client's own record of every order between submission and answer, so a retry under the same client
+    // id is absorbed, an answer that never arrives is counted as a timeout, and a cancel for an order that
+    // has already finished is visible. Off, the default, is the plain venue, and every recorded number
+    // stays what it was.
+    bool order_gateway = false;
+    // No answer within this many microseconds of market time is a timeout. 0 counts none.
+    uint64_t gateway_ack_timeout_us = 0;
+    // Send a timed-out order again under the same client id, which the venue refuses as a duplicate.
+    bool gateway_retry_on_timeout = false;
     // A maker fee rate the command line supplies, for the runs that ask what a different fee schedule would
     // have produced. The venues' rates are in the instrument specifications, so this is a sensitivity input
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.

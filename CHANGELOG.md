@@ -26,6 +26,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
 - **A bounded session and a bounded handshake.** `--ws-seconds=N` ends a capture whose peer never closes the
   socket, draining what already arrived first, and the connect and the opening handshake share a five-second
   budget, so a host that accepts the connection and then says nothing fails the run rather than hanging it.
+- **The client's half of the order path.** `OrderGateway` (`src/lines/order_gateway.*`) is a second decorator
+  over the engine, wrapped outside the broker: it keeps the table of orders from submission to answer, absorbs
+  a retry under the same client id, counts an order the venue has not answered within a timeout of market
+  time, and re-sends it under the same id where the venue's duplicate check makes the retry safe. Reported as
+  `[GATEWAY]`; with every knob at zero the run reports the numbers of the same run without it, and with a
+  timeout and a retry the run reports the numbers of the same run with neither.
 
 ## The measured line
 

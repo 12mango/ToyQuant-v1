@@ -1069,10 +1069,13 @@ orders or fills so a faulted run is reproducible from its command line (`--paper
 `--broker-outage-after=N` with `--broker-outage-holds=M`). It keeps its own statement of what the venue
 executed, and `reconcile_positions` (`src/lines/reconciliation.*`) compares that against the portfolio,
 reported as a `[RECON]` line: net position and gross traded quantity per symbol, the fills the strategy was
-sent against the ones it booked, and fees. Not built, because a paper account is what is missing rather than
-the code: the gateway's own transport, idempotent client order ids with a retry path (nothing in this path
-retries, so there is nothing for them to protect yet), the hard limits and the kill switch, shadow mode, and
-the operational half. Two things the faults found by being run rather than reasoned about: a cancel resolved
+sent against the ones it booked, and fees. The client's half of that seam has landed too: `OrderGateway`
+(`src/lines/order_gateway.*`) keeps the table of orders from submission to answer, absorbs a retry under the
+same client id, and times out an order the venue has not answered, re-sending it under the same id where the
+venue's duplicate check makes the retry safe. Not built, because a paper account is what is missing rather
+than the code: the transport itself (a socket carrying a venue's own order messages, where the gateway now
+models the state rather than the wire), the hard limits and the kill switch as a venue enforces them, shadow
+mode, and the operational half. Two things the faults found by being run rather than reasoned about: a cancel resolved
 against an order the venue has not been given has to be answered with a `Cancelled` report, or a strategy
 that keys on cancel acknowledgements stops quoting altogether — it stopped 51 orders into a 381 order run;
 and a fill lost on each side leaves the position exactly where it was, so the reconciliation has to compare

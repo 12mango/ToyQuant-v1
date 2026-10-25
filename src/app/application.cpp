@@ -15,6 +15,7 @@
 #include "app/strategy_factory.h"
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
+#include "lines/order_gateway.h"
 #include "lines/paper_broker.h"
 #include "common/tick.h"
 #include "lines/legacy/tick_pipeline.h"
@@ -418,11 +419,22 @@ void Application::run_l2_session_mode() const
                                  .outage_after = cfg_.broker_outage_after,
                                  .outage_holds = cfg_.broker_outage_holds});
     }
-    IMatchingEngine& venue =
-        broker ? static_cast<IMatchingEngine&>(*broker) : static_cast<IMatchingEngine&>(engine);
+    IMatchingEngine* venue =
+        broker ? static_cast<IMatchingEngine*>(broker.get()) : static_cast<IMatchingEngine*>(&engine);
+    // The gateway is the client's side of the order path, so it sits outside the broker: what it absorbs,
+    // times out or re-sends is decided before the broker or the venue sees anything. With every knob at
+    // zero it forwards every call and every report, and the run is the run without it.
+    std::unique_ptr<OrderGateway> gateway;
+    if (cfg_.order_gateway)
+    {
+        gateway = std::make_unique<OrderGateway>(
+            *venue, GatewayConfig{.ack_timeout_us = cfg_.gateway_ack_timeout_us,
+                                  .retry_on_timeout = cfg_.gateway_retry_on_timeout});
+        venue = gateway.get();
+    }
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
-    Pipeline pipeline(output_files.orders, output_files.trades, *strategy, venue, portfolio,
+    Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
                       instrument.tick_size);
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
@@ -577,6 +589,13 @@ void Application::run_l2_session_mode() const
                " incremental_batches=", validation.incremental_batches,
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches);
     logger.log(pipeline.summary().to_log_string());
+    if (gateway != nullptr)
+    {
+        // The client's own account of the order path: what it sent, what it absorbed as a retry, and
+        // what it never heard back about. Logged before the broker's line because it is the earlier
+        // layer, and a timeout here is the reason the broker below may see a second copy.
+        logger.log("[GATEWAY] ", gateway->summary().to_log_string());
+    }
     if (broker != nullptr)
     {
         // The broker's own counts, then the two accounts compared: the statement is built from the

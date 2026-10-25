@@ -67,6 +67,7 @@ set(LINE_SOURCES
     src/lines/reconciliation.cpp
     src/lines/carry_ledger.cpp
     src/lines/paper_broker.cpp
+    src/lines/order_gateway.cpp
     src/lines/legacy/tick_csv_parser.cpp
     src/lines/legacy/order_book.cpp
     src/lines/legacy/csv_feed.cpp
@@ -203,6 +204,7 @@ add_toy_test(spsc_ring_test)
 add_toy_test(threaded_replay_test)
 
 add_toy_test(paper_broker_test)
+add_toy_test(order_gateway_test)
 add_toy_test(matching_engine_test)
 add_toy_test(tick_csv_parser_test)
 add_toy_test(line_reader_test)

@@ -293,6 +293,34 @@ owed the confirmation; resolving it silently left a strategy that keys on cancel
 working order for the rest of the window, and it stopped quoting 51 orders into a 381 order run. And a fill
 is split only when it is more than one unit, since two prints of zero are not a split.
 
+### The order gateway
+
+`--order-gateway` puts the client's side of the order path outside the broker. It is the layer that knows
+the difference between an order that was sent and an order the venue answered, and it keeps its own table
+of every order in between, printed as `[GATEWAY]`:
+
+```bash
+./out/build/linux-debug/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 conservative --fast-validation \
+  --order-latency-us=100000 --order-gateway --gateway-ack-timeout-us=50000 --gateway-retry-timeouts
+```
+
+```text
+[GATEWAY] submissions=6 duplicates_suppressed=0 acks=6 ack_timeouts=6 retries=6 retry_rejections=0 venue_rejects=0 cancels=6 cancels_after_fill=0
+```
+
+The client order id is the strategy's order id, entered in the table before the venue is called. A second
+submission under an id already in the table is absorbed rather than forwarded, so a retry cannot become a
+second position. `--gateway-ack-timeout-us=N` counts an order the venue has not said anything about within
+N microseconds of market time, and `--gateway-retry-timeouts` sends it again under the same id. The venue
+already refuses a duplicate id, so the second copy is a refusal rather than a fill: on the 200k slice with
+each order held for 100 ms and a timeout of 50 ms, the gateway timed out and re-sent all six orders, the
+engine refused six duplicates on stderr, and the run's trades, P&L, fees and inventory were exactly those
+of the same run with the latency and no retry. A cancel for an order that has already finished is counted
+in `cancels_after_fill` instead of being sent to a venue with nothing to cancel. With every knob at zero
+the gateway forwards every call and every report, and a run with it reports the numbers of the same run
+without it.
+
 The symbol decides the instrument, through `instrument_spec_of`: `BTC-PERPETUAL`, `BTC-USDT-SWAP`, `SPY` and
 `MESZ6` are the entries today, and a symbol with no entry is an error rather than a default, because a default
 would quietly price the wrong tick with the wrong fee. A listed future also states its contract multiplier,
@@ -440,6 +468,9 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--broker-drop-every=N` | Withhold every Nth fill from the strategy while the venue's statement records it executed | 0, drop none |
 | `--broker-outage-after=N` | Take the venue away once N orders have been accepted | 0, never down |
 | `--broker-outage-holds=M` | Orders held while it is away, delivered in submission order when it returns | 0, a venue that never comes back |
+| `--order-gateway` | Put the client's side of the order path outside the broker: keep a table of orders from submission to answer, absorb a retry under the same client id, and report `[GATEWAY]` | Off, the plain venue |
+| `--gateway-ack-timeout-us=N` | Count an order the venue has not answered within N microseconds of market time | 0, count none |
+| `--gateway-retry-timeouts` | Re-send a timed-out order under the same client id, which the venue refuses as a duplicate | Off |
 
 ### Funding as an input
 

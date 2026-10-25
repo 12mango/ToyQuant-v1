@@ -46,6 +46,9 @@ constexpr std::string_view kBrokerPartialPrefix = "--broker-partial-every=";
 constexpr std::string_view kBrokerDropPrefix = "--broker-drop-every=";
 constexpr std::string_view kBrokerOutageAfterPrefix = "--broker-outage-after=";
 constexpr std::string_view kBrokerOutageHoldsPrefix = "--broker-outage-holds=";
+constexpr std::string_view kOrderGatewayFlag = "--order-gateway";
+constexpr std::string_view kGatewayAckTimeoutPrefix = "--gateway-ack-timeout-us=";
+constexpr std::string_view kGatewayRetryTimeoutFlag = "--gateway-retry-timeouts";
 constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
@@ -194,6 +197,12 @@ void print_usage(const char* executable)
                      "every Nth fill, --broker-drop-every=N withholds every Nth fill from the strategy, "
                      "and --broker-outage-after=N with --broker-outage-holds=M holds the next M orders "
                      "while the venue is unreachable\n";
+        std::cerr << "   gateway: --order-gateway (l2_replay) puts the client side of the order path "
+                     "outside the broker, reports [GATEWAY], and keeps the run's own record of every "
+                     "order from submission to answer; --gateway-ack-timeout-us=N counts an order the "
+                     "venue has not answered within N microseconds of market time, and "
+                     "--gateway-retry-timeouts sends a timed-out order again under the same client id, "
+                     "which the venue refuses as a duplicate\n";
         std::cerr << "   --help prints this text\n";
 }
 
@@ -513,6 +522,34 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                                        cfg.broker_outage_holds))
                     return false;
             }
+            else if (flag == kOrderGatewayFlag)
+            {
+                if (!is_l2_family)
+                {
+                    error = "--order-gateway is an l2_replay or ws flag: it wraps that mode's venue";
+                    return false;
+                }
+                cfg.order_gateway = true;
+            }
+            else if (flag.compare(0, kGatewayAckTimeoutPrefix.size(), kGatewayAckTimeoutPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kGatewayAckTimeoutPrefix.size()),
+                                    cfg.gateway_ack_timeout_us) ||
+                    cfg.gateway_ack_timeout_us == 0)
+                {
+                    error = "--gateway-ack-timeout-us must be a positive integer";
+                    return false;
+                }
+            }
+            else if (flag == kGatewayRetryTimeoutFlag)
+            {
+                if (!is_l2_family)
+                {
+                    error = "--gateway-retry-timeouts is an l2_replay or ws flag, beside --order-gateway";
+                    return false;
+                }
+                cfg.gateway_retry_on_timeout = true;
+            }
             else if (flag.compare(0, kProfileStagesPrefix.size(), kProfileStagesPrefix) == 0)
             {
                 if (!parse_unsigned(flag.substr(kProfileStagesPrefix.size()),
@@ -794,6 +831,19 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (cfg.broker_outage_holds > 0 && cfg.broker_outage_after == 0)
         {
             error = "--broker-outage-holds needs --broker-outage-after: nothing says when the venue goes";
+            return false;
+        }
+        if (!cfg.order_gateway &&
+            (cfg.gateway_ack_timeout_us > 0 || cfg.gateway_retry_on_timeout))
+        {
+            // The same reason as the broker faults: a knob that configures a layer the run does not
+            // build would leave a timed-out run and a clean one indistinguishable in the summary.
+            error = "a --gateway-* flag needs --order-gateway, the gateway it configures";
+            return false;
+        }
+        if (cfg.gateway_retry_on_timeout && cfg.gateway_ack_timeout_us == 0)
+        {
+            error = "--gateway-retry-timeouts needs --gateway-ack-timeout-us: nothing says when to retry";
             return false;
         }
         if (cfg.markout_cover && cfg.strategy_name != "active_l2" &&
