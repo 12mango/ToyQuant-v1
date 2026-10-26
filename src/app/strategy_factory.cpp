@@ -8,6 +8,7 @@
 #include "strategy/active_l2_market_maker.h"
 #include "strategy/inventory_aware_l2_market_maker.h"
 #include "strategy/l2_market_maker_base.h"
+#include "strategy/trend_l2.h"
 #include "strategy/baseline_market_makers.h"
 
 namespace
@@ -135,6 +136,14 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.markout_cover = config.markout_cover;
         base_config.flatten_band_units = config.flatten_band_units;
         return std::make_unique<ActiveL2MarketMaker>(make_active_l2_config(base_config));
+    }
+    if (strategy_name == "trend_l2")
+    {
+        // The non-market-making line: a target position, not a quote. The inventory limit is the size a
+        // full signal takes, and the order size is the clip it is built in.
+        return std::make_unique<TrendL2Strategy>(TrendL2Config{.order_size = order_size,
+                                                               .max_position = inventory_limit,
+                                                               .tick_size = tick_size});
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||
         strategy_name == "flow_aware_l2" || strategy_name == "l2_depth" ||

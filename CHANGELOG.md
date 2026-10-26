@@ -64,6 +64,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   time, and re-sends it under the same id where the venue's duplicate check makes the retry safe. Reported as
   `[GATEWAY]`; with every knob at zero the run reports the numbers of the same run without it, and with a
   timeout and a retry the run reports the numbers of the same run with neither.
+- **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
+  cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
+  it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's
+  pre-trade gates instead of reimplementing them; on the 200k-row Deribit slice it filled 55 taker clips on
+  both sides and reconciled `ok`.
 
 ## The measured line
 

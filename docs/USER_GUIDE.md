@@ -137,6 +137,9 @@ strategy names are:
 | `flow_aware_l2` | Flow/depth comparison |
 | `active_l2` | Comprehensive L2 mainline |
 | `adaptive_l2` | Compatibility alias for `active_l2` |
+| `trend_l2` | Non-market-making line: an EWMA cross sets a target position, clips at the touch build it, and a stop, a time stop or the exit band closes it |
+
+`trend_l2` uses `--inventory-limit` as the size of a full signal and `--order-size` as the clip it is built in. The derived default for both is the instrument's own minimum, so a run that wants to watch a position build should name both, for example `--order-size=10 --inventory-limit=100`.
 
 Run the standard benchmark with a fixed window and `depth_every=1`:
 
@@ -584,7 +587,8 @@ The replay demo retains historical L1 and current L2 roles:
 - `flow_aware_l1`: bounded order-flow experiment and comparison baseline;
 - `passive_l1` and `inventory_aware_l1`: simple reference baselines;
 - `active_l2`: current L2 mainline for depth-aware replay;
-- `passive_l2`, `inventory_aware_l2`, and `flow_aware_l2`: L2 comparison baselines.
+- `passive_l2`, `inventory_aware_l2`, and `flow_aware_l2`: L2 comparison baselines;
+- `trend_l2`: the non-market-making line, where the signal sets a target position instead of a quote.
 
 Replay trades without a usable BBO, or with a price more than 5 bps from the latest BBO midpoint,
 are counted as `filtered` and are not sent to matching. This keeps data-alignment problems from

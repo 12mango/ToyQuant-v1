@@ -203,6 +203,7 @@ add_toy_test(market_event_recorder_test)
 add_toy_test(spsc_ring_test)
 add_toy_test(threaded_replay_test)
 
+add_toy_test(trend_l2_test)
 add_toy_test(paper_broker_test)
 add_toy_test(order_gateway_test)
 add_toy_test(matching_engine_test)

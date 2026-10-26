@@ -737,9 +737,9 @@ mechanism and records the measured effect on the `engine` stage.
 
 ## 6. Strategy: The Main Decision Module
 
-**Files:** `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/strategy/l2_market_maker_base.h`, `src/strategy/inventory_aware_l2_market_maker.h`, `src/strategy/active_l2_market_maker.h`, `src/lines/legacy/l1_market_maker.h`
+**Files:** `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/strategy/l2_market_maker_base.h`, `src/strategy/inventory_aware_l2_market_maker.h`, `src/strategy/active_l2_market_maker.h`, `src/strategy/trend_l2.h`, `src/lines/legacy/l1_market_maker.h`
 
-Six files and three families, which is worth stating because the file names alone do not say it. `strategy.h` is the interface everything implements, and it is where the L2 family stops depending on the L1 one: `tools/check_layering.py` keeps that true rather than trusting it, because a `legacy/` include anywhere under `src/strategy/` fails the gate. `baseline_market_makers.h` holds `NaiveMarketMaker` and `OptimizedMarketMaker`, neither of which implements `on_l2_market_view`: they see the touch and nothing else, and they are the baseline the rest is measured against. The active family is three files with one inheritance chain between them, and the middle one is the root:
+Seven files and three families, which is worth stating because the file names alone do not say it. `trend_l2.h` is deliberately outside the maker families: it has no quote lifecycle, only a target position. `strategy.h` is the interface everything implements, and it is where the L2 family stops depending on the L1 one: `tools/check_layering.py` keeps that true rather than trusting it, because a `legacy/` include anywhere under `src/strategy/` fails the gate. `baseline_market_makers.h` holds `NaiveMarketMaker` and `OptimizedMarketMaker`, neither of which implements `on_l2_market_view`: they see the touch and nothing else, and they are the baseline the rest is measured against. The active family is three files with one inheritance chain between them, and the middle one is the root:
 
 | File | Class | Role |
 |---|---|---|
@@ -1184,6 +1184,7 @@ to share an interface and seven of the L2 names are one class under seven config
 | `L2MarketMakerBase` | `l2`, `passive_l2`, `l2_baseline`, `l2_depth`, `l2_micro`, `l2_flow`, `flow_aware_l2` | touch + depth | microprice + depth + flow, by mode | skew, limit | guards | **hold** | fee + edge + markout | — | flatten |
 | `InventoryAwareL2MarketMaker` | `inventory_aware_l2` | touch + depth | as the root | skew, limit, **size, reducing side** | guards | hold | fee + edge + markout | — | flatten |
 | `ActiveL2MarketMaker` | `active_l2`, `adaptive_l2` | touch + depth | as the root | skew, limit | guards | hold | fee + edge + markout | **yes, with warmup** | flatten |
+| `TrendL2Strategy` | `trend_l2` | touch | EWMA cross | target position, clips at the touch | — | — | — | stop, time stop, cooldown | — |
 
 Four things that table cannot say, and they matter more than the marks do:
 
@@ -1273,6 +1274,7 @@ The L2 replay family uses the separate `L2MarketView` contract described in sect
 | `flow_aware_l2` | Flow/depth fair-price behavior | Signal comparison |
 | `active_l2` | Flow L2 engine plus volatility risk gate | L2 mainline |
 | `adaptive_l2` | Compatibility name for `active_l2` | Legacy alias |
+| `trend_l2` | EWMA cross sets a target position; clips at the touch; stop, time stop and exit band | Non-market-making line |
 
 Unlike the L1 family, L2 decisions receive depth snapshots and use the queue-aware matching path.
 L2 comparisons therefore include `queue_ahead_consumed`, maker/taker role, side-specific markout,

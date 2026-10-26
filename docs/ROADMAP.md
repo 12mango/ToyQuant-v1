@@ -1123,7 +1123,7 @@ workload rather than rewriting them:
 | To build by hand | What it teaches |
 |---|---|
 | the order gateway and the order lifecycle behind it (Stage B) | submit, cancel and modify, partial fills, rejects, timeouts, and idempotent client order ids |
-| a strategy that is not market making | signal, then target position, then risk, then exit — the common workflow this repository does not walk |
+| a strategy that is not market making | signal, then target position, then risk, then exit — landed as `trend_l2`: an EWMA cross, clips at the touch, a stop, a time stop, a cooldown and an exit band, on the shared pre-trade gates |
 | live ingestion pointed at a real venue (Stage A) | the venue protocol, subscription, heartbeat, gap detection and reconnect |
 | multi-instrument accounting and a portfolio layer | from one instrument to a portfolio and a risk budget |
 | persistence and recovery | how a long-lived process keeps its state and asks the venue what is still working |
@@ -1239,6 +1239,39 @@ to a licensed multicast feed this demo does not have; the recorder's buffered st
 background socket are enough for the volumes a public stream produces. If a capture ever drops a row, the
 first fix is a writer thread behind a queue, not direct I/O.
 
+**A production checklist, sorted by this repository's measurements.** Five suggestions came from outside:
+shared-memory IPC, SIMD parsing, RCU configuration, a template pre-trade risk pipeline, and binary telemetry.
+Each is a real technique, but only two have a reason in this repository's own record -- a missing control and a
+measured bottleneck; the other three are recorded with the condition that would make them worth doing, so the
+list does not become a checklist that drives work by itself.
+
+1. **A pre-trade risk pipeline is worth building now.** The kill switch, the exposure cap and the position
+   gate live inside `Pipeline::submit_strategy_actions`; separating them into an ordered list of checks makes
+   each one individually testable and auditable, and leaves room for the two controls that are actually
+   missing: a fat-finger price band against the current touch and a token-bucket order rate. A list of small
+   functors, not variadic templates: the checks run once per order, and 10,673 orders in two hours is
+   1.5 a second, where a virtual call is noise.
+2. **A block/SIMD parse is worth one bounded experiment, on the replay path.** `read+parse` is 61% of an
+   event and the row loop is at its floor; the one shape change left in the performance record is parsing a
+   block instead of a row. `simdjson` does not apply -- the wire format is CSV -- so the experiment is a
+   delimiter scan plus the existing fixed-point conversion, measured on the 2M-row slice with
+   `--profile-stages`, byte-identical output, and rejected if the `read+parse` p50 does not move by more than
+   10%. It does nothing for a live session at 800 rows a second.
+3. **Configuration hot update, when live tuning exists.** The direction is right -- an immutable parameter
+   snapshot behind an atomic pointer, or a seqlock -- but a bare `std::atomic<Config*>` swap is a
+   use-after-free waiting for a reader that still holds the old pointer. The safe minimal form is a snapshot
+   the reader takes once per decision and the writer replaces whole; full RCU needs epochs or hazard pointers
+   and is more machinery than a single strategy thread justifies.
+4. **Shared-memory IPC is deferred.** The live path carries about 800 frames a second, an event every 1.3 ms,
+   and the decision is a small part of that; local TCP's tens of microseconds is not the limit. The cheaper
+   step first is the C++ relay with OpenSSL, which removes Python and the local hop
+   entirely. A shared-memory ring would also have to carry a fixed-size POD, not `MarketEvent` with its
+   strings and variant, and a Python writer with the right release/acquire ordering; the debug and replay
+   formats would both grow a decoder.
+5. **Binary telemetry is deferred.** The two-hour run wrote 10,673 orders and 142 fills -- 1.5 orders a
+   second -- so CSV is not on a hot path, and it is part of the verification story: the gate counts rows and
+   the documents quote the fields. Revisit above a few thousand orders a second, with an SPSC queue to a
+   writer thread and a binary format, and keep CSV as the audit format rather than replacing it.
 
 ### The same code, second purpose: the demo and the interview
 

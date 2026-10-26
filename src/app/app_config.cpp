@@ -21,7 +21,7 @@ namespace
 // searches it, so a name cannot be accepted without being documented: the two were written out
 // separately, and four names (`l2_baseline`, `l2_depth`, `l2_micro`, `l2_flow`) were accepted while the
 // usage text stopped short of them. The order is the order the usage text prints, grouped by family.
-constexpr std::array<std::string_view, 17> kStrategyNames = {
+constexpr std::array<std::string_view, 18> kStrategyNames = {
     // The touch-only baselines. Neither implements the L2 entry point, so neither sees depth.
     "optimized", "naive",
     // The frozen L1 line, kept so recorded results stay reproducible rather than re-measured.
@@ -30,6 +30,8 @@ constexpr std::array<std::string_view, 17> kStrategyNames = {
     // outnumber the classes they select.
     "l2", "passive_l2", "l2_baseline", "l2_depth", "l2_micro", "l2_flow", "flow_aware_l2",
     "inventory_aware_l2", "active_l2", "adaptive_l2",
+    // The non-market-making line: a signal sets a target position instead of a quote.
+    "trend_l2",
 };
 constexpr std::string_view kDefaultStrategyName = "optimized";
 
