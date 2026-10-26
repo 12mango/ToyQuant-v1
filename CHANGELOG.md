@@ -44,6 +44,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   the merge could not drain. The live input rings are now 131,072 rows, about 5.7 minutes of depth, and the
   feed reports `ring_high_water`. The structural fix -- one ordered stream instead of two blocking readers --
   is recorded in the roadmap.
+- **The two-hour rerun, with the whole live path exercised.** 5,704,944 frames, 144,755 trades, 5,560,187 depth
+  updates, four forced reconnects with zero sequence gaps, 355 pings answered by 355 pongs, no ring wait, a
+  ring high-water of 3,917 against the old 4,096 capacity, five snapshot batches (the initial one and one per
+  reconnect), a reconciliation that stayed `ok`, and a replay of the engine's recording that reproduced the
+  live summary field for field.
 - **The client's half of the order path.** `OrderGateway` (`src/lines/order_gateway.*`) is a second decorator
   over the engine, wrapped outside the broker: it keeps the table of orders from submission to answer, absorbs
   a retry under the same client id, counts an order the venue has not answered within a timeout of market

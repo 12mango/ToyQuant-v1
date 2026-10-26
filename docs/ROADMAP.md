@@ -1179,6 +1179,16 @@ thread blocks on a push the merge cannot drain. The numbers line up exactly: 384
 depth -- and the feed reports `ring_high_water`, so the margin is a measurement. The structural fix is one
 ordered stream instead of two blocking readers, which is the next refactor rather than another constant.
 
+The rerun completed the two hours: 5,704,944 frames, 144,755 trades and 5,560,187 depth updates, with
+**four forced reconnects and zero sequence gaps**, 355 pings answered by 355 pongs, `ring_waits=0`, and a
+ring high-water of **3,917 rows** -- 179 below the old 4,096 capacity, which is the measurement that says
+the old bound was not a theoretical worry. `incremental_snapshot_batches=5` says the book resynced on the
+initial snapshot and on each of the four reconnects, and replaying the engine's own recording reproduced the
+live summary field for field. One strategy edge is visible in the same run: `active_l2` shrank some quotes
+to 5,000 units, below the instrument's 10,000-unit minimum, so the engine refused them; the reconciliation
+stayed `ok` and the network result is unaffected, but a clean strategy run should set `--order-size` at or
+above the minimum.
+
 **Why UDP is not part of this yet.** The only UDP in the tree is the legacy receiver in
 `src/lines/legacy/udp_feed.*`, and it is a receiver for the frozen `Tick` line: one CSV row per datagram, no
 sequence, no gap detection, no recovery, and a datagram dropped silently when its ring is full. A live
