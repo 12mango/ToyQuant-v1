@@ -55,6 +55,10 @@ struct TrendL2Config
     // Views after a stop or a time stop during which no new position is opened. Without it a stop on a
     // still-strong signal is an exit followed by the same entry on the next view, which is not a stop.
     uint64_t exit_cooldown_views{60};
+    // Views to wait after a pre-trade control refuses an order. The delay doubles on each consecutive
+    // refusal and is capped; zero retries on the next view, which was the old behaviour.
+    uint64_t rejection_backoff_views{60};
+    uint64_t max_rejection_backoff_views{3840};
 };
 
 class TrendL2Strategy : public Strategy
@@ -74,6 +78,7 @@ class TrendL2Strategy : public Strategy
 
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override;
     void on_order_submitted(const StrategyOrder& order) override;
+    void on_order_rejected(const StrategyOrder& order, std::string_view reason) override;
     std::vector<uint64_t> cancel_requests() override;
     void on_order_update(const ExecutionReport& report) override;
 
@@ -115,6 +120,8 @@ class TrendL2Strategy : public Strategy
     double entry_price_{0.0};
     uint64_t entry_view_{0};
     uint64_t cooldown_left_{0};
+    uint64_t rejection_wait_{0};
+    uint64_t retry_after_view_{0};
     std::unordered_map<uint64_t, StrategyOrder> open_orders_;
     int64_t target_at_submit_{0};
     bool cancel_pending_{false};
@@ -242,6 +249,10 @@ inline std::vector<StrategyOrder> TrendL2Strategy::on_l2_market_view(const L2Mar
     }
     if (cancel_pending_) return {};
 
+    // A refusal is not retried on the next view. The delay doubles on each consecutive refusal, and an exit
+    // (target 0) is never delayed: a risk-reducing order is the one the controls are trying to allow.
+    if (target_ != 0 && views_ < retry_after_view_) return {};
+
     std::vector<StrategyOrder> orders;
     if (!open_orders_.empty() || position_ == target_) return orders;
 
@@ -260,10 +271,24 @@ inline void TrendL2Strategy::on_order_submitted(const StrategyOrder& order)
 {
     open_orders_[order.order_id] = order;
     target_at_submit_ = target_;
+    rejection_wait_ = 0;
+    retry_after_view_ = 0;
     metrics_.submitted_quantity += order.quantity;
     ++metrics_.quote_count;
     if (order.side == Side::Buy) ++metrics_.buy_quote_count;
     else if (order.side == Side::Sell) ++metrics_.sell_quote_count;
+}
+
+inline void TrendL2Strategy::on_order_rejected(const StrategyOrder& order, std::string_view reason)
+{
+    (void)order;
+    (void)reason;
+    if (config_.rejection_backoff_views == 0) return;
+    if (rejection_wait_ == 0)
+        rejection_wait_ = config_.rejection_backoff_views;
+    else
+        rejection_wait_ = std::min(config_.max_rejection_backoff_views, rejection_wait_ * 2);
+    retry_after_view_ = views_ + rejection_wait_;
 }
 
 inline std::vector<uint64_t> TrendL2Strategy::cancel_requests()

@@ -1,6 +1,7 @@
 #pragma once
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "common/types.h"
@@ -129,6 +130,15 @@ class Strategy
 
     // Called after an order receives its final ID and before it is sent to the engine.
     virtual void on_order_submitted(const StrategyOrder& order) = 0;
+
+    // Called when a pre-trade control refused an order before the engine saw it. The default does nothing,
+    // which keeps every strategy that has no retry policy on the path it was on; a strategy that can wait is
+    // told why, so a refusal does not become a retry on every view. The pipeline counts the refusal itself.
+    virtual void on_order_rejected(const StrategyOrder& order, std::string_view reason)
+    {
+        (void)order;
+        (void)reason;
+    }
 
     // Returns working orders that must be cancelled before the next quote cycle.
     virtual std::vector<uint64_t> cancel_requests() = 0;

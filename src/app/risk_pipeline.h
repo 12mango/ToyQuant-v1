@@ -90,6 +90,10 @@ class RiskPipeline
 
     Decision check(const StrategyOrder& order, const RiskContext& context);
 
+    // The name a strategy is given when an order is refused, and the one the [RISK] line's counters are
+    // named after.
+    static const char* reason_name(Reason reason);
+
     int64_t position_limit() const
     {
         return limits_.position_limit;
@@ -173,6 +177,12 @@ class RiskPipeline
     Decision check_rate_limit(const StrategyOrder& order, const RiskContext& context);
     Decision check_exposure(const StrategyOrder& order, const RiskContext& context);
     Decision check_position(const StrategyOrder& order, const RiskContext& context);
+
+    // The position the order would leave, including the quantity already resting. `is_reducing` is true when
+    // that position is closer to zero than the current one, which is what lets a control refuse new risk
+    // without trapping a position that is already too large.
+    static int64_t projected_position(const StrategyOrder& order, const RiskContext& context);
+    static bool is_reducing(const StrategyOrder& order, const RiskContext& context);
 
     RiskLimits limits_;
     bool kill_switch_triggered_{false};

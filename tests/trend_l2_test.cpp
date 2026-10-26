@@ -130,5 +130,34 @@ int main()
         for (int index = 0; index < 3; ++index) assert(h.on(100.30).empty());
         assert(!h.on(100.30).empty());
     }
+    {
+        // A refused entry is not retried on the next view: the wait starts at two views, doubles on each
+        // consecutive refusal, and a successful submission resets it.
+        Harness h(TrendL2Config{.order_size = 10,
+                                .max_position = 10,
+                                .tick_size = 0.01,
+                                .fast_views = 2,
+                                .slow_views = 4,
+                                .entry_ticks = 1.0,
+                                .exit_ticks = 0.2,
+                                .stop_ticks = 5.0,
+                                .max_holding_views = 100,
+                                .exit_cooldown_views = 0,
+                                .rejection_backoff_views = 2,
+                                .max_rejection_backoff_views = 8});
+        for (int index = 0; index < 4; ++index) h.on(100.00);
+
+        // The pipeline would refuse this order instead of submitting it, so it is not in open_orders.
+        auto orders = h.strategy.on_l2_market_view(view_at(100.10));
+        assert(orders.size() == 1);
+        h.strategy.on_order_rejected(orders[0], "rate_limit");
+        h.strategy.on_order_rejected(orders[0], "rate_limit");
+        // The rejection was on view 5 and the doubled wait is four views: 6, 7 and 8 are blocked, 9 retries.
+        assert(h.on(100.15).empty());
+        assert(h.on(100.20).empty());
+        assert(h.on(100.25).empty());
+        assert(!h.on(100.30).empty());
+    }
+
     return 0;
 }

@@ -463,7 +463,12 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         risk_context.quote = quote_it != latest_quotes_.end() ? &quote_it->second : nullptr;
         risk_context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
 
-        if (!risk_pipeline_.check(order, risk_context).allowed) continue;
+        const RiskPipeline::Decision risk_decision = risk_pipeline_.check(order, risk_context);
+        if (!risk_decision.allowed)
+        {
+            strategy_.on_order_rejected(order, RiskPipeline::reason_name(risk_decision.reason));
+            continue;
+        }
 
         // The position gate reserves what it lets through, because those orders can still fill. The rule is
         // unchanged: the reservation happens only when the gate is on.

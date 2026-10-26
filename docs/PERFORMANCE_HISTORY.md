@@ -2665,6 +2665,31 @@ cross can pay, not another sweep of the same three bands.
 FAST_SLOW="5:30 10:60 20:120" ENTRIES="1 2 3" STOPS="4 6 8" bash tools/trend_sweep.sh
 ```
 
+## The pre-trade controls: what the backoff changed
+
+`tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band
+and a bucket at 0.01 orders a second. Each line below is what the run reported about itself; every one ends
+with `[RECON] status=ok`.
+
+| run | submitted | refused | reconciling |
+|---|---:|---:|---|
+| no flags | 55 | 0 | ok |
+| 100 bp / 1,000 a second | 55 | 0 | ok |
+| 1 bp | 38 | 13 fat-finger | ok |
+| 0.01 a second | 6 | 15 rate-limited | ok |
+
+The first version of the controls refused 161 and 33,685 orders on the last two runs. The 33,685 was a retry
+storm, not a measurement of liquidity: `trend_l2` asked again on every view because a pre-trade refusal never
+reached it. `Strategy::on_order_rejected` gave it the reason, and a deterministic exponential backoff (60 views,
+doubling to 3,840) cut the two counters to 13 and 15. The baseline prints no `[RISK]` line, and the permissive
+run's `[EXECUTION]` line is identical to the baseline's, which is the invariant that a control merely enabled
+changes nothing. The rate bucket, the exposure cap and the position gate also let a reducing order through even
+when the resulting position is still outside the limit, so a position can be worked down rather than trapped.
+
+```bash
+bash tools/risk_check.sh
+```
+
 
 
 

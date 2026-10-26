@@ -819,6 +819,7 @@ flowchart LR
 | `on_top_of_book` / `on_l2_market_view` | Pipeline -> strategy | Produce the next candidate quote set |
 | `on_market_trade` | Pipeline -> strategy | Update aggressor-flow state |
 | `on_order_submitted` | Pipeline -> strategy | Record exchange-assigned working orders |
+| `on_order_rejected` | Pipeline -> strategy | A pre-trade control refused the order; the default does nothing and `trend_l2` backs off |
 | `cancel_requests` | Strategy -> pipeline | Return stale or unsafe order IDs |
 | `on_order_update` | MatchingEngine -> strategy | Apply fills, cancellations, and partial fills |
 
@@ -1335,7 +1336,10 @@ the first reason that refuses an order together with its own counter. A rejected
 token nor a pending reservation, and a control at zero is off, so a run that names none of them follows the same
 path and prints the same summary it did before the class existed. The order is the policy: the price band is
 checked before the bucket so a bad price cannot spend an order's rate, and the exposure cap is checked before the
-position gate so neither folds the other's pending quantity into its own projection.
+position gate so neither folds the other's pending quantity into its own projection. A reducing order is allowed
+through the bucket, the exposure cap and the position gate: those controls refuse new risk, not its removal, so a
+position that is already too large can be worked down. A refusal is reported to the strategy through
+`Strategy::on_order_rejected`, which is what lets `trend_l2` back off instead of retrying on the next view.
 
 | Metric | Meaning | Current consumer |
 |---|---|---|

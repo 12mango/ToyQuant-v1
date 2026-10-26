@@ -73,11 +73,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
 - **A pre-trade risk pipeline, and the measurement that keeps it honest.** The kill switch, the exposure cap
   and the position gate moved out of `submit_strategy_actions` into `RiskPipeline`, an ordered list of five
   checks; the two new ones are a fat-finger band around the midpoint and a token bucket on submissions. A
-  run that names none of them is byte-for-byte the run it was, a permissive setting leaves `[EXECUTION]`
-  identical, and 1 basis point / 0.01 orders a second refuse 161 / 33,685 orders while every run still
-  reconciles. The second number is the interesting one: a rejected order is retried on the next view, so a
-  control without a strategy-side backoff turns a refusal into a retry storm. `tools/risk_check.sh` holds
-  the four runs.
+  run that names none of them is byte-for-byte the run it was, and a permissive setting leaves `[EXECUTION]`
+  identical. The first measurement refused 161 and 33,685 orders; the second number was a retry storm, because
+  a refusal was retried on the next view. `on_order_rejected` plus an exponential backoff in `trend_l2` (60
+  views, doubling to 3,840) cut those to 13 and 15. The rate bucket, the exposure cap and the position gate
+  also let a reducing order through, so a position that is too large can be worked down instead of trapped.
+  `tools/risk_check.sh` holds the four runs.
 
 ## The measured line
 

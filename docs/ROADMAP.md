@@ -1252,8 +1252,11 @@ list does not become a checklist that drives work by itself.
    `tools/risk_check.sh` measures four runs: the no-flag run must reproduce the baseline, a permissive
    setting must leave `[EXECUTION]` unchanged, and each named control must refuse orders and still reconcile.
    The first measurement found the next problem: a rejected order is retried on the next view, so a 0.01
-   orders-a-second bucket produced 33,685 refusals for four submissions. The next iteration is a strategy-side
-   attempt backoff, so a refusal is not retried on every view.
+   orders-a-second bucket produced 33,685 refusals for four submissions. `on_order_rejected` and an exponential
+   backoff in `trend_l2` cut that to 15, and a reducing order now bypasses the bucket and the two position
+   gates, so a position can be worked down instead of trapped. `docs/PERFORMANCE_HISTORY.md` records both
+   measurements. The next one is a higher-fidelity taker fill model, since a 100% fill rate is the remaining
+   idealization.
 2. **A block/SIMD parse is worth one bounded experiment, on the replay path.** `read+parse` is 61% of an
    event and the row loop is at its floor; the one shape change left in the performance record is parsing a
    block instead of a row. `simdjson` does not apply -- the wire format is CSV -- so the experiment is a

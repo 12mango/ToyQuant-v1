@@ -183,5 +183,32 @@ int main()
         assert(decision.reason == RiskPipeline::Reason::Position);
     }
 
+    {
+        // A reducing order passes the bucket, the exposure cap and the position gate even when the resulting
+        // position is still outside the limit: the controls refuse new risk, not the removal of it.
+        RiskPipeline rate;
+        rate.set_order_rate_limit(1.0, 1);
+        RiskContext context = fixture.context(100);
+        assert(rate.check(make_order(Side::Buy, 100.0, 10), context).allowed);
+        assert(rate.check(make_order(Side::Buy, 100.0, 10), context).reason ==
+               RiskPipeline::Reason::RateLimit);
+        assert(rate.check(make_order(Side::Sell, 100.0, 10), context).allowed);
+        assert(rate.check(make_order(Side::Buy, 100.0, 10), context).reason ==
+               RiskPipeline::Reason::RateLimit);
+
+        RiskPipeline exposure;
+        exposure.set_hard_exposure_limit_usd(1000.0);
+        RiskContext large = fixture.context(150);
+        assert(exposure.check(make_order(Side::Sell, 100.0, 10), large).allowed);
+        assert(exposure.check(make_order(Side::Buy, 100.0, 10), large).reason ==
+               RiskPipeline::Reason::Exposure);
+
+        RiskPipeline position;
+        position.set_position_limit(100);
+        assert(position.check(make_order(Side::Sell, 100.0, 10), large).allowed);
+        assert(position.check(make_order(Side::Buy, 100.0, 10), large).reason ==
+               RiskPipeline::Reason::Position);
+    }
+
     return 0;
 }

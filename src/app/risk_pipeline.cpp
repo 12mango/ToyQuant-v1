@@ -54,6 +54,47 @@ RiskPipeline::Decision RiskPipeline::check(const StrategyOrder& order, const Ris
     return {};
 }
 
+const char* RiskPipeline::reason_name(Reason reason)
+{
+    switch (reason)
+    {
+        case Reason::KillSwitch:
+            return "kill_switch";
+        case Reason::FatFinger:
+            return "fat_finger";
+        case Reason::RateLimit:
+            return "rate_limit";
+        case Reason::Exposure:
+            return "exposure";
+        case Reason::Position:
+            return "position";
+        case Reason::None:
+            break;
+    }
+    return "none";
+}
+
+namespace
+{
+int64_t current_position(const RiskContext& context)
+{
+    return context.position + context.pending_buy_quantity - context.pending_sell_quantity;
+}
+}  // namespace
+
+int64_t RiskPipeline::projected_position(const StrategyOrder& order, const RiskContext& context)
+{
+    const int64_t signed_quantity = order.side == Side::Buy
+                                        ? static_cast<int64_t>(order.quantity)
+                                        : -static_cast<int64_t>(order.quantity);
+    return current_position(context) + signed_quantity;
+}
+
+bool RiskPipeline::is_reducing(const StrategyOrder& order, const RiskContext& context)
+{
+    return std::abs(projected_position(order, context)) < std::abs(current_position(context));
+}
+
 RiskPipeline::Decision RiskPipeline::check_kill_switch(const StrategyOrder& order,
                                                        const RiskContext& context)
 {
@@ -85,6 +126,9 @@ RiskPipeline::Decision RiskPipeline::check_rate_limit(const StrategyOrder& order
                                                       const RiskContext& context)
 {
     if (limits_.max_orders_per_second <= 0.0 || order.quantity == 0) return {};
+    // The bucket stops a runaway strategy, not a position being worked down. A reducing order passes
+    // without a token, so a rate limit cannot keep a position the strategy is trying to close.
+    if (is_reducing(order, context)) return {};
 
     const double burst = std::max(1.0, static_cast<double>(limits_.order_burst));
     const double now = context.now_seconds;
@@ -114,12 +158,10 @@ RiskPipeline::Decision RiskPipeline::check_exposure(const StrategyOrder& order,
                                                     const RiskContext& context)
 {
     if (limits_.max_exposure_usd <= 0.0 || order.quantity == 0) return {};
+    // A position already over the cap must still be reducible; the cap is a limit on adding exposure.
+    if (is_reducing(order, context)) return {};
 
-    const int64_t signed_quantity = order.side == Side::Buy
-                                        ? static_cast<int64_t>(order.quantity)
-                                        : -static_cast<int64_t>(order.quantity);
-    const int64_t projected = context.position + context.pending_buy_quantity -
-                              context.pending_sell_quantity + signed_quantity;
+    const int64_t projected = projected_position(order, context);
     const double scale = static_cast<double>(std::max<uint64_t>(1, context.quantity_scale));
     const double marked = std::abs(static_cast<double>(projected)) / scale *
                           unit_notional_at(context.unit_notional_usd, context.multiplier,
@@ -134,12 +176,11 @@ RiskPipeline::Decision RiskPipeline::check_position(const StrategyOrder& order,
                                                     const RiskContext& context)
 {
     if (limits_.position_limit <= 0 || order.quantity == 0) return {};
+    // Same rule as the exposure cap: the gate refuses orders that add risk, not ones that remove it while
+    // the position is still outside the limit.
+    if (is_reducing(order, context)) return {};
 
-    const int64_t signed_quantity = order.side == Side::Buy
-                                        ? static_cast<int64_t>(order.quantity)
-                                        : -static_cast<int64_t>(order.quantity);
-    const int64_t projected = context.position + context.pending_buy_quantity -
-                              context.pending_sell_quantity + signed_quantity;
+    const int64_t projected = projected_position(order, context);
     if (projected <= limits_.position_limit && projected >= -limits_.position_limit) return {};
 
     ++risk_rejected_orders_;
