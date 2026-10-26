@@ -81,6 +81,7 @@ set(LINE_SOURCES
 set(APP_SOURCES
     src/app/order_ledger.cpp
     src/app/pipeline.cpp
+    src/app/risk_pipeline.cpp
     src/app/run_accounting.cpp
     src/app/strategy_benchmark.cpp
     src/app/strategy_factory.cpp)
@@ -204,6 +205,7 @@ add_toy_test(spsc_ring_test)
 add_toy_test(threaded_replay_test)
 
 add_toy_test(trend_l2_test)
+add_toy_test(risk_pipeline_test)
 add_toy_test(paper_broker_test)
 add_toy_test(order_gateway_test)
 add_toy_test(matching_engine_test)

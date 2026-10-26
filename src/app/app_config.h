@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 
+#include "app/trend_params.h"
 #include "common/types.h"
 
 enum class AppMode
@@ -71,6 +72,15 @@ struct AppConfig
     // worse control than one that stops.
     double max_exposure_usd = 0.0;
     double kill_switch_loss_usd = 0.0;
+    // The pre-trade band and the submission bucket. Both off at 0: a fat-finger band of 0 does not look at
+    // the price, and a rate of 0 does not look at the clock, which is what keeps every existing run's order
+    // flow and output unchanged.
+    double fat_finger_bps = 0.0;
+    double max_orders_per_second = 0.0;
+    uint64_t order_burst = 1;
+    // The non-market-making signal. A run that does not name --trend-params leaves `set` false and the
+    // strategy's own defaults in force.
+    TrendParams trend{};
     // Quote placement, as a half-spread in ticks: 1 puts the quote at the venue touch, 2 is the
     // default the recorded runs use. 0 means "use the default". It exists because the fill count is
     // dominated by where the quote sits, and that has to be measurable rather than argued about.

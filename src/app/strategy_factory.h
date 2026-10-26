@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "app/trend_params.h"
 #include "common/instrument_spec.h"
 #include "lines/legacy/l1_market_maker_config.h"
 #include "strategy/strategy.h"
@@ -49,6 +50,8 @@ struct StrategyFactoryConfig
     int64_t flatten_band_units = 0;
     // The conditional rule: quote only when the top of book is at least this many ticks wide. 0 leaves it off.
     double min_spread_ticks_override = 0.0;
+    // The non-market-making signal, from --trend-params. `set` false leaves the strategy's own defaults.
+    TrendParams trend{};
 };
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,

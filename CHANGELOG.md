@@ -68,7 +68,16 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's
   pre-trade gates instead of reimplementing them; on the 200k-row Deribit slice it filled 55 taker clips on
-  both sides and reconciled `ok`.
+  both sides and reconciled `ok`. `--trend-params` exposes the signal, and `tools/trend_sweep.sh` replays a
+  grid of it and writes the fills, PnL, fees and risk pauses to a CSV.
+- **A pre-trade risk pipeline, and the measurement that keeps it honest.** The kill switch, the exposure cap
+  and the position gate moved out of `submit_strategy_actions` into `RiskPipeline`, an ordered list of five
+  checks; the two new ones are a fat-finger band around the midpoint and a token bucket on submissions. A
+  run that names none of them is byte-for-byte the run it was, a permissive setting leaves `[EXECUTION]`
+  identical, and 1 basis point / 0.01 orders a second refuse 161 / 33,685 orders while every run still
+  reconciles. The second number is the interesting one: a rejected order is retried on the next view, so a
+  control without a strategy-side backoff turns a refusal into a retry storm. `tools/risk_check.sh` holds
+  the four runs.
 
 ## The measured line
 

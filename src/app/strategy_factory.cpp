@@ -141,9 +141,20 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
     {
         // The non-market-making line: a target position, not a quote. The inventory limit is the size a
         // full signal takes, and the order size is the clip it is built in.
-        return std::make_unique<TrendL2Strategy>(TrendL2Config{.order_size = order_size,
-                                                               .max_position = inventory_limit,
-                                                               .tick_size = tick_size});
+        TrendL2Config trend_config{.order_size = order_size,
+                                   .max_position = inventory_limit,
+                                   .tick_size = tick_size};
+        if (config.trend.set)
+        {
+            trend_config.fast_views = config.trend.fast_views;
+            trend_config.slow_views = config.trend.slow_views;
+            trend_config.entry_ticks = config.trend.entry_ticks;
+            trend_config.exit_ticks = config.trend.exit_ticks;
+            trend_config.stop_ticks = config.trend.stop_ticks;
+            trend_config.exit_cooldown_views = config.trend.exit_cooldown_views;
+            trend_config.max_holding_views = config.trend.max_holding_views;
+        }
+        return std::make_unique<TrendL2Strategy>(trend_config);
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||
         strategy_name == "flow_aware_l2" || strategy_name == "l2_depth" ||

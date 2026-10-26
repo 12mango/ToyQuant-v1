@@ -131,6 +131,8 @@ void Application::apply_pipeline_limits(Pipeline& pipeline) const
     pipeline.set_position_limit(cfg_.position_limit);
     pipeline.set_hard_exposure_limit_usd(cfg_.max_exposure_usd);
     pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
+    pipeline.set_fat_finger_bps(cfg_.fat_finger_bps);
+    pipeline.set_order_rate_limit(cfg_.max_orders_per_second, cfg_.order_burst);
     pipeline.set_trace_order(cfg_.trace_order);
 }
 
@@ -251,7 +253,8 @@ void Application::run_replay_mode() const
                                       .refresh_price_ticks_override =
                                           cfg_.refresh_price_ticks_override,
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
-                                      .min_spread_ticks_override = cfg_.min_spread_ticks});
+                                      .min_spread_ticks_override = cfg_.min_spread_ticks,
+                                      .trend = cfg_.trend});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
@@ -403,7 +406,8 @@ void Application::run_l2_session_mode() const
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
                                       .markout_cover = cfg_.markout_cover,
                                       .flatten_band_units = cfg_.flatten_band,
-                                      .min_spread_ticks_override = cfg_.min_spread_ticks});
+                                      .min_spread_ticks_override = cfg_.min_spread_ticks,
+                                      .trend = cfg_.trend});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
     // The paper broker wraps the venue rather than replacing it: the strategy, the book and the

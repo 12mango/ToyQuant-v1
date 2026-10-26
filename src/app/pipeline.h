@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "app/order_ledger.h"
+#include "app/risk_pipeline.h"
 #include "app/run_accounting.h"
 #include "app/run_summary.h"
 #include "common/funding.h"
@@ -49,7 +50,7 @@ class Pipeline
     // counting resting orders that could still fill, outside +/- the limit.
     void set_position_limit(int64_t limit)
     {
-        position_limit_ = limit;
+        risk_pipeline_.set_position_limit(limit);
     }
 
     // The hard exposure cap in USD and the loss at which the run stops quoting. See the flags of the same
@@ -57,17 +58,29 @@ class Pipeline
     // exposure on a thousand dollar share, and the switch stops quoting rather than flattening.
     void set_hard_exposure_limit_usd(double limit)
     {
-        hard_exposure_limit_usd_ = limit;
+        risk_pipeline_.set_hard_exposure_limit_usd(limit);
     }
 
     void set_kill_switch_loss_usd(double loss)
     {
-        kill_switch_loss_usd_ = loss;
+        risk_pipeline_.set_kill_switch_loss_usd(loss);
+    }
+
+    // The two controls the non-market-making line added: a price band around the current midpoint, in
+    // basis points, and a token bucket on submissions. Both are off at zero.
+    void set_fat_finger_bps(double bps)
+    {
+        risk_pipeline_.set_fat_finger_bps(bps);
+    }
+
+    void set_order_rate_limit(double orders_per_second, uint64_t burst)
+    {
+        risk_pipeline_.set_order_rate_limit(orders_per_second, burst);
     }
 
     bool kill_switch_triggered() const
     {
-        return kill_switch_triggered_;
+        return risk_pipeline_.kill_switch_triggered();
     }
 
     // The share schedule terms a broker charges at order level rather than per fill: the commission per unit,
@@ -176,20 +189,13 @@ class Pipeline
     ExecutionQualityMetrics execution_quality_;
     int64_t position_{0};
     uint64_t quote_cycle_{0};
-    int64_t position_limit_{0};
     // Quantity reserved by resting orders, so the gate accounts for what could still fill rather than
     // only for the position as it stands.
     int64_t pending_buy_quantity_{0};
     int64_t pending_sell_quantity_{0};
-    uint64_t risk_rejected_orders_{0};
-    // The hard limits this run was given, and what they did. The switch is a latch: once it trips it stays
-    // tripped, and every order the strategy asks for afterwards is counted rather than submitted.
-    double hard_exposure_limit_usd_{0.0};
-    double kill_switch_loss_usd_{0.0};
-    uint64_t hard_limit_rejections_{0};
-    bool kill_switch_triggered_{false};
-    uint64_t kill_switch_ts_{0};
-    uint64_t kill_switch_rejected_orders_{0};
+    // The pre-trade controls in one object, so the order path and the summary read the same counters and
+    // the order of the checks is a property of the risk pipeline rather than of this loop.
+    RiskPipeline risk_pipeline_;
     double starting_cash_usd_{0.0};
     double unit_notional_usd_{0.0};
     // USD value of one price unit in one quantity unit, from the instrument: 1 unless the contract has a

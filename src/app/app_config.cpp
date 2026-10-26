@@ -5,8 +5,10 @@
 #include <charconv>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 #include <system_error>
 
 #include "utils/stage_profiler.h"
@@ -58,6 +60,10 @@ constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
 constexpr std::string_view kMaxExposurePrefix = "--max-exposure-usd=";
 constexpr std::string_view kKillSwitchPrefix = "--kill-switch-loss-usd=";
+constexpr std::string_view kFatFingerPrefix = "--fat-finger-bps=";
+constexpr std::string_view kMaxOrdersPerSecondPrefix = "--max-orders-per-second=";
+constexpr std::string_view kOrderBurstPrefix = "--order-burst=";
+constexpr std::string_view kTrendParamsPrefix = "--trend-params=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
@@ -154,6 +160,12 @@ void print_usage(const char* executable)
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "stops the run when its loss reaches N dollars instead of carrying the position into "
                      "the final mark\n";
+        std::cerr << "   risk: --fat-finger-bps=X refuses an order priced more than X basis points from the "
+                     "current midpoint, and --max-orders-per-second=X with --order-burst=N caps submissions "
+                     "with a token bucket; 0 leaves each of them off\n";
+        std::cerr << "   trend: --trend-params=FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,COOLDOWN_VIEWS"
+                     "[,HOLDING_VIEWS]] sets the non-market-making signal; the view counts are decisions and "
+                     "the bands are ticks\n";
         std::cerr << "   strategy: ";
         for (const std::string_view name : kStrategyNames)
         {
@@ -645,6 +657,97 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.kill_switch_loss_usd = loss;
+            }
+            else if (flag.compare(0, kFatFingerPrefix.size(), kFatFingerPrefix) == 0)
+            {
+                double bps = 0.0;
+                std::istringstream stream(flag.substr(kFatFingerPrefix.size()));
+                if (!(stream >> bps) || !(bps > 0.0))
+                {
+                    error = "--fat-finger-bps must be a positive number of basis points";
+                    return false;
+                }
+                cfg.fat_finger_bps = bps;
+            }
+            else if (flag.compare(0, kMaxOrdersPerSecondPrefix.size(), kMaxOrdersPerSecondPrefix) == 0)
+            {
+                double orders = 0.0;
+                std::istringstream stream(flag.substr(kMaxOrdersPerSecondPrefix.size()));
+                if (!(stream >> orders) || !(orders > 0.0))
+                {
+                    error = "--max-orders-per-second must be a positive number";
+                    return false;
+                }
+                cfg.max_orders_per_second = orders;
+            }
+            else if (flag.compare(0, kOrderBurstPrefix.size(), kOrderBurstPrefix) == 0)
+            {
+                uint64_t burst = 0;
+                if (!parse_unsigned(flag.substr(kOrderBurstPrefix.size()), burst) || burst == 0)
+                {
+                    error = "--order-burst must be a positive integer";
+                    return false;
+                }
+                cfg.order_burst = burst;
+            }
+            else if (flag.compare(0, kTrendParamsPrefix.size(), kTrendParamsPrefix) == 0)
+            {
+                const std::string text = flag.substr(kTrendParamsPrefix.size());
+                std::vector<double> values;
+                std::istringstream items(text);
+                std::string piece;
+                while (std::getline(items, piece, ','))
+                {
+                    std::istringstream item(piece);
+                    double value = 0.0;
+                    item >> value;
+                    // A number extracted at the end of the piece already sets eofbit; asking std::ws for
+                    // more would set failbit on that eof and reject every well-formed value.
+                    if (!item.eof()) item >> std::ws;
+                    if (item.fail() || !item.eof())
+                    {
+                        error = "--trend-params must be FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,"
+                                "COOLDOWN_VIEWS[,HOLDING_VIEWS]]";
+                        return false;
+                    }
+                    values.push_back(value);
+                }
+                if (values.size() < 5 || values.size() > 7)
+                {
+                    error = "--trend-params must be FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,"
+                            "COOLDOWN_VIEWS[,HOLDING_VIEWS]]";
+                    return false;
+                }
+                const auto positive_integer = [](double value, double maximum)
+                {
+                    return value >= 1.0 && value <= maximum &&
+                           value == static_cast<double>(static_cast<uint64_t>(value));
+                };
+                const auto non_negative_integer = [](double value, double maximum)
+                {
+                    return value >= 0.0 && value <= maximum &&
+                           value == static_cast<double>(static_cast<uint64_t>(value));
+                };
+                if (!positive_integer(values[0], 1000000.0) ||
+                    !positive_integer(values[1], 1000000.0) || !(values[2] > 0.0) ||
+                    values[3] < 0.0 || values[4] < 0.0 ||
+                    (values.size() > 5 && !non_negative_integer(values[5], 1000000.0)) ||
+                    (values.size() > 6 && !positive_integer(values[6], 1000000000.0)))
+                {
+                    error = "--trend-params needs positive view counts, a positive entry band, and "
+                            "non-negative exit and stop bands";
+                    return false;
+                }
+                cfg.trend.fast_views = static_cast<uint64_t>(values[0]);
+                cfg.trend.slow_views = static_cast<uint64_t>(values[1]);
+                cfg.trend.entry_ticks = values[2];
+                cfg.trend.exit_ticks = values[3];
+                cfg.trend.stop_ticks = values[4];
+                if (values.size() > 5)
+                    cfg.trend.exit_cooldown_views = static_cast<uint64_t>(values[5]);
+                if (values.size() > 6)
+                    cfg.trend.max_holding_views = static_cast<uint64_t>(values[6]);
+                cfg.trend.set = true;
             }
             else if (flag.compare(0, kBaseSpreadPrefix.size(), kBaseSpreadPrefix) == 0)
             {

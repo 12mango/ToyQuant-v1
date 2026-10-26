@@ -139,7 +139,9 @@ strategy names are:
 | `adaptive_l2` | Compatibility alias for `active_l2` |
 | `trend_l2` | Non-market-making line: an EWMA cross sets a target position, clips at the touch build it, and a stop, a time stop or the exit band closes it |
 
-`trend_l2` uses `--inventory-limit` as the size of a full signal and `--order-size` as the clip it is built in. The derived default for both is the instrument's own minimum, so a run that wants to watch a position build should name both, for example `--order-size=10 --inventory-limit=100`.
+`trend_l2` uses `--inventory-limit` as the size of a full signal and `--order-size` as the clip it is built in. The derived default for both is the instrument's own minimum, so a run that wants to watch a position build should name both, for example `--order-size=10 --inventory-limit=100`. `--trend-params` sets the signal itself; `bash tools/trend_sweep.sh` replays a grid of them on the 200k slice and writes the fills, PnL, fees and risk pauses to a CSV.
+
+The pre-trade controls are measured rather than asserted: `bash tools/risk_check.sh` runs four 200k-row replays, requires the no-flag run to print no `[RISK]` line, requires a permissive setting to leave `[EXECUTION]` exactly as it was, and requires the 1 bp band and a very low rate to refuse orders while every run still reconciles.
 
 Run the standard benchmark with a fixed window and `depth_every=1`:
 
@@ -402,6 +404,9 @@ The main comparison metrics are:
 - `kill_switch_loss_usd`, `kill_switch_triggered`, `kill_switch_ts`, `kill_switch_rejected_orders` — the loss the
   switch was set at, whether it tripped, the timestamp it did, and how many orders the strategy asked for after
   that and did not get. All zero or false unless `--kill-switch-loss-usd=...` names a loss
+- `fat_finger_rejections`, `rate_limited_orders` — the two pre-trade controls the non-market-making line added.
+  They are printed in a `[RISK]` line, which appears only when `--fat-finger-bps` or `--max-orders-per-second`
+  is named, so a run that asks for neither keeps the summary it had
 - `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is
@@ -456,6 +461,10 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--fee-schedule=KEY=VALUE[,...]` | Price a run under a broker's own schedule instead of the venue's. Keys: `min` (a floor under one order's commission, USD), `regulatory` (a fraction of the proceeds of a sale), `clearing` and `audit` (USD a share on every execution), `rebate` (USD a share of credit for adding liquidity). All five are 0 unless named and the `[Mode]` line reports the five in force | Off: the venue's own schedule, which is what every recorded row uses |
 | `--max-exposure-usd=X` | Refuse any order whose projected marked exposure would pass X dollars. It is in dollars rather than in shares because the same share count is three times the exposure on a thousand dollar share, which is the difference between MU and AAPL in the recorded rows | Off: no cap, which is what every recorded row uses |
 | `--kill-switch-loss-usd=X` | Stop the run quoting once realised plus unrealised reaches a loss of X dollars. It is a latch: checked once a cycle before anything is submitted, it stays tripped, and it stops quoting rather than flattening | Off: the run quotes to the end of its input |
+| `--fat-finger-bps=X` | Refuse an order whose price is more than X basis points from the current midpoint. It runs before the rate bucket and before the exposure and position gates, so a bad price spends neither a token nor a reservation | Off: no price band |
+| `--max-orders-per-second=X` | Cap submissions with a token bucket at X orders a second. A rejected order consumes no token, and the bucket runs after the price band and before the exposure gate | Off: no rate cap |
+| `--order-burst=N` | The bucket's size in orders; only meaningful with `--max-orders-per-second` | 1 |
+| `--trend-params=FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,COOLDOWN_VIEWS[,HOLDING_VIEWS]]` | The non-market-making signal: the two EWMA view counts, the entry, exit and stop bands in ticks, and optionally the post-stop cooldown and the time stop. Only `trend_l2` reads it | The strategy's own defaults: 10, 60, 2, 0.5, 6, 60, 2000 |
 | `--inventory-shift-ticks=X` | How far the inventory-aware strategy moves its quote centre at a full inventory, in ticks: the reservation price of Avellaneda and Stoikov in the form this engine can use, where the shift is proportional to the position rather than solved from a risk aversion. The unit matters as much as the number: the shift is in ticks against a quote spacing set by `--base-spread-ticks`, so at a one-tick spacing a shift of six is six times the half spread, which is far more aggressive than the model's optimal and is what the recorded sweep found | Off: the strategy's own 2.0 |
 | `--markout-cover` | Quote only where the capture also covers what passive fills at that distance have cost, measured from our own resolved fills | Off |
 | `--flatten-band=N` | Reduce a position above N units with a taker order at the touch instead of carrying it | Off |

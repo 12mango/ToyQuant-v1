@@ -2635,6 +2635,36 @@ must carry to earn its spread, and no quoting parameter changes either of the tw
 that is left is the venue, where the same arithmetic comes out differently, and `docs/ROADMAP.md` now carries the
 test for one rather than a preference between them.
 
+## The non-market-making signal: what 27 parameter sets say
+
+`trend_l2` is not a market maker, so the questions are different: not where to quote but how much to hold, and
+whether the signal that sets the target survives the cost of taking liquidity. `tools/trend_sweep.sh` replays the
+same 200k-row 1 April slice for a grid of `--trend-params` with `--order-size=10 --inventory-limit=100`; every
+run takes liquidity, pays the venue's fees and reads the same book. The CSV is the output; this is what the first
+grid said.
+
+| fast / slow | entry ticks | stop ticks | fills | net USD | fees USD |
+|---|---:|---:|---:|---:|---:|
+| 5 / 30 | 3 | 4 | 106 | -6.04458 | 5.30 |
+| 5 / 30 | 2 | 4 | 366 | -21.0702 | 18.3 |
+| 5 / 30 | 1 | 4 | 1,676 | -92.0967 | 83.8 |
+| 10 / 60 | 3 | 4 | 174 | -10.3209 | 8.70 |
+| 20 / 120 | 3 | 4 | 252 | -13.585 | 12.6 |
+| 5 / 30 | 1 | 8 | 1,822 | -101.491 | 91.1 |
+
+The grid is negative in every cell. The entry band is the dominant knob: at entry 1 the strategy takes 1,676 to
+1,850 fills, at entry 2 366 to 550, and at entry 3 106 to 278; the loss follows the fill count because every fill
+pays the spread and the taker fee. The best cell, 5/30 with a 3-tick entry and a 4-tick stop, still loses 6.04 USD
+of which 5.30 is fees, so its gross loss is 0.74: the stop and the cooldown reduce the number of attempts but do
+not create an edge. At entry 3 the fastest pair is best at every stop; at entry 1 the ordering flips with the stop
+and the spread between the pairs is a few dollars against a loss near ninety. That is a statement about this
+window, not a parameter to freeze. The next step is a signal with a forecast, or a cost structure in which a taker
+cross can pay, not another sweep of the same three bands.
+
+```bash
+FAST_SLOW="5:30 10:60 20:120" ENTRIES="1 2 3" STOPS="4 6 8" bash tools/trend_sweep.sh
+```
+
 
 
 

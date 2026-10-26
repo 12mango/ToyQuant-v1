@@ -7,7 +7,7 @@
 # pass before it is accepted:
 #
 #   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
-#   tier 1  (~3 s, including a 2M-row replay behind one marked block)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, and the record-and-replay and direct-versus-threaded round trips
+#   tier 1  (~7 s, including a 2M-row replay behind one marked block and four 200k-row risk-control runs)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, the record-and-replay and direct-versus-threaded round trips, and the pre-trade controls measured by tools/risk_check.sh
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
@@ -38,6 +38,7 @@ FIELD_CHECK_LOG="$(mktemp)"
 PROSE_CHECK_LOG="$(mktemp)"
 TOOL_CHECK_LOG="$(mktemp)"
 VERDICT_CHECK_LOG="$(mktemp)"
+RISK_CHECK_LOG="$(mktemp)"
 TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 L1_TRADES=data/v2/fixtures/test_aggTrades_5k.csv
 L1_BBO=data/v2/fixtures/test_bookTicker_5k.csv
@@ -142,6 +143,11 @@ tier1() {
   # costs nothing and runs on every edit.
   local verdict_check=0
   python3 tools/viability.py > "$VERDICT_CHECK_LOG" 2>&1 || verdict_check=1
+  # The pre-trade controls are measured rather than asserted in prose: the no-flag run must reproduce the
+  # baseline, a permissive setting must not change it, and each named control must actually refuse an order
+  # and still reconcile. tools/risk_check.sh holds the four runs and their invariants.
+  local risk_check=0
+  bash tools/risk_check.sh "$BIN" "$TRADES" "$SLICE_200K" BTC-PERPETUAL > "$RISK_CHECK_LOG" 2>&1 || risk_check=1
   l2=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 conservative \
         --fast-validation 2>&1 | grep -oE 'incremental_batches=117288|submitted_orders=406|trade_reports=1|queue_ahead_consumed=55460|realized_pnl=-0.002|equity=1000' | tokens)
   l1=$("$BIN" replay "$L1_TRADES" "$L1_BBO" BTCUSDT 0 optimized 1000000 2>&1 |
@@ -229,6 +235,7 @@ tier1() {
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"
   [ $verdict_check -eq 0 ] || grep -v '^     also:' "$VERDICT_CHECK_LOG" | sed 's/^/  verdict: /'
+  [ $risk_check -eq 0 ] || sed 's/^/  risk: /' "$RISK_CHECK_LOG"
   [ "$l2" = "$L2_WANT" ] || { echo "  L2 want: $L2_WANT"; echo "  L2 got : $l2"; }
   [ "$l1" = "$L1_WANT" ] || { echo "  L1 want: $L1_WANT"; echo "  L1 got : $l1"; }
   [ $doc_check -eq 0 ] || sed 's/^/  doc: /' "$DOC_CHECK_LOG"

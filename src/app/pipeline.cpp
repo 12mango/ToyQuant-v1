@@ -362,16 +362,23 @@ RunSummary Pipeline::summary() const
             .filtered_market_trades = filtered_market_trades_,
             .fill_rate = metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_),
             .cancel_rate = metrics::compute_cancel_rate(submitted_orders_, cancel_requests_),
-            .position_limit = position_limit_,
+            .position_limit = risk_pipeline_.position_limit(),
             .strategy_net_position = strategy_.net_position(),
             .strategy_position_mismatches = strategy_position_mismatches_,
-            .risk_rejected_orders = risk_rejected_orders_,
-            .max_exposure_limit_usd = hard_exposure_limit_usd_,
-            .hard_limit_rejections = hard_limit_rejections_,
-            .kill_switch_loss_usd = kill_switch_loss_usd_,
-            .kill_switch_triggered = kill_switch_triggered_,
-            .kill_switch_ts = kill_switch_ts_,
-            .kill_switch_rejected_orders = kill_switch_rejected_orders_,
+            .risk_rejected_orders = risk_pipeline_.risk_rejected_orders(),
+            .max_exposure_limit_usd = risk_pipeline_.max_exposure_limit_usd(),
+            .hard_limit_rejections = risk_pipeline_.hard_limit_rejections(),
+            .kill_switch_loss_usd = risk_pipeline_.kill_switch_loss_usd(),
+            .kill_switch_triggered = risk_pipeline_.kill_switch_triggered(),
+            .kill_switch_ts = risk_pipeline_.kill_switch_ts(),
+            .kill_switch_rejected_orders = risk_pipeline_.kill_switch_rejected_orders(),
+            .risk_controls_requested =
+                risk_pipeline_.fat_finger_enabled() || risk_pipeline_.rate_limit_enabled(),
+            .fat_finger_bps = risk_pipeline_.fat_finger_bps(),
+            .max_orders_per_second = risk_pipeline_.max_orders_per_second(),
+            .order_burst = risk_pipeline_.order_burst(),
+            .fat_finger_rejections = risk_pipeline_.fat_finger_rejections(),
+            .rate_limited_orders = risk_pipeline_.rate_limited_orders(),
             .starting_cash_usd = starting_cash_usd_,
             .max_abs_exposure_usd = max_abs_exposure_usd_,
             .exposure_over_collateral_fills = exposure_over_collateral_fills_,
@@ -434,63 +441,34 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         engine_.cancel_order(order_id);
     }
 
-    // The kill switch, checked once a cycle before anything is submitted, and deliberately here rather than in
-    // the strategy: a limit a strategy can reason about is a limit the strategy can talk itself out of. It
-    // stops quoting and it does not flatten -- flattening has been measured on this engine and costs more than
-    // it saves -- and the strategy's own cancels still run above, so what is already resting comes back on the
-    // next cycle instead of staying at the venue.
-    if (kill_switch_loss_usd_ > 0.0 && !kill_switch_triggered_)
+    // The switch is checked once a cycle, after the strategy's own cancels and before its orders. The account
+    // metrics are read only when the switch is armed, which keeps a run that does not ask for it on the path
+    // it was on before the control existed.
+    if (risk_pipeline_.kill_switch_loss_usd() > 0.0 && !risk_pipeline_.kill_switch_triggered())
     {
         const auto account = portfolio_.metrics();
-        if (account.realized_pnl + account.unrealized_pnl <= -kill_switch_loss_usd_)
-        {
-            kill_switch_triggered_ = true;
-            kill_switch_ts_ = ts;
-        }
+        risk_pipeline_.begin_cycle(account.realized_pnl + account.unrealized_pnl, ts);
     }
 
     for (auto& order : orders)
     {
-        if (kill_switch_triggered_)
+        const auto quote_it = latest_quotes_.find(order.symbol);
+        RiskContext risk_context;
+        risk_context.position = position_;
+        risk_context.pending_buy_quantity = pending_buy_quantity_;
+        risk_context.pending_sell_quantity = pending_sell_quantity_;
+        risk_context.quantity_scale = std::max<uint64_t>(1, quantity_scale_);
+        risk_context.unit_notional_usd = unit_notional_usd_;
+        risk_context.multiplier = multiplier_;
+        risk_context.quote = quote_it != latest_quotes_.end() ? &quote_it->second : nullptr;
+        risk_context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
+
+        if (!risk_pipeline_.check(order, risk_context).allowed) continue;
+
+        // The position gate reserves what it lets through, because those orders can still fill. The rule is
+        // unchanged: the reservation happens only when the gate is on.
+        if (risk_pipeline_.position_limit() > 0 && order.quantity > 0)
         {
-            ++kill_switch_rejected_orders_;
-            continue;
-        }
-        // The hard exposure cap, in dollars rather than in shares because the same share count is three times
-        // the exposure on a thousand dollar share. It marks the projected position at the order's own price,
-        // which is the conservative side of the mark for an order that adds to the position, and it runs
-        // before the position gate so that neither gate folds the other's pending quantity into its own check.
-        if (hard_exposure_limit_usd_ > 0.0 && order.quantity > 0)
-        {
-            const int64_t signed_quantity =
-                order.side == Side::Buy ? static_cast<int64_t>(order.quantity)
-                                        : -static_cast<int64_t>(order.quantity);
-            const int64_t projected = position_ + pending_buy_quantity_ - pending_sell_quantity_ +
-                                      signed_quantity;
-            const double marked =
-                std::abs(static_cast<double>(projected)) / static_cast<double>(quantity_scale_) *
-                unit_notional_at(unit_notional_usd_, multiplier_, order.price);
-            if (marked > hard_exposure_limit_usd_)
-            {
-                ++hard_limit_rejections_;
-                continue;
-            }
-        }
-        // Pre-trade position gate. It counts the quantity already resting on the side that the order
-        // adds to, because those orders can still fill, and a market maker that ignores that can post
-        // risk it has no collateral for.
-        if (position_limit_ > 0 && order.quantity > 0)
-        {
-            const int64_t signed_quantity =
-                order.side == Side::Buy ? static_cast<int64_t>(order.quantity)
-                                        : -static_cast<int64_t>(order.quantity);
-            const int64_t projected = position_ + pending_buy_quantity_ - pending_sell_quantity_ +
-                                      signed_quantity;
-            if (projected > position_limit_ || projected < -position_limit_)
-            {
-                ++risk_rejected_orders_;
-                continue;
-            }
             if (order.side == Side::Buy)
                 pending_buy_quantity_ += static_cast<int64_t>(order.quantity);
             else if (order.side == Side::Sell)
@@ -500,7 +478,6 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
         auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
         ++submitted_orders_;
         submitted_quantity_ += order.quantity;
-        const auto quote_it = latest_quotes_.find(order.symbol);
         if (quote_it != latest_quotes_.end())
         {
             const BboQuote& quote = quote_it->second;

@@ -204,6 +204,14 @@ struct RunSummary
     bool kill_switch_triggered{false};
     uint64_t kill_switch_ts{0};
     uint64_t kill_switch_rejected_orders{0};
+    // The two controls the non-market-making line added. The configuration is echoed so a [RISK] line is
+    // self-contained, and the counters are how a run says the control acted rather than merely existed.
+    bool risk_controls_requested{false};
+    double fat_finger_bps{0.0};
+    double max_orders_per_second{0.0};
+    uint64_t order_burst{0};
+    uint64_t fat_finger_rejections{0};
+    uint64_t rate_limited_orders{0};
     double starting_cash_usd{0.0};
     double max_abs_exposure_usd{0.0};
     uint64_t exposure_over_collateral_fills{0};
@@ -360,6 +368,12 @@ struct RunSummary
                    << " markout_gate_skips=" << gate.markout_gate_skips
                    << " flatten_orders=" << gate.flatten_orders
                    << " flatten_quantity=" << gate.flatten_quantity;
+        if (risk_controls_requested)
+            stream << "\n[RISK] fat_finger_bps=" << fat_finger_bps
+                   << " max_orders_per_second=" << max_orders_per_second
+                   << " order_burst=" << order_burst
+                   << " fat_finger_rejections=" << fat_finger_rejections
+                   << " rate_limited_orders=" << rate_limited_orders;
         if (trace_requested)
         {
             stream << "\n[TRACE_HINTS] first_fill_order_id=" << first_fill_order_id

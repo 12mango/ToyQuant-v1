@@ -1329,6 +1329,14 @@ but is not read.
 The reusable `metrics` module keeps formulas independent from the live pipeline and `BacktestDriver`.
 The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 
+The pre-trade controls are no longer branches inside `submit_strategy_actions`. `src/app/risk_pipeline.*` holds
+them as an ordered list -- kill switch, fat-finger band, token bucket, exposure cap, position gate -- and returns
+the first reason that refuses an order together with its own counter. A rejected order consumes neither a rate
+token nor a pending reservation, and a control at zero is off, so a run that names none of them follows the same
+path and prints the same summary it did before the class existed. The order is the policy: the price band is
+checked before the bucket so a bad price cannot spend an order's rate, and the exposure cap is checked before the
+position gate so neither folds the other's pending quantity into its own projection.
+
 | Metric | Meaning | Current consumer |
 |---|---|---|
 | `fill_rate` | Filled quantity divided by submitted quantity | `Pipeline` execution summary |
@@ -1346,7 +1354,8 @@ The live pipeline uses execution metrics; the backtest uses maximum drawdown.
 | `orders_that_filled`, `filled_orders_by_size` | Filled order instances (a modification or a cancel and replace makes a new one) and their histogram in `count/quantity` buckets of `<=50, 51-99, 100-199, 200-499, 500-999, 1000+` shares, which is what a broker's minimum per order is charged on | Runtime summary |
 | `min_commission_orders`, `min_commission_paid` | Orders charged a schedule's floor under one order's commission, and what that floor added. Zero unless `--fee-schedule=min=...` names one; the charge itself is booked to `fees_paid` and `cash` when the order ends, because that is when the order's total is known | Runtime summary |
 | `max_exposure_limit_usd`, `hard_limit_rejections` | The pre-trade exposure cap in USD and the orders it refused. The cap marks the projected position at the order's own price, the conservative side of the mark for an order that adds to the position, and it runs before the position gate so that neither gate folds the other's pending quantity into its own check | Runtime summary |
-| `kill_switch_loss_usd`, `kill_switch_triggered`, `kill_switch_ts`, `kill_switch_rejected_orders` | The loss the switch was set at, whether it tripped, the timestamp, and the orders the strategy asked for after it did and did not get. It is a latch, checked once a cycle in `Pipeline::submit_strategy_actions` before anything is submitted, so a strategy cannot reason its way past it; it stops quoting rather than flattening, because a control that loses money on the way out is a worse one than a control that stops, and the strategy's own cancels still run so that resting quotes come back on the next cycle | Runtime summary |
+| `kill_switch_loss_usd`, `kill_switch_triggered`, `kill_switch_ts`, `kill_switch_rejected_orders` | The loss the switch was set at, whether it tripped, the timestamp, and the orders the strategy asked for after it did and did not get. It is a latch, checked once a cycle by `RiskPipeline::begin_cycle`, which `submit_strategy_actions` calls before anything is submitted, so a strategy cannot reason its way past it; it stops quoting rather than flattening, because a control that loses money on the way out is a worse one than a control that stops, and the strategy's own cancels still run so that resting quotes come back on the next cycle | Runtime summary |
+| `fat_finger_rejections`, `rate_limited_orders` | The two controls the non-market-making line added, printed in a `[RISK]` line only when either was named: an order priced too far from the current midpoint, and the token bucket refusing a submission. Neither consumes a token or a pending reservation; the first is checked before the bucket and both before the exposure and position gates | Runtime summary |
 | `total_order_lifetime_cycles` | Sum of quote-cycle lifetimes for audited orders | Runtime summary |
 
 The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating formulas in `main.cpp`.
