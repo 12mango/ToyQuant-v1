@@ -819,7 +819,7 @@ flowchart LR
 | `on_top_of_book` / `on_l2_market_view` | Pipeline -> strategy | Produce the next candidate quote set |
 | `on_market_trade` | Pipeline -> strategy | Update aggressor-flow state |
 | `on_order_submitted` | Pipeline -> strategy | Record exchange-assigned working orders |
-| `on_order_rejected` | Pipeline -> strategy | A pre-trade control refused the order; the default does nothing and `trend_l2` backs off |
+| `on_order_rejected` | Pipeline -> strategy | A pre-trade control, or the venue or broker at submission, refused the order; the default does nothing and `trend_l2` backs off |
 | `cancel_requests` | Strategy -> pipeline | Return stale or unsafe order IDs |
 | `on_order_update` | MatchingEngine -> strategy | Apply fills, cancellations, and partial fills |
 
@@ -1339,7 +1339,9 @@ checked before the bucket so a bad price cannot spend an order's rate, and the e
 position gate so neither folds the other's pending quantity into its own projection. A reducing order is allowed
 through the bucket, the exposure cap and the position gate: those controls refuse new risk, not its removal, so a
 position that is already too large can be worked down. A refusal is reported to the strategy through
-`Strategy::on_order_rejected`, which is what lets `trend_l2` back off instead of retrying on the next view.
+`Strategy::on_order_rejected`, which is what lets `trend_l2` back off instead of retrying on the next view;
+`Pipeline::handle_rejected_order` uses the same callback for a venue or broker refusal at submission, in
+addition to the cancelled report that removes the order from every strategy's open set.
 
 | Metric | Meaning | Current consumer |
 |---|---|---|

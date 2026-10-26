@@ -154,6 +154,10 @@ void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
         pending_sell_quantity_ -=
             std::min(pending_sell_quantity_, static_cast<int64_t>(strategy_order.quantity));
     ledger_.forget_order(strategy_order.order_id);
+    // A venue or broker refusal is a refusal, not a cancel the strategy asked for. Tell it the same way a
+    // pre-trade control would, so a strategy with a retry policy backs off instead of resubmitting on the
+    // next view; the cancelled report below still does the open-set cleanup for every strategy.
+    strategy_.on_order_rejected(strategy_order, "venue_reject");
     strategy_.on_order_update(ExecutionReport{.order_id = strategy_order.order_id,
                                               .side = exchange_order.side,
                                               .exec_type = ExecType::Cancelled,

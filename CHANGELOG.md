@@ -76,9 +76,10 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   run that names none of them is byte-for-byte the run it was, and a permissive setting leaves `[EXECUTION]`
   identical. The first measurement refused 161 and 33,685 orders; the second number was a retry storm, because
   a refusal was retried on the next view. `on_order_rejected` plus an exponential backoff in `trend_l2` (60
-  views, doubling to 3,840) cut those to 13 and 15. The rate bucket, the exposure cap and the position gate
-  also let a reducing order through, so a position that is too large can be worked down instead of trapped.
-  `tools/risk_check.sh` holds the four runs.
+  views, doubling to 3,840) cut those to 13 and 15. A venue or broker refusal at submission takes the same
+  path, in addition to the cancelled report that removes the order from the open set. The rate bucket, the
+  exposure cap and the position gate also let a reducing order through, so a position that is too large can be
+  worked down instead of trapped. `tools/risk_check.sh` holds the four runs.
 
 ## The measured line
 
