@@ -64,7 +64,7 @@ for name in submitted_orders trade_reports realized_pnl fees_paid max_abs_invent
   fi
 done
 grep -q ' gaps=0' "${OUT}_relay.log" || { echo "FAIL relay reported a sequence gap" >&2; fail=1; }
-grep -q 'parse_errors=0' "${OUT}_relay.log" || { echo "FAIL relay reported a parse error" >&2; fail=1; }
+grep -q 'parse_errors=0' "${OUT}_eng.log" || { echo "FAIL the feed reported a parse error" >&2; fail=1; }
 grep -q 'ring_waits=0' "${OUT}_eng.log" || { echo "FAIL the feed waited on a full ring" >&2; fail=1; }
 grep -q 'status=ok' "${OUT}_eng.log" || { echo "FAIL reconciliation broke" >&2; fail=1; }
 if [ "$DROP" -gt 0 ] 2>/dev/null; then
