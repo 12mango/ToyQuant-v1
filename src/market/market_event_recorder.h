@@ -111,6 +111,9 @@ class MarketEventRecorder
     std::array<char, kIoBufferBytes> depth_buffer_{};
     // One row's worth of text, reused so a recording allocates nothing per event.
     std::string row_;
+    // Events written since the last flush. A long run is flushed as it goes, so one that is stopped
+    // rather than closed loses at most this many events instead of the stream's whole buffer.
+    std::size_t events_{0};
     RecordingSummary summary_;
     // Which shape the depth file received, decided by the first depth event it saw.
     enum class DepthShape : uint8_t

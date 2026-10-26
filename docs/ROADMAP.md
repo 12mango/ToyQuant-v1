@@ -1176,8 +1176,11 @@ trade while depth keeps arriving, so a trade gap longer than the depth ring fill
 thread blocks on a push the merge cannot drain. The numbers line up exactly: 384 depth rows a second against
 4,096 slots is 10.7 seconds, and the longest trade gap measured here is 10.2 seconds in thirty minutes and
 15.7 seconds in the longer recording. The live input rings are now 131,072 rows -- about 5.7 minutes of
-depth -- and the feed reports `ring_high_water`, so the margin is a measurement. The structural fix is one
-ordered stream instead of two blocking readers, which is the next refactor rather than another constant.
+depth -- and the feed reports `ring_high_water`, so the margin is a measurement. The live feed now delivers
+one ordered stream: the receive thread assembles a depth run, holds a trade that arrived during it, and pushes
+both in order, so there is no second blocking reader for a trade gap to stall. The input ring holds 131,072
+rows as a margin and reports its high-water; over two hours that was 3,917 against the old 4,096, which is why
+the two-reader version could stop exactly there.
 
 The rerun completed the two hours: 5,704,944 frames, 144,755 trades and 5,560,187 depth updates, with
 **four forced reconnects and zero sequence gaps**, 355 pings answered by 355 pongs, `ring_waits=0`, and a

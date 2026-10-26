@@ -469,22 +469,23 @@ void Application::run_l2_session_mode() const
     validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
     // A venue brings either its own trade archive and a JSON Lines book, or the CSV pair this repository
     // started with, so the two readers are chosen together from the format the depth file reported. A
-    // live session brings neither: its two readers are the trade and depth views of one socket, and the
-    // feed that owns that socket outlives them because it is declared above the L2 feed built below.
+    // live session brings neither: it has one reader over one socket, and the feed that owns that socket
+    // outlives it because it is declared above the L2 feed built below.
     std::unique_ptr<WebSocketFeed> live_feed;
+    std::unique_ptr<IMarketEventReader> live_events;
     std::unique_ptr<IMarketEventReader> trades_reader;
     std::unique_ptr<IMarketEventReader> depth_reader;
     if (live)
     {
         live_feed = std::make_unique<WebSocketFeed>(
             WebSocketFeed::Endpoint{cfg_.ws_host, cfg_.ws_port, cfg_.ws_target},
-            // The input rings are sized for a live merge, not for a file: a trade gap outlasting the
-            // depth ring is a deadlock (see kLiveRingCapacity), and the measured gap is seconds.
-            WebSocketFeed::Options{.ring_capacity = WebSocketFeed::kLiveRingCapacity,
-                                   .live_seconds = cfg_.ws_seconds});
+            WebSocketFeed::Options{
+                .ring_capacity = cfg_.ws_ring_capacity == 0 ? WebSocketFeed::kLiveRingCapacity
+                                                           : cfg_.ws_ring_capacity,
+                .live_seconds = cfg_.ws_seconds,
+                .idle_wait_us = cfg_.idle_wait_us});
         live_feed->start();
-        trades_reader = live_feed->trades_reader();
-        depth_reader = live_feed->depth_reader();
+        live_events = live_feed->event_reader();
     }
     else
     {
@@ -555,13 +556,28 @@ void Application::run_l2_session_mode() const
     // consumer, so the only thing a reader should be able to tell apart is the [LATENCY] line.
     std::unique_ptr<L2ReplayFeed> feed;
     std::unique_ptr<ThreadedReplayFeed> threaded_feed;
+    const std::size_t hand_off_capacity =
+        cfg_.ring_capacity == 0 ? ThreadedReplayFeed::kDefaultRingCapacity : cfg_.ring_capacity;
     if (cfg_.feed_thread)
-        threaded_feed = std::make_unique<ThreadedReplayFeed>(
-            std::move(trades_reader), std::move(depth_reader), consume, pacing, validation_config,
-            cfg_.ring_capacity == 0 ? ThreadedReplayFeed::kDefaultRingCapacity : cfg_.ring_capacity);
+    {
+        if (live)
+            threaded_feed = std::make_unique<ThreadedReplayFeed>(
+                std::move(live_events), consume, pacing, validation_config, hand_off_capacity);
+        else
+            threaded_feed = std::make_unique<ThreadedReplayFeed>(
+                std::move(trades_reader), std::move(depth_reader), consume, pacing, validation_config,
+                hand_off_capacity);
+    }
+    else if (live)
+    {
+        feed = std::make_unique<L2ReplayFeed>(std::move(live_events), consume, pacing,
+                                              validation_config);
+    }
     else
+    {
         feed = std::make_unique<L2ReplayFeed>(std::move(trades_reader), std::move(depth_reader),
                                               consume, pacing, validation_config);
+    }
     if (threaded_feed)
     {
         threaded_feed->set_profiler(profiler);

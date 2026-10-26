@@ -26,6 +26,8 @@ void usage(const char* executable)
               << "  --record=PREFIX         write PREFIX_trades.csv and PREFIX_depth.csv directly\n"
               << "  --replay=FILE           serve a capture instead of connecting; no network\n"
               << "  --max-seconds=X         stop after X seconds; 0 runs until stopped\n"
+              << "  --ping-seconds=X        ping every X seconds even while data flows; 0 only when idle\n"
+              << "  --drop-after-seconds=X  close and reopen the venue connection every X seconds (reconnect test)\n"
               << "  --self-test             decode the shapes a live capture showed, then exit\n";
 }
 
@@ -91,6 +93,9 @@ int main(int argc, char** argv)
         if (present("--quantity-scale"))
             config.quantity_scale = std::stoull(options["--quantity-scale"]);
         if (present("--max-seconds")) config.max_seconds = std::stod(options["--max-seconds"]);
+        if (present("--ping-seconds")) config.ping_seconds = std::stod(options["--ping-seconds"]);
+        if (present("--drop-after-seconds"))
+            config.drop_after_seconds = std::stod(options["--drop-after-seconds"]);
 
         return self_test ? relay_self_test() : run_relay(config);
     }

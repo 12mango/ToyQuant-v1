@@ -1,7 +1,7 @@
 // The websocket feed's contract is the seam the roadmap names: a live session is a replay with the
 // readers swapped, so what arrives over a socket has to become exactly the MarketEvent stream a file
 // would have produced. This test stands a WebSocket server in for a venue -- the same handshake, the
-// same frames -- and checks that the two readers reconstruct the trades and the depth batches the
+// same frames -- and checks that one ordered reader reconstructs the trades and the depth batches the
 // rows describe, including the regrouping of depth rows by their local timestamp.
 
 #include <arpa/inet.h>
@@ -211,24 +211,33 @@ int main()
 
     WebSocketFeed feed(WebSocketFeed::Endpoint{"127.0.0.1", server.port(), "/"});
     feed.start();
-    auto trades_reader = feed.trades_reader();
-    auto depth_reader = feed.depth_reader();
+    auto reader = feed.event_reader();
 
     std::vector<MarketTrade> trades;
-    MarketEvent event;
-    while (trades_reader->next(event))
-    {
-        assert(std::holds_alternative<MarketTrade>(event));
-        trades.push_back(std::get<MarketTrade>(event));
-    }
-
     std::vector<IncrementalBookBatch> batches;
-    while (depth_reader->next(event))
+    std::vector<std::string> order;
+    MarketEvent event;
+    while (reader->next(event))
     {
-        assert(std::holds_alternative<IncrementalBookBatch>(event));
-        batches.push_back(std::get<IncrementalBookBatch>(event));
+        if (std::holds_alternative<MarketTrade>(event))
+        {
+            trades.push_back(std::get<MarketTrade>(event));
+            order.push_back("trade");
+        }
+        else
+        {
+            batches.push_back(std::get<IncrementalBookBatch>(event));
+            order.push_back("batch");
+        }
     }
     feed.stop();
+
+    // One ordered stream: the first trade, the depth run at ts 1000 (both rows, because they share a
+    // local timestamp and the trade between them is held until the run ends), then that trade, then
+    // the row at ts 2000.
+    assert(order.size() == 4);
+    assert(order[0] == "trade" && order[1] == "batch" && order[2] == "trade" &&
+           order[3] == "batch");
 
     // The two header rows were skipped, so the counters are rows minus headers.
     assert(trades.size() == 2);
@@ -278,13 +287,11 @@ int main()
         WebSocketFeed live(WebSocketFeed::Endpoint{"127.0.0.1", holding.port(), "/"},
                            WebSocketFeed::Options{.live_seconds = 0.15});
         live.start();
-        auto trades_reader = live.trades_reader();
-        auto depth_reader = live.depth_reader();
+        auto reader = live.event_reader();
         MarketEvent event;
-        assert(trades_reader->next(event));
+        assert(reader->next(event));
         assert(std::holds_alternative<MarketTrade>(event));
-        assert(!trades_reader->next(event));  // the deadline ended it, not a close
-        assert(!depth_reader->next(event));
+        assert(!reader->next(event));  // the deadline ended it, not a close
         live.stop();
         assert(live.summary().stopped_by_deadline);
         assert(!live.summary().clean_close);

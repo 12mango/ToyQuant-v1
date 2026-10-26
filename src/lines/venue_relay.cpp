@@ -1052,6 +1052,7 @@ class VenueClient
         while (!stop_.load())
         {
             if (deadline > 0 && now_ms() >= deadline) break;
+            const int64_t started_ms = now_ms();
             try
             {
                 session(deadline);
@@ -1061,6 +1062,9 @@ class VenueClient
             {
                 if (stop_.load()) break;
                 ++stats_.reconnects;
+                // A long session that drops starts the backoff over; only a venue that keeps refusing
+                // a connection should walk it up to eight seconds.
+                if (now_ms() - started_ms >= 30000) backoff_ms = 1000;
                 std::cerr << "venue connection lost (" << error.what() << "); reconnecting in "
                           << backoff_ms / 1000 << "s" << std::endl;
             }
@@ -1090,17 +1094,31 @@ class VenueClient
         if (!send_frame(stream, 0x1, subscription, true))
             throw std::runtime_error("could not subscribe");
 
+        const int64_t session_start_ms = now_ms();
+        int64_t last_ping_ms = session_start_ms;
+        const int64_t ping_interval_ms =
+            config_.ping_seconds > 0.0 ? static_cast<int64_t>(config_.ping_seconds * 1000.0)
+                                       : 25000;
         while (!stop_.load())
         {
             if (deadline > 0 && now_ms() >= deadline) return;
+            if (config_.drop_after_seconds > 0.0 &&
+                now_ms() - session_start_ms >=
+                    static_cast<int64_t>(config_.drop_after_seconds * 1000.0))
+                throw std::runtime_error("dropped for the reconnect test");
             std::string payload;
             int opcode = 0;
             bool fin = true;
             const int status = read_frame(stream, payload, opcode, fin);
             if (status == -2)
             {
-                send_frame(stream, 0x9, "ping", true);  // keep an idle public connection alive
-                ++stats_.pings_sent;
+                const int64_t now = now_ms();
+                if (now - last_ping_ms >= ping_interval_ms)
+                {
+                    send_frame(stream, 0x9, "ping", true);  // keep an idle public connection alive
+                    ++stats_.pings_sent;
+                    last_ping_ms = now;
+                }
                 continue;
             }
             if (status != 1) return;  // closed or broken
@@ -1132,6 +1150,8 @@ class VenueClient
                 ++stats_.pongs_received;
                 continue;
             }
+            // A subscription acknowledgement is protocol, not market data.
+            if (payload.find("\"event\"") != std::string::npos) continue;
             if (capture_.is_open())
             {
                 capture_ << payload << "\n";

@@ -462,6 +462,8 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--ring-capacity=N` | Slots in that ring, rounded up to a power of two | 4096 |
 | `--ws-target=/path` | The HTTP path the live `ws` handshake asks for | `/` |
 | `--ws-seconds=N` | Stop a live `ws` session after N wall-clock seconds and drain what arrived, for a capture whose peer never closes the socket | Off: run until the peer closes |
+| `--ws-ring-capacity=N` | Slots in the live feed's one input ring; 0 uses 131,072, sized from the measured depth rate | 0 |
+| `--idle-wait-us=N` | Microseconds a live reader sleeps on an empty ring; 0 spins, which is the lowest-latency answer | 0 |
 | `--paper-broker` | Put a broker between the strategy and the engine that keeps its own statement of what the venue executed, reported as `[BROKER]` and compared with the portfolio as `[RECON]` | Off, the plain engine |
 | `--broker-reject-every=N` | Refuse every Nth order at the broker, counted | 0, refuse none |
 | `--broker-partial-every=N` | Deliver every Nth of the strategy's fills as two prints, with the fee split the same way | 0, split none |
@@ -636,10 +638,13 @@ exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount         
 ```
 
 A row's kind is its column count and a header row is skipped, so the two files `--record` writes can be streamed
-back with no transformation. Two readers share the one connection: the receive thread fans each parsed row into a
-trade queue or a depth queue, and the depth reader regroups rows that share a local timestamp into the same batch
-the file reader produces. `--record=PREFIX` then writes the live session back into `PREFIX_trades.csv` and
-`PREFIX_depth.csv`, and streaming those two files over the feed again reproduces them byte for byte.
+back with no transformation. One reader consumes one ordered ring: the receive thread assembles a run of depth
+rows that share a local timestamp into the batch the file reader produces, holds a trade that arrives during
+that run until the batch ends, and pushes the batch and then the trade. One stream is what makes a trade gap
+unable to stall depth delivery, which the earlier two-ring version could reach when the merge waited for a
+trade while the depth ring filled. `--record=PREFIX` then writes the live session back into
+`PREFIX_trades.csv` and `PREFIX_depth.csv`, and streaming those two files over the feed again reproduces them
+byte for byte.
 
 `tools/websocket_sender.py` is a local stand-in for a venue: it is a WebSocket server that streams a trade file
 and a depth file, interleaved by their own timestamps, so the whole path can be exercised on a desk:
@@ -652,21 +657,22 @@ python3 tools/websocket_sender.py --port 8765 \
 
 The session ends when the peer closes the connection, and the run reports it as a `[WS]` line: the frames and
 messages it read, the trades and depth updates it decoded, whether the close was clean, and whether the run
-stopped on its own `--ws-seconds=N` instead. `ring_waits` is the number of times a receive-side ring was
-full: a full ring waits rather than dropping the row, so the socket is what slows down, and this is the one
-counter that says the engine rather than the venue was the limit. `ring_high_water` is the deepest either
-input ring got. The live rings hold 131,072 rows rather than the 4,096 a replay uses, because the merge
-waits for the next trade while depth keeps arriving: the longest trade gap in a measured 30-minute run was
-10.2 s, and 4,096 depth rows at 384 rows a second is 10.7 s, which is exactly the window in which the
-receive thread used to block on a push the merge could not drain. A live capture usually needs that bound,
-because a venue's socket does not close itself, and the rows that arrived before the deadline are still
-drained rather than dropped. The
+stopped on its own `--ws-seconds=N` instead. `ring_waits` is the number of times the input ring was full:
+a full ring waits rather than dropping the row, so the socket is what slows down, and this is the one
+counter that says the engine rather than the venue was the limit. `ring_high_water` is the deepest it got;
+the live ring holds 131,072 rows against the 4,096 a replay uses, and the measured high-water over two hours
+was 3,917. A live capture usually needs a bound, because a venue's socket does not close itself, and the
+rows that arrived before the deadline are still drained rather than dropped. The
 connect and the opening handshake share a five-second budget, so a host that accepts the connection and then
 says nothing fails the run instead of hanging it. `--ws-target=/path` sets the HTTP path the handshake asks
 for; it defaults to `/`. Pacing has no meaning on this mode -- the venue sets the speed, not a file's clock --
 so `--live-pacing` is refused there, and every other `l2_replay` flag (`--record`, `--feed-thread`,
-`--ring-capacity`, `--fast-validation`, `--profile-stages`, `--paper-broker` and its faults, and the strategy
-and risk flags) is accepted unchanged.
+`--ring-capacity`, `--ws-ring-capacity`, `--idle-wait-us`, `--fast-validation`, `--profile-stages`,
+`--paper-broker` and its faults, and the strategy and risk flags) is accepted unchanged.
+
+`bash tools/soak_push.sh` is the acceptance run for this mode: it streams for `DURATION` seconds with a ping
+every `PING` seconds and a forced reconnect every `DROP` seconds, then replays the engine's own recording and
+fails if a sequence gap, a parse error, a ring wait, a reconciliation break or a moved field appears.
 
 ## Carry: Two Legs Over Two Funding Histories
 

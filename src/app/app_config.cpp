@@ -40,6 +40,8 @@ constexpr std::string_view kFeedThreadFlag = "--feed-thread";
 constexpr std::string_view kRingCapacityPrefix = "--ring-capacity=";
 constexpr std::string_view kWebSocketTargetPrefix = "--ws-target=";
 constexpr std::string_view kWebSocketSecondsPrefix = "--ws-seconds=";
+constexpr std::string_view kWebSocketRingPrefix = "--ws-ring-capacity=";
+constexpr std::string_view kIdleWaitPrefix = "--idle-wait-us=";
 constexpr std::string_view kPaperBrokerFlag = "--paper-broker";
 constexpr std::string_view kBrokerRejectPrefix = "--broker-reject-every=";
 constexpr std::string_view kBrokerPartialPrefix = "--broker-partial-every=";
@@ -127,7 +129,8 @@ void print_usage(const char* executable)
                          "[--fast-validation] [--profile-stages[=interval]] [--live-pacing[=speed]]\n";
         std::cerr << "   or: " << executable
                       << " ws <host:port> <symbol> [strategy] [quantity_scale] [queue_model] "
-                         "[--ws-target=/path] [--ws-seconds=N] [--no-output] [--fast-validation] "
+                         "[--ws-target=/path] [--ws-seconds=N] [--ws-ring-capacity=N] "
+                         "[--idle-wait-us=N] [--no-output] [--fast-validation] "
                          "[--record=PREFIX] [--feed-thread] [--paper-broker]; the live twin of "
                          "l2_replay, reading the same replay shapes over a websocket instead of from "
                          "files\n";
@@ -467,6 +470,36 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     error = "--ws-seconds must be a positive number of seconds";
                     return false;
                 }
+            }
+            else if (flag.compare(0, kWebSocketRingPrefix.size(), kWebSocketRingPrefix) == 0)
+            {
+                if (cfg.mode != AppMode::WebSocket)
+                {
+                    error = "--ws-ring-capacity is a ws flag: it sizes the live feed's input ring";
+                    return false;
+                }
+                uint64_t capacity = 0;
+                if (!parse_unsigned(flag.substr(kWebSocketRingPrefix.size()), capacity) || capacity == 0)
+                {
+                    error = "--ws-ring-capacity must be a positive integer";
+                    return false;
+                }
+                cfg.ws_ring_capacity = static_cast<std::size_t>(capacity);
+            }
+            else if (flag.compare(0, kIdleWaitPrefix.size(), kIdleWaitPrefix) == 0)
+            {
+                if (cfg.mode != AppMode::WebSocket)
+                {
+                    error = "--idle-wait-us is a ws flag: it is how a live reader waits on an empty stream";
+                    return false;
+                }
+                uint64_t wait = 0;
+                if (!parse_unsigned(flag.substr(kIdleWaitPrefix.size()), wait) || wait == 0)
+                {
+                    error = "--idle-wait-us must be a positive integer";
+                    return false;
+                }
+                cfg.idle_wait_us = static_cast<int64_t>(wait);
             }
             else if (flag.compare(0, kRingCapacityPrefix.size(), kRingCapacityPrefix) == 0)
             {

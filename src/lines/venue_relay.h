@@ -29,6 +29,11 @@ struct RelayConfig
     std::string replay;
     // Wall-clock seconds; 0 runs until stopped.
     double max_seconds{0.0};
+    // Send a ping every N seconds even while data flows; 0 keeps the idle-only keepalive. The socket
+    // polls every 200 ms, so the cadence is decided from the clock rather than from the timeout.
+    double ping_seconds{0.0};
+    // Close and reopen the venue connection every N seconds, for the reconnect test; 0 never drops.
+    double drop_after_seconds{0.0};
 };
 
 // 0 on success. Throws std::runtime_error for a configuration or transport failure the caller should

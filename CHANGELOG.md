@@ -49,6 +49,15 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   ring high-water of 3,917 against the old 4,096 capacity, five snapshot batches (the initial one and one per
   reconnect), a reconciliation that stayed `ok`, and a replay of the engine's recording that reproduced the
   live summary field for field.
+- **One ordered stream on the live path.** `WebSocketFeed` now has one input ring and one reader: the receive
+  thread assembles a run of depth rows that share a local timestamp, holds a trade that arrives during the
+  run until the batch ends, and pushes both in that order. A trade gap can no longer stall depth delivery,
+  which is the deadlock the two-ring merge reached; the ring is sized at 131,072 rows and reports
+  `ring_high_water`. `--ws-ring-capacity=N` sizes it and `--idle-wait-us=N` trades a little latency for a core.
+- **The edges around it.** The relay leaves subscription acknowledgements out of a capture, resets its backoff
+  after a session that actually lasted, and the C++ twin gains `--ping-seconds` and `--drop-after-seconds`; the
+  recorder flushes every 4,096 events; and a quote scaled below the instrument's minimum is raised to it, so
+  the engine stops refusing the strategy's own size.
 - **The client's half of the order path.** `OrderGateway` (`src/lines/order_gateway.*`) is a second decorator
   over the engine, wrapped outside the broker: it keeps the table of orders from submission to answer, absorbs
   a retry under the same client id, counts an order the venue has not answered within a timeout of market

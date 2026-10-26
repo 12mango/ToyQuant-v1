@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #include "common/market_event.h"
 #include "concurrency/spsc_ring.h"
@@ -110,6 +111,11 @@ class WebSocketFeed
         // waits indefinitely. A host that accepts the connection and then says nothing -- a filtered
         // port, a wedged peer -- would otherwise hang the run rather than fail it.
         int64_t connect_timeout_ms{5000};
+        // How long a reader sleeps when the stream is empty before looking again, in microseconds. 0,
+        // the default, spins: the lowest-latency answer and the reason a live session can sit at one
+        // core. A live run that is meant to stay up for hours can set this to a few tens of
+        // microseconds and give the core back without a meaningful change in delivery time.
+        int64_t idle_wait_us{0};
     };
 
     // Two overloads rather than one with a default argument: a default argument to a nested aggregate
@@ -133,10 +139,12 @@ class WebSocketFeed
     // already ended without checking. A reader that was waiting unblocks.
     void stop();
 
-    // The two readers the L2 delivery path takes. Each owns nothing but a reference to this feed, so
-    // both have to be used (and this feed kept alive) while they are.
-    std::unique_ptr<IMarketEventReader> trades_reader();
-    std::unique_ptr<IMarketEventReader> depth_reader();
+    // The one reader the L2 delivery path takes. Every row arrives in the venue's own order, a run of
+    // depth rows sharing a local timestamp is delivered as one IncrementalBookBatch, and a trade that
+    // arrived during that run is delivered after the batch so the stream stays ordered. One ring and
+    // one reader are what make a trade gap unable to block the depth stream, which the two-reader
+    // version could not promise.
+    std::unique_ptr<IMarketEventReader> event_reader();
 
     // The Sec-WebSocket-Accept value for a client key: base64(SHA1(key + the RFC 6455 GUID)). It is
     // exposed so a test can stand in for a server and complete the handshake the client verifies,
@@ -149,19 +157,9 @@ class WebSocketFeed
     }
 
    private:
-    // One depth row, which carries its symbol and exchange as well: an IncrementalBookUpdate names
-    // neither, and the reader needs both to build the batch the book applies.
-    struct DepthMessage
-    {
-        std::string symbol;
-        std::string exchange;
-        IncrementalBookUpdate update;
-    };
-
-    // The two IMarketEventReader implementations. They are nested so they can reach the feed's queues
-    // and run flags without widening the public surface with accessors that exist only for them.
-    class TradeReader;
-    class DepthReader;
+    // The one IMarketEventReader. It is nested so it can reach the feed's ring and run flags without
+    // widening the public surface with accessors that exist only for it.
+    class EventReader;
 
     void receive_loop();
     bool connect_socket();
@@ -177,6 +175,14 @@ class WebSocketFeed
     // reported through `opcode` and answered by the caller; a data frame's payload goes to `payload`.
     bool read_frame(std::string& payload, int& opcode, bool& fin, int64_t deadline_ms = 0);
     void handle_message(std::string_view message);
+    // Delivers the held depth batch, then the trades that arrived during it. Called when the batch
+    // ends and once more before the producer says it is done, so nothing is lost at a close.
+    void flush_pending();
+    // Pushes one event, waiting for room rather than dropping it, and returns false once the feed is
+    // stopping. The single ring is why a trade gap can no longer block depth delivery.
+    bool push_event(MarketEvent event);
+    // One empty-stream wait: a sleep when idle_wait_us is set, otherwise a spin.
+    void wait_for_event();
 
     Endpoint endpoint_;
     Options options_;
@@ -188,7 +194,12 @@ class WebSocketFeed
     std::atomic<bool> producer_done_{false};
     std::thread thread_;
 
-    concurrency::SpscRing<MarketTrade> trades_;
-    concurrency::SpscRing<DepthMessage> depth_;
+    concurrency::SpscRing<MarketEvent> events_;
+    // The run of depth rows with one local timestamp that has not been delivered yet. It is held on
+    // the receive thread, so it needs no lock; a trade that arrives during the run is held with it and
+    // delivered after the batch, which is the order the replay's timestamp merge produces.
+    IncrementalBookBatch pending_batch_;
+    bool has_pending_batch_{false};
+    std::vector<MarketTrade> pending_trades_;
     WebSocketFeedSummary summary_;
 };

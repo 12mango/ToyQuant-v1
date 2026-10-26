@@ -68,6 +68,11 @@ class ThreadedReplayFeed
                        ReplayPacing pacing = {}, MarketDataValidationConfig validation_config = {},
                        std::size_t ring_capacity = kDefaultRingCapacity);
 
+    // The single-stream form, used by a live session whose feed already delivers in order.
+    ThreadedReplayFeed(std::unique_ptr<IMarketEventReader> events, EventCallback consumer,
+                       ReplayPacing pacing = {}, MarketDataValidationConfig validation_config = {},
+                       std::size_t ring_capacity = kDefaultRingCapacity);
+
     // Runs the feed on a thread it starts and consumes on the calling thread, so the consumer
     // callback runs on the same thread it would have in the direct path and a caller never has to
     // think about which thread its own state is touched from. Returns after both threads are joined,

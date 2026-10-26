@@ -63,6 +63,12 @@ class L2ReplayFeed
                  EventCallback callback, ReplayPacing pacing = {},
                  MarketDataValidationConfig validation_config = {});
 
+    // One reader that already delivers in order: the live feed assembles its depth batches on the
+    // receive thread, so there is no second stream to merge and no blocking read that another
+    // stream's full ring could stall. It is the same loop without the merge.
+    L2ReplayFeed(std::unique_ptr<IMarketEventReader> events, EventCallback callback,
+                 ReplayPacing pacing = {}, MarketDataValidationConfig validation_config = {});
+
     void run();
     const MarketDataValidationSummary& validation_summary() const
     {
@@ -107,7 +113,10 @@ class L2ReplayFeed
     // Wait until the event's place in the schedule, and record how late it was.
     void pace(int64_t event_ns);
     void record_lateness(int64_t lateness_ns);
+    void run_single();
 
+    std::unique_ptr<IMarketEventReader> events_;
+    bool single_{false};
     std::unique_ptr<IMarketEventReader> trades_;
     std::unique_ptr<IMarketEventReader> depth_;
     EventCallback callback_;

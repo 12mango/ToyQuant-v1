@@ -35,6 +35,13 @@ struct AppConfig
     // Wall-clock seconds a ws session streams before it stops on its own; 0 runs until the peer
     // closes the connection. It is what a real capture needs, where no one closes the socket for you.
     double ws_seconds = 0.0;
+    // Slots in the live feed's one input ring. 0 uses WebSocketFeed::kLiveRingCapacity, which is sized
+    // from the measured depth rate and the longest observed trade gap; a venue with a different
+    // cadence can size it explicitly.
+    std::size_t ws_ring_capacity = 0;
+    // Microseconds a live reader sleeps when the stream is empty. 0 spins, which is the lowest-latency
+    // answer; a session meant to stay up for hours can give the core back with a small value.
+    int64_t idle_wait_us = 0;
     int delay = 0;
     std::string strategy_name = "optimized";
     uint64_t quantity_scale = 1000000;

@@ -66,6 +66,22 @@ L2ReplayFeed::L2ReplayFeed(std::unique_ptr<IMarketEventReader> trades,
     if (pacing_.max_lateness_ns < 0) throw std::invalid_argument("replay pacing lateness cannot be negative");
 }
 
+L2ReplayFeed::L2ReplayFeed(std::unique_ptr<IMarketEventReader> events, EventCallback callback,
+                           ReplayPacing pacing, MarketDataValidationConfig validation_config)
+    : events_(std::move(events)),
+      single_(true),
+      callback_(std::move(callback)),
+      pacing_(pacing),
+      validator_(validation_config),
+      clock_(monotonic_now_ns),
+      sleeper_(real_sleep)
+{
+    if (!events_) throw std::invalid_argument("a single-stream feed requires an event reader");
+    if (!callback_) throw std::invalid_argument("L2 replay callback cannot be empty");
+    if (pacing_.speed <= 0.0) throw std::invalid_argument("replay pacing speed must be positive");
+    if (pacing_.max_lateness_ns < 0) throw std::invalid_argument("replay pacing lateness cannot be negative");
+}
+
 void L2ReplayFeed::record_lateness(int64_t lateness_ns)
 {
     ++pacing_summary_.late_events;
@@ -92,8 +108,45 @@ void L2ReplayFeed::pace(int64_t event_ns)
     if (lateness_ns <= pacing_.max_lateness_ns && target_ns > now_ns) sleeper_(target_ns - now_ns);
 }
 
+void L2ReplayFeed::run_single()
+{
+    MarketEvent event;
+    profiler_begin(Stage::ReadParse);
+    bool has_event = events_->next(event);
+    profiler_end(Stage::ReadParse);
+
+    while (has_event)
+    {
+        if (pacing_.enabled)
+        {
+            ++pacing_summary_.events;
+            pace(static_cast<int64_t>(event_timestamp(event)));
+        }
+
+        if (profiler_ != nullptr) profiler_->start_event();
+
+        profiler_begin(Stage::Validate);
+        validator_.validate(event);
+        profiler_end(Stage::Validate);
+
+        callback_(event);
+
+        profiler_begin(Stage::ReadParse);
+        has_event = events_->next(event);
+        profiler_end(Stage::ReadParse);
+    }
+
+    if (validator_.summary().events == 0)
+        throw std::invalid_argument("L2 replay input contains no market events");
+}
+
 void L2ReplayFeed::run()
 {
+    if (single_)
+    {
+        run_single();
+        return;
+    }
     MarketEvent trade;
     MarketEvent depth;
     profiler_begin(Stage::ReadParse);

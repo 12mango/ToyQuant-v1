@@ -106,6 +106,7 @@ void MarketEventRecorder::record(const MarketEvent& event)
                     "a depth stream, and a BBO quote is neither, so it has nowhere to go");
         },
         event);
+    if (++events_ % 4096 == 0) flush();
 }
 
 void MarketEventRecorder::write_trade(const MarketTrade& trade)

@@ -343,6 +343,7 @@ class VenueClient(threading.Thread):
             while not self.stop.is_set():
                 if deadline is not None and time.time() >= deadline:
                     break
+                started = time.monotonic()
                 try:
                     self.session(sink, deadline)
                     backoff = 1.0
@@ -350,6 +351,11 @@ class VenueClient(threading.Thread):
                     if self.stop.is_set():
                         break
                     self.reconnects += 1
+                    # A session that ran for a while is a healthy connection that dropped, not a venue
+                    # that refuses to accept one; it starts the backoff over instead of inheriting the
+                    # delay of an earlier failure.
+                    if time.monotonic() - started >= 30.0:
+                        backoff = 1.0
                     print(f"venue connection lost ({error}); reconnecting in {backoff:.0f}s", flush=True)
                 if self.stop.is_set():
                     break
@@ -428,6 +434,10 @@ class VenueClient(threading.Thread):
                     continue
                 if token == "pong":
                     self.pongs_received += 1
+                    continue
+                # A subscription acknowledgement is protocol, not market data; it does not belong in a
+                # capture that is meant to be replayable as a feed.
+                if '"event"' in text:
                     continue
                 if sink is not None:
                     sink.write(text + "\n")

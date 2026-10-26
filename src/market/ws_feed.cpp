@@ -283,8 +283,7 @@ WebSocketFeed::WebSocketFeed(Endpoint endpoint) : WebSocketFeed(std::move(endpoi
 WebSocketFeed::WebSocketFeed(Endpoint endpoint, Options options)
     : endpoint_(std::move(endpoint)),
       options_(options),
-      trades_(options.ring_capacity),
-      depth_(options.ring_capacity)
+      events_(options.ring_capacity)
 {
     if (endpoint_.host.empty()) throw std::invalid_argument("a websocket endpoint needs a host");
     if (endpoint_.port == 0) throw std::invalid_argument("a websocket endpoint needs a port");
@@ -610,6 +609,9 @@ void WebSocketFeed::receive_loop()
         // A transport error ends the session the same way a close does: the readers drain what
         // arrived and then report end of stream. The counters above still describe what was seen.
     }
+    // The last depth batch and the trades held with it are delivered before the end of stream, so a
+    // close does not lose the tail of a run whose batch had not yet seen a different timestamp.
+    flush_pending();
     // Published last and with release, so a reader that sees it also sees every push before it.
     producer_done_.store(true, std::memory_order_release);
 }
@@ -652,43 +654,53 @@ void WebSocketFeed::handle_message(std::string_view message)
                         ++summary_.parse_errors;
                     else
                     {
-                        while (!trades_.try_push(std::move(trade)))
-                        {
-                            if (!running_.load(std::memory_order_acquire)) return;
-                            ++summary_.ring_waits;
-                            concurrency::spin_relax();
-                        }
+                        // A trade that arrives during a depth run is delivered after that batch, which
+                        // is the order the replay's timestamp merge produces for the same two rows.
+                        if (has_pending_batch_)
+                            pending_trades_.push_back(std::move(trade));
+                        else if (!push_event(MarketEvent{std::move(trade)}))
+                            return;
                         ++summary_.trades;
-                        const std::size_t depth_high = trades_.consumer_occupancy();
-                        if (depth_high > summary_.ring_high_water)
-                            summary_.ring_high_water = depth_high;
                     }
                 }
                 else if (fields.size() == 8)
                 {
-                    DepthMessage row;
-                    row.exchange = std::string(fields[0]);
-                    row.symbol = std::string(fields[1]);
-                    row.update.exchange_ts = csv_fields::parse_uint64(fields[2]);
-                    row.update.local_ts = csv_fields::parse_uint64(fields[3]);
-                    row.update.is_snapshot = csv_fields::parse_boolean(fields[4]);
-                    row.update.side = parse_side_token(fields[5]);
-                    row.update.price = csv_fields::parse_double(fields[6]);
-                    row.update.amount = csv_fields::parse_uint64(fields[7]);
-                    if (row.update.side == Side::Unknown)
+                    IncrementalBookUpdate update;
+                    update.exchange_ts = csv_fields::parse_uint64(fields[2]);
+                    update.local_ts = csv_fields::parse_uint64(fields[3]);
+                    update.is_snapshot = csv_fields::parse_boolean(fields[4]);
+                    update.side = parse_side_token(fields[5]);
+                    update.price = csv_fields::parse_double(fields[6]);
+                    update.amount = csv_fields::parse_uint64(fields[7]);
+                    if (update.side == Side::Unknown)
                         ++summary_.parse_errors;
                     else
                     {
-                        while (!depth_.try_push(std::move(row)))
+                        const bool same_symbol =
+                            pending_batch_.symbol.size() == fields[1].size() &&
+                            pending_batch_.symbol.compare(0, pending_batch_.symbol.size(),
+                                                          fields[1].data(), fields[1].size()) == 0;
+                        if (!has_pending_batch_ || pending_batch_.local_ts != update.local_ts ||
+                            !same_symbol)
                         {
-                            if (!running_.load(std::memory_order_acquire)) return;
-                            ++summary_.ring_waits;
-                            concurrency::spin_relax();
+                            flush_pending();
+                            pending_batch_ = IncrementalBookBatch{};
+                            pending_batch_.ts = update.exchange_ts;
+                            pending_batch_.exchange_ts = update.exchange_ts;
+                            pending_batch_.local_ts = update.local_ts;
+                            pending_batch_.symbol = std::string(fields[1]);
+                            pending_batch_.exchange = std::string(fields[0]);
+                            pending_batch_.snapshot_metadata_valid = true;
+                            pending_batch_.contains_snapshot = update.is_snapshot;
+                            has_pending_batch_ = true;
                         }
+                        else
+                        {
+                            pending_batch_.contains_snapshot =
+                                pending_batch_.contains_snapshot || update.is_snapshot;
+                        }
+                        pending_batch_.updates.push_back(update);
                         ++summary_.depth_updates;
-                        const std::size_t depth_high = depth_.consumer_occupancy();
-                        if (depth_high > summary_.ring_high_water)
-                            summary_.ring_high_water = depth_high;
                     }
                 }
                 else
@@ -710,34 +722,28 @@ void WebSocketFeed::handle_message(std::string_view message)
 }
 
 // The trade reader: it hands back one MarketTrade per delivered trade row, in arrival order.
-class WebSocketFeed::TradeReader final : public IMarketEventReader
+// The one reader: it hands back the events the receive thread assembled, in the venue's own order.
+// A batch is whole before it reaches the ring, so this reader never waits for a second row and cannot
+// hold a push that the producer is blocked on.
+class WebSocketFeed::EventReader final : public IMarketEventReader
 {
    public:
-    explicit TradeReader(WebSocketFeed& feed) : feed_(feed) {}
+    explicit EventReader(WebSocketFeed& feed) : feed_(feed) {}
 
     [[nodiscard]] bool next(MarketEvent& event) override
     {
-        MarketTrade trade;
         while (true)
         {
-            if (feed_.trades_.try_pop(trade))
-            {
-                event = std::move(trade);
-                return true;
-            }
+            if (feed_.events_.try_pop(event)) return true;
             if (feed_.producer_done_.load(std::memory_order_acquire))
             {
-                // The producer published "done" after its last push, so this acquire load pairs with
-                // that release store and one more attempt is guaranteed to see any final trade.
-                if (feed_.trades_.try_pop(trade))
-                {
-                    event = std::move(trade);
-                    return true;
-                }
+                // The producer published "done" after its last push, so one more attempt is guaranteed
+                // to see any final event.
+                if (feed_.events_.try_pop(event)) return true;
                 return false;
             }
             if (!feed_.running_.load(std::memory_order_acquire)) return false;
-            concurrency::spin_relax();
+            feed_.wait_for_event();
         }
     }
 
@@ -745,108 +751,45 @@ class WebSocketFeed::TradeReader final : public IMarketEventReader
     WebSocketFeed& feed_;
 };
 
-
-// The depth reader: it regroups consecutive depth rows that share a local timestamp into one
-// IncrementalBookBatch, which is the rule the incremental CSV reader groups rows on, so the book
-// applies a live batch exactly as it applies a replayed one. One row past the group is carried as
-// `pending_` so it starts the next batch rather than being read twice.
-class WebSocketFeed::DepthReader final : public IMarketEventReader
+void WebSocketFeed::flush_pending()
 {
-   public:
-    explicit DepthReader(WebSocketFeed& feed) : feed_(feed) {}
-
-    [[nodiscard]] bool next(MarketEvent& event) override
+    if (has_pending_batch_)
     {
-        DepthMessage first;
-        if (!pop(first)) return false;
-
-        IncrementalBookBatch batch;
-        batch.ts = first.update.exchange_ts;
-        batch.exchange_ts = first.update.exchange_ts;
-        batch.local_ts = first.update.local_ts;
-        batch.symbol = first.symbol;
-        batch.exchange = first.exchange;
-        batch.snapshot_metadata_valid = true;
-        batch.contains_snapshot = first.update.is_snapshot;
-        batch.updates.push_back(first.update);
-
-        while (true)
-        {
-            DepthMessage next_row;
-            if (feed_.depth_.try_pop(next_row))
-            {
-                if (next_row.update.local_ts == batch.local_ts && next_row.symbol == batch.symbol)
-                {
-                    batch.contains_snapshot = batch.contains_snapshot || next_row.update.is_snapshot;
-                    batch.updates.push_back(next_row.update);
-                    continue;
-                }
-                pending_ = std::move(next_row);
-                has_pending_ = true;
-                break;
-            }
-            if (feed_.producer_done_.load(std::memory_order_acquire))
-            {
-                if (feed_.depth_.try_pop(next_row))
-                {
-                    if (next_row.update.local_ts == batch.local_ts && next_row.symbol == batch.symbol)
-                    {
-                        batch.contains_snapshot =
-                            batch.contains_snapshot || next_row.update.is_snapshot;
-                        batch.updates.push_back(next_row.update);
-                        continue;
-                    }
-                    pending_ = std::move(next_row);
-                    has_pending_ = true;
-                }
-                break;
-            }
-            if (!feed_.running_.load(std::memory_order_acquire)) break;
-            concurrency::spin_relax();
-        }
-
-        event = std::move(batch);
-        return true;
+        if (!push_event(MarketEvent{pending_batch_})) return;
+        has_pending_batch_ = false;
     }
+    for (MarketTrade& trade : pending_trades_)
+        if (!push_event(MarketEvent{std::move(trade)})) return;
+    pending_trades_.clear();
+}
 
-   private:
-    bool pop(DepthMessage& out)
+bool WebSocketFeed::push_event(MarketEvent event)
+{
+    while (!events_.try_push(std::move(event)))
     {
-        if (has_pending_)
-        {
-            out = std::move(pending_);
-            has_pending_ = false;
-            return true;
-        }
-        while (true)
-        {
-            if (feed_.depth_.try_pop(out)) return true;
-            if (feed_.producer_done_.load(std::memory_order_acquire))
-            {
-                if (feed_.depth_.try_pop(out)) return true;
-                return false;
-            }
-            if (!feed_.running_.load(std::memory_order_acquire)) return false;
-            concurrency::spin_relax();
-        }
+        if (!running_.load(std::memory_order_acquire)) return false;
+        ++summary_.ring_waits;
+        wait_for_event();
     }
+    const std::size_t occupancy = events_.consumer_occupancy();
+    if (occupancy > summary_.ring_high_water) summary_.ring_high_water = occupancy;
+    return true;
+}
 
-    WebSocketFeed& feed_;
-    DepthMessage pending_;
-    bool has_pending_{false};
-};
+void WebSocketFeed::wait_for_event()
+{
+    if (options_.idle_wait_us > 0)
+        std::this_thread::sleep_for(std::chrono::microseconds(options_.idle_wait_us));
+    else
+        concurrency::spin_relax();
+}
 
 std::string WebSocketFeed::accept_for_key(std::string_view key)
 {
     return base64_of_sha1(std::string(key) + std::string(kWebSocketGuid));
 }
 
-std::unique_ptr<IMarketEventReader> WebSocketFeed::trades_reader()
+std::unique_ptr<IMarketEventReader> WebSocketFeed::event_reader()
 {
-    return std::make_unique<TradeReader>(*this);
-}
-
-std::unique_ptr<IMarketEventReader> WebSocketFeed::depth_reader()
-{
-    return std::make_unique<DepthReader>(*this);
+    return std::make_unique<EventReader>(*this);
 }

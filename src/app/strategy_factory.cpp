@@ -97,6 +97,7 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
             make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
                                 refresh_price_ticks_override > 0 ? refresh_price_ticks_override
                                                                 : 2);
+        base_config.min_order_quantity = instrument ? instrument->min_order_quantity : 1;
         base_config.flatten_band_units = config.flatten_band_units;
         // The same fee terms the active strategy is given, so a comparison of the two is a comparison of the
         // inventory shift rather than of the shift plus a gate one of them has and the other does not.
@@ -120,6 +121,7 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
             make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
                                 refresh_price_ticks_override > 0 ? refresh_price_ticks_override
                                                                 : 2);
+        base_config.min_order_quantity = instrument ? instrument->min_order_quantity : 1;
         // The decision layer's expected-value gate lives on the strategy, so it is set here where the
         // instrument's fee schedule is in scope. A zero override leaves it off.
         base_config.maker_fee_rate = instrument ? instrument->maker_fee_rate : 0.0;
@@ -146,15 +148,20 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         if (strategy_name == "l2_micro") signal_mode = L2SignalMode::Micro;
         const bool public_flow_strategy = strategy_name == "l2" || strategy_name == "flow_aware_l2";
         if (public_flow_strategy)
-            return std::make_unique<L2MarketMakerBase>(
+        {
+            auto base_config =
                 make_flow_l2_config(order_size, tick_size, inventory_limit, spread,
-                                refresh_price_ticks_override > 0 ? refresh_price_ticks_override
-                                                                : 2));
+                                    refresh_price_ticks_override > 0 ? refresh_price_ticks_override
+                                                                    : 2);
+            base_config.min_order_quantity = instrument ? instrument->min_order_quantity : 1;
+            return std::make_unique<L2MarketMakerBase>(base_config);
+        }
         // The flow strategies returned above through make_flow_l2_config, so the ternaries that used to
         // sit on these values could never take their flow branch. They are spelled out now, which is
         // also what makes the difference between the two configurations readable.
         return std::make_unique<L2MarketMakerBase>(L2MarketMakerBaseConfig{
             .order_size = order_size,
+            .min_order_quantity = instrument ? instrument->min_order_quantity : 1,
             .base_spread = spread,
             .inventory_limit = inventory_limit,
             .tick_size = tick_size,

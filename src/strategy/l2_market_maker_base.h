@@ -32,6 +32,9 @@ enum class L2SignalMode
 struct L2MarketMakerBaseConfig
 {
     uint64_t order_size{1};
+    // The instrument's minimum tradable quantity. A quote scaled down by the weak-flow guard is raised
+    // back to this rather than sent at a size the venue will refuse; 1 leaves the old behaviour.
+    uint64_t min_order_quantity{1};
     double base_spread{1.0};
     int64_t inventory_limit{100};
     double tick_size{0.5};
@@ -374,6 +377,14 @@ class L2MarketMakerBase : public Strategy
                     0.0, static_cast<double>(sell_quantity) * weak_scale));
             }
         }
+        // A scaled-down quote still has to be a size the venue accepts. Zero stays zero: that side is
+        // deliberately paused, not shrunk.
+        const auto at_least_minimum = [this](uint64_t quantity)
+        {
+            return quantity == 0 ? uint64_t{0} : std::max(quantity, config_.min_order_quantity);
+        };
+        buy_quantity = at_least_minimum(buy_quantity);
+        sell_quantity = at_least_minimum(sell_quantity);
         const double raw_bid_price = std::floor(
                                          (fair_price - config_.base_spread - inventory_shift -
                                           weak_flow_spread_shift) /

@@ -54,6 +54,19 @@ ThreadedReplayFeed::ThreadedReplayFeed(std::unique_ptr<IMarketEventReader> trade
                                            validation_config);
 }
 
+ThreadedReplayFeed::ThreadedReplayFeed(std::unique_ptr<IMarketEventReader> events,
+                                       EventCallback consumer, ReplayPacing pacing,
+                                       MarketDataValidationConfig validation_config,
+                                       std::size_t ring_capacity)
+    : consumer_(std::move(consumer)),
+      ring_(std::make_unique<concurrency::SpscRing<StampedEvent>>(ring_capacity))
+{
+    if (!consumer_) throw std::invalid_argument("a threaded replay needs a consumer callback");
+    feed_ = std::make_unique<L2ReplayFeed>(std::move(events),
+                                           [this](const MarketEvent& event) { produce(event); }, pacing,
+                                           validation_config);
+}
+
 void ThreadedReplayFeed::set_profiler(StageProfiler* profiler)
 {
     feed_->set_profiler(profiler);
