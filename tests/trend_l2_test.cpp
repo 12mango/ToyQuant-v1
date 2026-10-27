@@ -179,15 +179,15 @@ int main()
         assert(orders.size() == 1);
         assert(h.strategy.working_order_count() == 1);
 
-        h.strategy.on_order_rejected(orders[0], "venue_reject");
         h.strategy.on_order_update(ExecutionReport{.order_id = orders[0].order_id,
                                                    .side = exchange::Side::Buy,
-                                                   .exec_type = ExecType::Cancelled,
+                                                   .exec_type = ExecType::Rejected,
                                                    .symbol = "TEST",
                                                    .price = orders[0].price,
                                                    .quantity = orders[0].quantity,
                                                    .ts = 0,
-                                                   .owner = "MarketMaker"});
+                                                   .owner = "MarketMaker",
+                                                   .reject_reason = RejectReason::Venue});
         assert(h.strategy.working_order_count() == 0);
         assert(h.on(100.15).empty());
         assert(!h.on(100.20).empty());

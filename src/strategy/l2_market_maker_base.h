@@ -215,7 +215,7 @@ class L2MarketMakerBase : public Strategy
 
     void on_order_update(const ExecutionReport& report) override
     {
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        if (is_terminal(report.exec_type))
         {
             open_orders_.erase(report.order_id);
             return;

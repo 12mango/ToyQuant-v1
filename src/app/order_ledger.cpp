@@ -107,6 +107,7 @@ void OrderLedger::trace_report(const ExecutionReport& report, uint64_t current_t
                         : report.exec_type == ExecType::Resting    ? "rest"
                         : report.exec_type == ExecType::Cancelled  ? "cancel"
                         : report.exec_type == ExecType::Filled     ? "fully_filled"
+                        : report.exec_type == ExecType::Rejected   ? "rejected"
                                                                    : "report";
     const Side side = trace_level_known_
                           ? trace_side_
@@ -123,8 +124,7 @@ void OrderLedger::trace_report(const ExecutionReport& report, uint64_t current_t
                                    .change = static_cast<int64_t>(report.executed_quantity()),
                                    .queue_ahead = queue});
     trace_last_queue_ = queue;
-    if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
-        trace_level_known_ = false;
+    if (is_terminal(report.exec_type)) trace_level_known_ = false;
 }
 void OrderLedger::open_order(uint64_t order_id, uint64_t start_cycle, ExecutionQualityMetrics& quality)
 {
@@ -204,7 +204,7 @@ double OrderLedger::on_report(const ExecutionReport& report, uint64_t quote_cycl
                               ExecutionQualityMetrics& quality, double quantity_scale,
                               double commission_per_unit, double min_commission_per_order)
 {
-    if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+    if (is_terminal(report.exec_type))
     {
         const auto start = order_start_cycles_.find(report.order_id);
         if (start != order_start_cycles_.end())
@@ -235,7 +235,7 @@ double OrderLedger::on_report(const ExecutionReport& report, uint64_t quote_cycl
                                      : static_cast<double>(report.executed_quantity());
             audit->second.commission += units * commission_per_unit;
         }
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        if (is_terminal(report.exec_type))
         {
             const uint64_t lifetime = quote_cycle >= audit->second.start_cycle
                                           ? quote_cycle - audit->second.start_cycle
@@ -256,6 +256,8 @@ double OrderLedger::on_report(const ExecutionReport& report, uint64_t quote_cycl
             }
             if (report.exec_type == ExecType::Filled)
                 ++quality.audited_filled_orders;
+            else if (report.exec_type == ExecType::Rejected)
+                ++quality.audited_rejected_orders;
             else
                 ++quality.audited_cancelled_orders;
             if (audit->second.profiling && audit->second.queue_at_rest > 0)

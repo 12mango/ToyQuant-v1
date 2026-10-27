@@ -206,6 +206,7 @@ add_toy_test(threaded_replay_test)
 
 add_toy_test(trend_l2_test)
 add_toy_test(risk_pipeline_test)
+add_toy_test(order_state_test)
 add_toy_test(paper_broker_test)
 add_toy_test(order_gateway_test)
 add_toy_test(matching_engine_test)

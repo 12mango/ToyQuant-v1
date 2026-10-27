@@ -139,7 +139,7 @@ strategy names are:
 | `adaptive_l2` | Compatibility alias for `active_l2` |
 | `trend_l2` | Non-market-making line: an EWMA cross sets a target position, clips at the touch build it, and a stop, a time stop or the exit band closes it |
 
-`trend_l2` uses `--inventory-limit` as the size of a full signal and `--order-size` as the clip it is built in. The derived default for both is the instrument's own minimum, so a run that wants to watch a position build should name both, for example `--order-size=10 --inventory-limit=100`. `--trend-params` sets the signal itself; `bash tools/trend_sweep.sh` replays a grid of them on the 200k slice and writes the fills, PnL, fees and risk pauses to a CSV. A refused order is retried with an exponential backoff (60 views, doubling to 3,840), and a reducing order bypasses the rate bucket, the exposure cap and the position gate. A venue or broker refusal at submission is reported the same way as a pre-trade refusal, plus the cancelled report that removes the order from the open set.
+`trend_l2` uses `--inventory-limit` as the size of a full signal and `--order-size` as the clip it is built in. The derived default for both is the instrument's own minimum, so a run that wants to watch a position build should name both, for example `--order-size=10 --inventory-limit=100`. `--trend-params` sets the signal itself; `bash tools/trend_sweep.sh` replays a grid of them on the 200k slice and writes the fills, PnL, fees and risk pauses to a CSV. A refused order is retried with an exponential backoff (60 views, doubling to 3,840), and a reducing order bypasses the rate bucket, the exposure cap and the position gate. A pre-trade refusal uses `on_order_rejected`; a venue or broker refusal at submission arrives as a terminal `Rejected` report with a `reject_reason`, which clears the open set and backs off the same way.
 
 The pre-trade controls are measured rather than asserted: `bash tools/risk_check.sh` runs four 200k-row replays, requires the no-flag run to print no `[RISK]` line, requires a permissive setting to leave `[EXECUTION]` exactly as it was, and requires the 1 bp band and a very low rate to refuse orders while every run still reconciles.
 
@@ -407,6 +407,9 @@ The main comparison metrics are:
 - `fat_finger_rejections`, `rate_limited_orders` — the two pre-trade controls the non-market-making line added.
   They are printed in a `[RISK]` line, which appears only when `--fat-finger-bps` or `--max-orders-per-second`
   is named, so a run that asks for neither keeps the summary it had
+- `audited_rejected_orders` — orders that ended in a venue, broker or timeout rejection, appended to
+  `[EXECUTION]` only when non-zero. A `Rejected` report carries `reject_reason`, and it is terminal like a
+  cancel: pending quantity is released and the order leaves the strategy's open set
 - `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is

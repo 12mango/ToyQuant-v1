@@ -109,6 +109,7 @@ class TrendL2Strategy : public Strategy
     void update_target(double mid);
     bool stop_hit(double mid) const;
     void request_cancel_all();
+    void schedule_rejection_backoff();
 
     TrendL2Config config_;
     double fast_mid_{0.0};
@@ -283,6 +284,11 @@ inline void TrendL2Strategy::on_order_rejected(const StrategyOrder& order, std::
 {
     (void)order;
     (void)reason;
+    schedule_rejection_backoff();
+}
+
+inline void TrendL2Strategy::schedule_rejection_backoff()
+{
     if (config_.rejection_backoff_views == 0) return;
     if (rejection_wait_ == 0)
         rejection_wait_ = config_.rejection_backoff_views;
@@ -305,9 +311,10 @@ inline std::vector<uint64_t> TrendL2Strategy::cancel_requests()
 inline void TrendL2Strategy::on_order_update(const ExecutionReport& report)
 {
     auto order = open_orders_.find(report.order_id);
-    if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+    if (is_terminal(report.exec_type))
     {
         open_orders_.erase(report.order_id);
+        if (report.exec_type == ExecType::Rejected) schedule_rejection_backoff();
         return;
     }
     if (report.exec_type != ExecType::Trade || order == open_orders_.end()) return;

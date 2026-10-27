@@ -23,7 +23,11 @@ enum class ExecType : uint8_t
     PartialFill,
     Filled,
     Cancelled,
-    Resting
+    Resting,
+    // The venue, broker or a pre-trade control refused the order before it traded. It is a terminal
+    // state like Filled and Cancelled, but it is not a cancel: the strategy did not ask for it, and a
+    // retry policy is allowed to treat it differently.
+    Rejected
 };
 
 enum class QueueModel : uint8_t

@@ -111,6 +111,7 @@ void OrderGateway::on_venue_report(const ExecutionReport& report)
                 break;
             case ExecType::Filled:
             case ExecType::Cancelled:
+            case ExecType::Rejected:
                 tracked.remaining = 0;
                 break;
         }

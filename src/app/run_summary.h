@@ -48,6 +48,10 @@ struct ExecutionQualityMetrics
     uint64_t audited_orders{0};
     uint64_t audited_filled_orders{0};
     uint64_t audited_cancelled_orders{0};
+    // Orders the venue, broker or a pre-trade control refused. Kept apart from the cancelled counts because
+    // a rejection is not a cancel the strategy asked for; the [EXECUTION] line prints it only when it is
+    // non-zero, so every run that never sees a refusal keeps its recorded line.
+    uint64_t audited_rejected_orders{0};
     uint64_t cancelled_after_fill_orders{0};
     uint64_t cancelled_before_fill_orders{0};
     // The same orders again, but by how much each of them filled. A commission's minimum per order is a
@@ -336,8 +340,10 @@ struct RunSummary
                << " orders_that_filled=" << execution_quality.orders_that_filled
                << " filled_orders_by_size=" << execution_quality.size_histogram()
                << " min_commission_orders=" << execution_quality.min_commission_orders
-               << " min_commission_paid=" << execution_quality.min_commission_paid << "\n"
-               << "[PORTFOLIO] " << portfolio.to_log_string()
+               << " min_commission_paid=" << execution_quality.min_commission_paid;
+        if (execution_quality.audited_rejected_orders > 0)
+            stream << " audited_rejected_orders=" << execution_quality.audited_rejected_orders;
+        stream << "\n[PORTFOLIO] " << portfolio.to_log_string()
                << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
                << " net_pnl_usd=" << pnl.net_pnl_usd
                << " gross_closed_pnl_usd=" << pnl.gross_closed_pnl_usd

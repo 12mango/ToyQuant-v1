@@ -168,7 +168,7 @@ class PassiveL1MarketMaker : public Strategy
 
     void on_order_update(const ExecutionReport& report) override
     {
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        if (is_terminal(report.exec_type))
         {
             open_orders.erase(report.order_id);
             return;
@@ -338,7 +338,7 @@ class InventoryAwareL1MarketMaker : public Strategy
 
     void on_order_update(const ExecutionReport& report) override
     {
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        if (is_terminal(report.exec_type))
         {
             open_orders.erase(report.order_id);
             return;
@@ -582,7 +582,7 @@ class FlowAwareL1MarketMaker : public Strategy
 
     void on_order_update(const ExecutionReport& report) override
     {
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        if (is_terminal(report.exec_type))
         {
             open_orders.erase(report.order_id);
             return;
@@ -912,7 +912,7 @@ class L1MarketMaker : public Strategy
                 }
             }
         }
-        else if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        else if (is_terminal(report.exec_type))
         {
             if (report.exec_type == ExecType::Cancelled) ++cancel_count;
             open_orders.erase(report.order_id);
@@ -1235,7 +1235,7 @@ class ActiveL1MarketMaker : public Strategy
 
     void on_order_update(const ExecutionReport& report) override
     {
-        if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Filled)
+        if (is_terminal(report.exec_type))
         {
             if (report.exec_type == ExecType::Cancelled) ++cancel_count;
             open_orders.erase(report.order_id);

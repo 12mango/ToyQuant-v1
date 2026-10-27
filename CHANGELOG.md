@@ -80,6 +80,14 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   path, in addition to the cancelled report that removes the order from the open set. The rate bucket, the
   exposure cap and the position gate also let a reducing order through, so a position that is too large can be
   worked down instead of trapped. `tools/risk_check.sh` holds the four runs.
+- **A terminal order state, including rejection.** `ExecType` gains `Rejected` and `RejectReason` (venue,
+  broker, timeout, risk), and the pipeline, ledger and strategies share one `is_terminal` predicate: a
+  terminal report releases the quantity the position gate reserved, closes the audit entry and removes the
+  order from the strategy's open set. `Pipeline::handle_rejected_order` now reports a venue or broker refusal
+  as `Rejected` rather than `Cancelled`, so a strategy can tell a refusal from a cancel it asked for;
+  `[EXECUTION]` appends `audited_rejected_orders` only when there is one. `tests/order_state_test.cpp`
+  checks that the next order is accepted after a refused one, which is the pending-reservation leak the old
+  path could hide.
 
 ## The measured line
 

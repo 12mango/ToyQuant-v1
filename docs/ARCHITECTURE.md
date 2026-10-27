@@ -819,12 +819,18 @@ flowchart LR
 | `on_top_of_book` / `on_l2_market_view` | Pipeline -> strategy | Produce the next candidate quote set |
 | `on_market_trade` | Pipeline -> strategy | Update aggressor-flow state |
 | `on_order_submitted` | Pipeline -> strategy | Record exchange-assigned working orders |
-| `on_order_rejected` | Pipeline -> strategy | A pre-trade control, or the venue or broker at submission, refused the order; the default does nothing and `trend_l2` backs off |
+| `on_order_rejected` | Pipeline -> strategy | A pre-trade control refused the order before it had an id; the default does nothing and `trend_l2` backs off |
 | `cancel_requests` | Strategy -> pipeline | Return stale or unsafe order IDs |
-| `on_order_update` | MatchingEngine -> strategy | Apply fills, cancellations, and partial fills |
+| `on_order_update` | MatchingEngine -> strategy | Apply fills, cancellations, partial fills and terminal rejections |
 
 The strategy chooses intent. The pipeline owns sequencing and IDs. The matching engine owns actual
 working orders. This separation is the key invariant for every strategy family below.
+
+A report that ends an order is `Filled`, `Cancelled` or `Rejected`, and one `is_terminal` predicate in
+`exchange/execution_report.h` is what releases the pending quantity, closes the audit entry and removes
+the order from the strategy's open set. `Rejected` carries a `reject_reason` (venue, broker, timeout or
+risk) and is not a cancel the strategy asked for; a post-submission venue or broker refusal arrives this
+way, while a pre-trade refusal has no order id and uses `on_order_rejected` instead.
 
 ### Strategy family map
 
@@ -1356,6 +1362,7 @@ addition to the cancelled report that removes the order from every strategy's op
 | `queue_ahead_consumed` | L2 market volume absorbed ahead of local maker orders | L2 runtime and benchmark summary |
 | `buy_queue_ahead_levels_cleared`, `sell_queue_ahead_levels_cleared` | Number of price levels whose external queue reached zero | L2 runtime and benchmark summary |
 | `audited_orders`, `audited_filled_orders`, `audited_cancelled_orders` | Order lifecycle terminal-state counts | Runtime summary |
+| `audited_rejected_orders` | Orders that ended in a venue, broker or timeout rejection, appended to `[EXECUTION]` only when non-zero. A rejection is terminal like a cancel but is not one the strategy asked for, which is why it has its own count and its own `RejectReason` | Runtime summary |
 | `cancelled_after_fill_orders`, `cancelled_before_fill_orders` | Cancelled orders split by whether they had a fill | Runtime summary |
 | `orders_that_filled`, `filled_orders_by_size` | Filled order instances (a modification or a cancel and replace makes a new one) and their histogram in `count/quantity` buckets of `<=50, 51-99, 100-199, 200-499, 500-999, 1000+` shares, which is what a broker's minimum per order is charged on | Runtime summary |
 | `min_commission_orders`, `min_commission_paid` | Orders charged a schedule's floor under one order's commission, and what that floor added. Zero unless `--fee-schedule=min=...` names one; the charge itself is booked to `fees_paid` and `cash` when the order ends, because that is when the order's total is known | Runtime summary |
