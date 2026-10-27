@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "accounting/portfolio.h"
+#include "app/order_ledger.h"
 #include "app/pipeline.h"
 #include "exchange/matching_engine.h"
 #include "lines/paper_broker.h"
@@ -119,6 +120,63 @@ int main()
     assert(strategy.rejected() == 2);
     assert(broker.summary().orders_rejected == 2);
     assert(summary.strategy_position_mismatches == 0);
+
+    // The state machine itself: Pending -> Resting -> PartiallyFilled -> Filled, with an out-of-order
+    // Resting counted rather than allowed, and a duplicate terminal report counted as an orphan.
+    test_support::TempFile ledger_orders_file("order_state_ledger_orders.csv");
+    test_support::TempFile ledger_trades_file("order_state_ledger_trades.csv");
+    std::ofstream ledger_orders = ledger_orders_file.open();
+    std::ofstream ledger_trades = ledger_trades_file.open();
+    OrderLedger ledger(ledger_orders, ledger_trades);
+    ExecutionQualityMetrics quality;
+    MatchingEngine queue_engine;
+
+    ledger.open_order(100, 0, quality);
+    assert(ledger.order_state(100) == OrderLedger::OrderState::Pending);
+
+    const ExecutionReport resting{.order_id = 100,
+                                  .side = exchange::Side::Buy,
+                                  .exec_type = ExecType::Resting,
+                                  .symbol = "TEST",
+                                  .price = 100.0,
+                                  .quantity = 10,
+                                  .ts = 1,
+                                  .owner = "MarketMaker"};
+    ledger.mark_resting(resting, queue_engine, quality);
+    assert(ledger.order_state(100) == OrderLedger::OrderState::Resting);
+
+    const ExecutionReport partial{.order_id = 100,
+                                  .side = exchange::Side::Buy,
+                                  .exec_type = ExecType::Trade,
+                                  .symbol = "TEST",
+                                  .price = 100.0,
+                                  .quantity = 4,
+                                  .ts = 2,
+                                  .owner = "MarketMaker"};
+    ledger.on_report(partial, 0, quality, 1, 0.0, 0.0);
+    assert(ledger.order_state(100) == OrderLedger::OrderState::PartiallyFilled);
+
+    // A second Resting report cannot move a partially filled order backwards.
+    ledger.mark_resting(resting, queue_engine, quality);
+    assert(quality.invalid_order_transitions == 1);
+    assert(ledger.order_state(100) == OrderLedger::OrderState::PartiallyFilled);
+
+    const ExecutionReport filled{.order_id = 100,
+                                 .side = exchange::Side::Buy,
+                                 .exec_type = ExecType::Filled,
+                                 .symbol = "TEST",
+                                 .price = 100.0,
+                                 .quantity = 6,
+                                 .ts = 3,
+                                 .owner = "MarketMaker"};
+    ledger.on_report(filled, 0, quality, 1, 0.0, 0.0);
+    assert(!ledger.order_state(100).has_value());
+    assert(quality.audited_filled_orders == 1);
+    assert(quality.invalid_order_transitions == 1);
+
+    // The audit is closed, so the same terminal report again is an orphan, not a second transition.
+    ledger.on_report(filled, 0, quality, 1, 0.0, 0.0);
+    assert(quality.orphan_order_reports == 1);
 
     return 0;
 }

@@ -52,6 +52,10 @@ struct ExecutionQualityMetrics
     // a rejection is not a cancel the strategy asked for; the [EXECUTION] line prints it only when it is
     // non-zero, so every run that never sees a refusal keeps its recorded line.
     uint64_t audited_rejected_orders{0};
+    // State-machine health. A normal run leaves both at zero; they exist so a duplicate, late or
+    // out-of-order report is a visible count rather than a silent rewrite of an order's state.
+    uint64_t invalid_order_transitions{0};
+    uint64_t orphan_order_reports{0};
     uint64_t cancelled_after_fill_orders{0};
     uint64_t cancelled_before_fill_orders{0};
     // The same orders again, but by how much each of them filled. A commission's minimum per order is a
@@ -343,6 +347,10 @@ struct RunSummary
                << " min_commission_paid=" << execution_quality.min_commission_paid;
         if (execution_quality.audited_rejected_orders > 0)
             stream << " audited_rejected_orders=" << execution_quality.audited_rejected_orders;
+        if (execution_quality.invalid_order_transitions > 0)
+            stream << " invalid_order_transitions=" << execution_quality.invalid_order_transitions;
+        if (execution_quality.orphan_order_reports > 0)
+            stream << " orphan_order_reports=" << execution_quality.orphan_order_reports;
         stream << "\n[PORTFOLIO] " << portfolio.to_log_string()
                << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
                << " net_pnl_usd=" << pnl.net_pnl_usd

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -30,6 +31,19 @@ class IMatchingEngine;
 class OrderLedger
 {
    public:
+    // The state machine an audited order moves through. A terminal state closes the entry; the map holds
+    // only open orders, so a report that arrives after one of them is an orphan rather than another
+    // transition, which is exactly the duplicate/late-report case the counts below are for.
+    enum class OrderState : uint8_t
+    {
+        Pending = 0,
+        Resting,
+        PartiallyFilled,
+        Filled,
+        Cancelled,
+        Rejected
+    };
+
     OrderLedger(std::ofstream& orders_out, std::ofstream& trades_out);
 
     // Builds the order the engine will see from the order the strategy asked for. It stays here because
@@ -81,6 +95,11 @@ class OrderLedger
     // queue in front came while it waited, and how much of it was still there when the order left.
     void open_order(uint64_t order_id, uint64_t start_cycle, ExecutionQualityMetrics& quality);
 
+    // The state of an order that is still open, or no value once it has reached a terminal state. It is
+    // deliberately empty for a finished order: the audit entry is closed, and a caller that needs the
+    // final state should read the terminal counts in the summary.
+    std::optional<OrderState> order_state(uint64_t order_id) const;
+
     // The engine refused the order. Nothing rests and no report will ever arrive for it, so its entry goes
     // rather than staying to be counted forever as an order that never ended.
     void forget_order(uint64_t order_id);
@@ -88,7 +107,8 @@ class OrderLedger
     // The order rested: record the level, and the queue the model actually made it join behind. The level
     // exists only while one of our orders rests in it, which is why both ends of the measurement are taken
     // while the order is still there.
-    void mark_resting(const ExecutionReport& report, IMatchingEngine& engine);
+    void mark_resting(const ExecutionReport& report, IMatchingEngine& engine,
+                      ExecutionQualityMetrics& quality);
 
     // The strategy asked to cancel. False when the cancel was already requested, so the caller counts one
     // request per order rather than one per cycle. The queue still in front is read here, before the engine
@@ -174,6 +194,7 @@ class OrderLedger
     // reading taken then would report an empty queue for a level that was not empty.
     struct OrderAudit
     {
+        OrderState state{OrderState::Pending};
         uint64_t start_cycle{0};
         bool filled{false};
         // What the order filled in total, which is not the same quantity as any single fill. A share
@@ -195,6 +216,10 @@ class OrderLedger
         uint64_t min_queue_ahead{0};
         uint64_t queue_at_end{0};
     };
+    // The one place a transition is accepted or refused. It updates the state and counts a refusal, so a
+    // duplicate or out-of-order report is visible instead of silently moving an order backwards.
+    static bool transition(OrderState& state, OrderState next, ExecutionQualityMetrics& quality);
+
     std::unordered_map<uint64_t, OrderAudit> order_audit_;
     std::unordered_map<uint64_t, uint64_t> order_start_cycles_;
     std::unordered_set<uint64_t> pending_cancel_orders_;

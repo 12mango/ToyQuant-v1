@@ -412,6 +412,9 @@ The main comparison metrics are:
   cancel: pending quantity is released and the order leaves the strategy's open set. A `Cancelled` report
   carries `cancel_reason` (`user`, `venue`, `ioc`, `self_trade`, `timeout`), which is what lets a strategy
   distinguish its own cancel from the venue cancelling on it
+- `invalid_order_transitions`, `orphan_order_reports` — the state-machine health counters: a report that
+  would move an open order backwards, and a MarketMaker report for an order whose audit is already closed.
+  Both are zero in a normal run and appended to `[EXECUTION]` only when non-zero
 - `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is

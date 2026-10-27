@@ -36,7 +36,8 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, Strateg
         [this](const ExecutionReport& report)
         {
             ledger_.trace_report(report, current_ts_, engine_);
-            if (report.exec_type == ExecType::Resting) ledger_.mark_resting(report, engine_);
+            if (report.exec_type == ExecType::Resting)
+                ledger_.mark_resting(report, engine_, execution_quality_);
             if (report.owner == "MarketMaker") portfolio_.apply(report);
             // The notional a maker fill traded, which is what its fee was charged on. The breakeven fee rate
             // needs it, and it cannot be recovered from the fee itself once the rate is zero, which is

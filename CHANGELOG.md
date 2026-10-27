@@ -87,8 +87,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   as `Rejected` rather than `Cancelled`, so a strategy can tell a refusal from a cancel it asked for;
   `[EXECUTION]` appends `audited_rejected_orders` only when there is one. `Cancelled` also carries a
   `CancelReason` (`user`, `venue`, `ioc`, `self_trade`, `timeout`), so `trend_l2` backs off on a venue or
-  self-trade cancel but re-quotes immediately after its own. `tests/order_state_test.cpp` checks that the next
-  order is accepted after a refused one, which is the pending-reservation leak the old path could hide.
+  self-trade cancel but re-quotes immediately after its own. The ledger now has an explicit state machine
+  (Pending -> Resting -> PartiallyFilled -> Filled/Cancelled/Rejected); an illegal transition and a report for
+  an already-closed audit are counted rather than applied, and `[EXECUTION]` prints those counters only when
+  non-zero. `tests/order_state_test.cpp` checks that the next order is accepted after a refused one, which is
+  the pending-reservation leak the old path could hide.
 
 ## The measured line
 

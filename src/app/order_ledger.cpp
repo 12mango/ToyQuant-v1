@@ -126,6 +126,43 @@ void OrderLedger::trace_report(const ExecutionReport& report, uint64_t current_t
     trace_last_queue_ = queue;
     if (is_terminal(report.exec_type)) trace_level_known_ = false;
 }
+std::optional<OrderLedger::OrderState> OrderLedger::order_state(uint64_t order_id) const
+{
+    const auto audit = order_audit_.find(order_id);
+    if (audit == order_audit_.end()) return std::nullopt;
+    return audit->second.state;
+}
+
+bool OrderLedger::transition(OrderState& state, OrderState next, ExecutionQualityMetrics& quality)
+{
+    const auto allowed = [](OrderState from, OrderState to)
+    {
+        switch (from)
+        {
+            case OrderState::Pending:
+                return to == OrderState::Resting || to == OrderState::PartiallyFilled ||
+                       to == OrderState::Filled || to == OrderState::Cancelled ||
+                       to == OrderState::Rejected;
+            case OrderState::Resting:
+            case OrderState::PartiallyFilled:
+                return to == OrderState::PartiallyFilled || to == OrderState::Filled ||
+                       to == OrderState::Cancelled || to == OrderState::Rejected;
+            case OrderState::Filled:
+            case OrderState::Cancelled:
+            case OrderState::Rejected:
+                return false;
+        }
+        return false;
+    };
+    if (!allowed(state, next))
+    {
+        ++quality.invalid_order_transitions;
+        return false;
+    }
+    state = next;
+    return true;
+}
+
 void OrderLedger::open_order(uint64_t order_id, uint64_t start_cycle, ExecutionQualityMetrics& quality)
 {
     order_start_cycles_.insert_or_assign(order_id, start_cycle);
@@ -139,11 +176,13 @@ void OrderLedger::forget_order(uint64_t order_id)
     order_start_cycles_.erase(order_id);
 }
 
-void OrderLedger::mark_resting(const ExecutionReport& report, IMatchingEngine& engine)
+void OrderLedger::mark_resting(const ExecutionReport& report, IMatchingEngine& engine,
+                               ExecutionQualityMetrics& quality)
 {
     const auto resting_audit = order_audit_.find(report.order_id);
     if (resting_audit == order_audit_.end()) return;
     OrderAudit& audit = resting_audit->second;
+    if (!transition(audit.state, OrderState::Resting, quality)) return;
     audit.profiling = true;
     audit.symbol = report.symbol;
     audit.side = report.side == exchange::Side::Buy ? Side::Buy : Side::Sell;
@@ -221,6 +260,15 @@ double OrderLedger::on_report(const ExecutionReport& report, uint64_t quote_cycl
     auto audit = order_audit_.find(report.order_id);
     if (audit != order_audit_.end())
     {
+        if (report.exec_type == ExecType::Trade || report.exec_type == ExecType::PartialFill)
+            transition(audit->second.state, OrderState::PartiallyFilled, quality);
+        else if (report.exec_type == ExecType::Filled)
+            transition(audit->second.state, OrderState::Filled, quality);
+        else if (report.exec_type == ExecType::Cancelled)
+            transition(audit->second.state, OrderState::Cancelled, quality);
+        else if (report.exec_type == ExecType::Rejected)
+            transition(audit->second.state, OrderState::Rejected, quality);
+
         if (report.exec_type == ExecType::Trade) audit->second.filled = true;
         if (report.exec_type == ExecType::Trade)
             audit->second.filled_quantity += report.executed_quantity();
@@ -294,6 +342,13 @@ double OrderLedger::on_report(const ExecutionReport& report, uint64_t quote_cycl
             }
             order_audit_.erase(audit);
         }
+    }
+    else if (report.owner == "MarketMaker")
+    {
+        // A report for one of our orders whose audit is already closed: a duplicate terminal report, a
+        // late fill after a cancel, or a report the state machine never saw an open order for. It is
+        // counted rather than applied, because applying it would invent an order that is not open.
+        ++quality.orphan_order_reports;
     }
 
     if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")

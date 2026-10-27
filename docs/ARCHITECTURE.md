@@ -833,7 +833,11 @@ risk) and is not a cancel the strategy asked for; a post-submission venue or bro
 way, while a pre-trade refusal has no order id and uses `on_order_rejected` instead. `Cancelled` carries a
 `CancelReason` (user, venue, IOC, self-trade, timeout): a user cancel or an IOC expiry is expected, while a
 venue, self-trade or timeout cancel is treated like a rejection by `trend_l2`, which backs off instead of
-re-quoting immediately.
+re-quoting immediately. Inside the ledger an order moves Pending -> Resting -> PartiallyFilled ->
+Filled/Cancelled/Rejected; a transition that would move it backwards is counted in
+`invalid_order_transitions` instead of being applied, and a report for an order whose audit is already
+closed is counted in `orphan_order_reports`. Both counts are zero in a normal run and are printed only when
+non-zero.
 
 ### Strategy family map
 
@@ -1366,6 +1370,7 @@ addition to the cancelled report that removes the order from every strategy's op
 | `buy_queue_ahead_levels_cleared`, `sell_queue_ahead_levels_cleared` | Number of price levels whose external queue reached zero | L2 runtime and benchmark summary |
 | `audited_orders`, `audited_filled_orders`, `audited_cancelled_orders` | Order lifecycle terminal-state counts | Runtime summary |
 | `audited_rejected_orders` | Orders that ended in a venue, broker or timeout rejection, appended to `[EXECUTION]` only when non-zero. A rejection is terminal like a cancel but is not one the strategy asked for, which is why it has its own count and its own `RejectReason` | Runtime summary |
+| `invalid_order_transitions`, `orphan_order_reports` | A report that would move an open order backwards through Pending -> Resting -> PartiallyFilled -> terminal, and a MarketMaker report for an order whose audit is already closed. Both are state-machine health counts, zero in a normal run and appended to `[EXECUTION]` only when non-zero | Runtime summary |
 | `cancelled_after_fill_orders`, `cancelled_before_fill_orders` | Cancelled orders split by whether they had a fill | Runtime summary |
 | `orders_that_filled`, `filled_orders_by_size` | Filled order instances (a modification or a cancel and replace makes a new one) and their histogram in `count/quantity` buckets of `<=50, 51-99, 100-199, 200-499, 500-999, 1000+` shares, which is what a broker's minimum per order is charged on | Runtime summary |
 | `min_commission_orders`, `min_commission_paid` | Orders charged a schedule's floor under one order's commission, and what that floor added. Zero unless `--fee-schedule=min=...` names one; the charge itself is booked to `fees_paid` and `cash` when the order ends, because that is when the order's total is known | Runtime summary |
