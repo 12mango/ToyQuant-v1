@@ -17,8 +17,9 @@ legacy CSV / UDP / Binance ─────────────────�
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/verify_l2.sh fast` on every change |
 
-**This is a demo, not a trading system.** No connectivity, no persistence, no risk gateway, no market impact.
-The loop is meant to be readable in one sitting. What is worth reading is the engineering in sections 2 to 4.
+**This is a demo, not a trading system.** No exchange connectivity, no persistence, no market impact; the
+in-process pre-trade risk pipeline is not a broker or exchange risk gateway. The loop is meant to be readable
+in one sitting. What is worth reading is the engineering in sections 2 to 4.
 
 **What this document is not.** It is not the module reference — [Architecture](ARCHITECTURE.md) is — and it is
 not the measurement record: the numbers here are summaries of records that live in

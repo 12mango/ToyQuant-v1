@@ -7,6 +7,7 @@ project that is a mechanical answer: most of the claims here are re-derived by t
 
 | If you want to... | Read | Then |
 |---|---|---|
+| hand the project to another engineer or AI | [Project Brief](PROJECT_BRIEF.md) | [Design Review](DESIGN_REVIEW.md) for the argument and [Roadmap](ROADMAP.md) for the plan |
 | evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
 | understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the evidence |
 | read the code | [Main Line](MAINLINE.md) | the module reference in [Architecture](ARCHITECTURE.md) |
@@ -15,15 +16,17 @@ project that is a mechanical answer: most of the claims here are re-derived by t
 | know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](LATENCY_DESIGN.md) for why each change is faster |
 | see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the section named in whichever document quoted it |
 
-**If you only read one document, read the [Design Review](DESIGN_REVIEW.md).** It carries the constraints the
-project holds itself to, the decisions and the rejected alternatives behind each component, the measured
-headline results, an explicit list of what is wrong with the demo, and the three lengths of the same story
-for talking about it out loud.
+**If you want the one-page handoff, read the [Project Brief](PROJECT_BRIEF.md); if you want the argument,
+read the [Design Review](DESIGN_REVIEW.md).** The brief says what exists and what is deliberately out; the
+review carries the constraints the project holds itself to, the decisions and the rejected alternatives
+behind each component, the measured headline results, an explicit list of what is wrong with the demo, and
+the three lengths of the same story for talking about it out loud.
 
 ## Every document
 
 | Document | What it is for | Not the place for | Kept honest by |
 |---|---|---|---|
+| [Project Brief](PROJECT_BRIEF.md) | A one-page handoff: what exists, what is deliberately out, the demo boundary, commands and measured headlines | the argument (`DESIGN_REVIEW`), the module reference (`ARCHITECTURE`), or the plan (`ROADMAP`) | prose linted with the rest |
 | [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way, the C++ decisions with code anchors and measured effects, the headline results, the limitations, and the interview versions | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked by `tools/lint_prose.py`: the flags, the queue models, the tool paths, the size figures and the test-binary count it states, and the flags its own `--help` text names |
 | [Roadmap](ROADMAP.md) | The phases from this demo to a personal execution system, what each one buys, and what is deliberately not planned | what exists today, or how to run it | prose linted with the rest |
 | [Main Line](MAINLINE.md) | The order to read the source in, the measured result each step produced, what each step is arguing, and the per-part verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result (`LEARNING`) | prose linted |
@@ -41,7 +44,9 @@ for talking about it out loud.
 The loop is feed adapters, an order book, a strategy, a matching engine with an explicit queue model,
 execution reports, and a portfolio, in C++20 with CMake and a Python 3 toolchain for the measurement tools.
 
-It is not a production exchange stack, a connectivity layer, or a live-trading system. There is no market
-impact, no queue-position feedback from the strategy's own resting size, no persistence or recovery, and no
-risk gateway. Those exclusions are what keep the whole loop small enough to read in one sitting, and they are
-listed as limitations rather than hidden as gaps in the [Design Review](DESIGN_REVIEW.md).
+It is not a production exchange stack, a connectivity layer, or a live-trading system. There is no exchange
+connectivity or authentication, no market impact, no queue-position feedback from the strategy's own resting
+size, and no persistence or recovery. The pre-trade risk pipeline is in-process (kill switch, fat finger,
+rate, exposure, position), not a broker or exchange risk gateway. Those exclusions are what keep the whole
+loop small enough to read in one sitting, and they are listed as limitations rather than hidden as gaps in
+the [Design Review](DESIGN_REVIEW.md).
