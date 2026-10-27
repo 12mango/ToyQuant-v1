@@ -830,7 +830,10 @@ A report that ends an order is `Filled`, `Cancelled` or `Rejected`, and one `is_
 `exchange/execution_report.h` is what releases the pending quantity, closes the audit entry and removes
 the order from the strategy's open set. `Rejected` carries a `reject_reason` (venue, broker, timeout or
 risk) and is not a cancel the strategy asked for; a post-submission venue or broker refusal arrives this
-way, while a pre-trade refusal has no order id and uses `on_order_rejected` instead.
+way, while a pre-trade refusal has no order id and uses `on_order_rejected` instead. `Cancelled` carries a
+`CancelReason` (user, venue, IOC, self-trade, timeout): a user cancel or an IOC expiry is expected, while a
+venue, self-trade or timeout cancel is treated like a rejection by `trend_l2`, which backs off instead of
+re-quoting immediately.
 
 ### Strategy family map
 

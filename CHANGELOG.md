@@ -85,9 +85,10 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   terminal report releases the quantity the position gate reserved, closes the audit entry and removes the
   order from the strategy's open set. `Pipeline::handle_rejected_order` now reports a venue or broker refusal
   as `Rejected` rather than `Cancelled`, so a strategy can tell a refusal from a cancel it asked for;
-  `[EXECUTION]` appends `audited_rejected_orders` only when there is one. `tests/order_state_test.cpp`
-  checks that the next order is accepted after a refused one, which is the pending-reservation leak the old
-  path could hide.
+  `[EXECUTION]` appends `audited_rejected_orders` only when there is one. `Cancelled` also carries a
+  `CancelReason` (`user`, `venue`, `ioc`, `self_trade`, `timeout`), so `trend_l2` backs off on a venue or
+  self-trade cancel but re-quotes immediately after its own. `tests/order_state_test.cpp` checks that the next
+  order is accepted after a refused one, which is the pending-reservation leak the old path could hide.
 
 ## The measured line
 

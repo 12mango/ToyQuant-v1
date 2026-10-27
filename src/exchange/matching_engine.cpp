@@ -439,7 +439,8 @@ void MatchingEngine::cancel_order_immediate(uint64_t order_id)
                            .price = cancelled_order.price,
                            .quantity = cancelled_order.remaining,
                            .ts = cancelled_order.ts,
-                           .owner = cancelled_order.owner});
+                           .owner = cancelled_order.owner,
+                           .cancel_reason = CancelReason::User});
 }
 
 void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
@@ -489,7 +490,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                            .price = new_order.price,
                                            .quantity = qty,
                                            .ts = new_order.ts,
-                                           .owner = new_order.owner});
+                                           .owner = new_order.owner,
+                                           .cancel_reason = CancelReason::SelfTrade});
                     qty = 0;
                     break;
                 }
@@ -593,7 +595,8 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                            .price = new_order.price,
                                            .quantity = qty,
                                            .ts = new_order.ts,
-                                           .owner = new_order.owner});
+                                           .owner = new_order.owner,
+                                           .cancel_reason = CancelReason::SelfTrade});
                     qty = 0;
                     break;
                 }

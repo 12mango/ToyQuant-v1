@@ -409,7 +409,9 @@ The main comparison metrics are:
   is named, so a run that asks for neither keeps the summary it had
 - `audited_rejected_orders` — orders that ended in a venue, broker or timeout rejection, appended to
   `[EXECUTION]` only when non-zero. A `Rejected` report carries `reject_reason`, and it is terminal like a
-  cancel: pending quantity is released and the order leaves the strategy's open set
+  cancel: pending quantity is released and the order leaves the strategy's open set. A `Cancelled` report
+  carries `cancel_reason` (`user`, `venue`, `ioc`, `self_trade`, `timeout`), which is what lets a strategy
+  distinguish its own cancel from the venue cancelling on it
 - `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds
 
 A candidate must remain competitive across at least two moderate windows; a one-window PnL win is

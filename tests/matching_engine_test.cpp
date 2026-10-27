@@ -38,6 +38,8 @@ int main()
     {
         self_trade |= report.exec_type == ExecType::Trade;
         cancelled_aggressor |= report.order_id == 2 && report.exec_type == ExecType::Cancelled;
+        if (report.order_id == 2 && report.exec_type == ExecType::Cancelled)
+            assert(report.cancel_reason == CancelReason::SelfTrade);
     }
     assert(!self_trade);
     assert(cancelled_aggressor);
@@ -425,6 +427,11 @@ int main()
     assert(std::count_if(cancel_reports.begin(), cancel_reports.end(),
                          [](const ExecutionReport& report)
                          { return report.exec_type == ExecType::Cancelled; }) == 1);
+    const auto user_cancel = std::find_if(cancel_reports.begin(), cancel_reports.end(),
+                                          [](const ExecutionReport& report)
+                                          { return report.exec_type == ExecType::Cancelled; });
+    assert(user_cancel != cancel_reports.end());
+    assert(user_cancel->cancel_reason == CancelReason::User);
     cancel_engine.cancel_order(71);
     assert(std::count_if(cancel_reports.begin(), cancel_reports.end(),
                          [](const ExecutionReport& report)

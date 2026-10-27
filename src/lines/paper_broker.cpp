@@ -129,7 +129,8 @@ void PaperBroker::cancel_order(uint64_t order_id)
                                 .price = held.price,
                                 .quantity = held.remaining,
                                 .ts = held.ts,
-                                .owner = held.owner});
+                                .owner = held.owner,
+                                .cancel_reason = CancelReason::User});
         return;
     }
     venue_.cancel_order(order_id);

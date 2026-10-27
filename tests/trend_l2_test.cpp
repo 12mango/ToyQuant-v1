@@ -193,5 +193,65 @@ int main()
         assert(!h.on(100.20).empty());
     }
 
+    {
+        // A user cancel is expected: the order leaves the open set and the next view may re-quote at once.
+        Harness h(TrendL2Config{.order_size = 10,
+                                .max_position = 10,
+                                .tick_size = 0.01,
+                                .fast_views = 2,
+                                .slow_views = 4,
+                                .entry_ticks = 1.0,
+                                .exit_ticks = 0.2,
+                                .stop_ticks = 5.0,
+                                .max_holding_views = 100,
+                                .exit_cooldown_views = 0,
+                                .rejection_backoff_views = 2,
+                                .max_rejection_backoff_views = 8});
+        for (int index = 0; index < 4; ++index) h.on(100.00);
+        auto orders = h.on(100.10);
+        assert(orders.size() == 1);
+        h.strategy.on_order_update(ExecutionReport{.order_id = orders[0].order_id,
+                                                   .side = exchange::Side::Buy,
+                                                   .exec_type = ExecType::Cancelled,
+                                                   .symbol = "TEST",
+                                                   .price = orders[0].price,
+                                                   .quantity = orders[0].quantity,
+                                                   .ts = 0,
+                                                   .owner = "MarketMaker",
+                                                   .cancel_reason = CancelReason::User});
+        assert(h.strategy.working_order_count() == 0);
+        assert(!h.on(100.15).empty());
+    }
+    {
+        // A venue cancel is not expected: it backs off like a rejection.
+        Harness h(TrendL2Config{.order_size = 10,
+                                .max_position = 10,
+                                .tick_size = 0.01,
+                                .fast_views = 2,
+                                .slow_views = 4,
+                                .entry_ticks = 1.0,
+                                .exit_ticks = 0.2,
+                                .stop_ticks = 5.0,
+                                .max_holding_views = 100,
+                                .exit_cooldown_views = 0,
+                                .rejection_backoff_views = 2,
+                                .max_rejection_backoff_views = 8});
+        for (int index = 0; index < 4; ++index) h.on(100.00);
+        auto orders = h.on(100.10);
+        assert(orders.size() == 1);
+        h.strategy.on_order_update(ExecutionReport{.order_id = orders[0].order_id,
+                                                   .side = exchange::Side::Buy,
+                                                   .exec_type = ExecType::Cancelled,
+                                                   .symbol = "TEST",
+                                                   .price = orders[0].price,
+                                                   .quantity = orders[0].quantity,
+                                                   .ts = 0,
+                                                   .owner = "MarketMaker",
+                                                   .cancel_reason = CancelReason::SelfTrade});
+        assert(h.strategy.working_order_count() == 0);
+        assert(h.on(100.15).empty());
+        assert(!h.on(100.20).empty());
+    }
+
     return 0;
 }

@@ -314,7 +314,15 @@ inline void TrendL2Strategy::on_order_update(const ExecutionReport& report)
     if (is_terminal(report.exec_type))
     {
         open_orders_.erase(report.order_id);
-        if (report.exec_type == ExecType::Rejected) schedule_rejection_backoff();
+        // A user cancel or an IOC expiry is expected and may be re-quoted on the next view. A venue cancel,
+        // a self-trade prevention or a client timeout is the venue telling the strategy that its state or
+        // its flow is wrong, so it takes the same backoff as a rejection.
+        if (report.exec_type == ExecType::Rejected ||
+            (report.exec_type == ExecType::Cancelled &&
+             (report.cancel_reason == CancelReason::Venue ||
+              report.cancel_reason == CancelReason::SelfTrade ||
+              report.cancel_reason == CancelReason::Timeout)))
+            schedule_rejection_backoff();
         return;
     }
     if (report.exec_type != ExecType::Trade || order == open_orders_.end()) return;
