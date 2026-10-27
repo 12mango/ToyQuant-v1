@@ -839,6 +839,81 @@ Filled/Cancelled/Rejected; a transition that would move it backwards is counted 
 closed is counted in `orphan_order_reports`. Both counts are zero in a normal run and are printed only when
 non-zero.
 
+### Order state machine
+
+The ledger's state machine is deliberately small: it covers the life of one order from the moment the
+pipeline accepts it for submission to the report that ends it, and it is the one place a strategy's belief
+about an order can be checked against the report stream.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: open_order
+    Pending --> Resting: Resting
+    Pending --> PartiallyFilled: Trade / PartialFill
+    Pending --> Filled: Filled
+    Pending --> Cancelled: Cancelled
+    Pending --> Rejected: Rejected
+    Resting --> PartiallyFilled: Trade / PartialFill
+    Resting --> Filled: Filled
+    Resting --> Cancelled: Cancelled
+    Resting --> Rejected: Rejected
+    PartiallyFilled --> PartiallyFilled: Trade / PartialFill
+    PartiallyFilled --> Filled: Filled
+    PartiallyFilled --> Cancelled: Cancelled
+    PartiallyFilled --> Rejected: Rejected
+    Filled --> [*]
+    Cancelled --> [*]
+    Rejected --> [*]
+```
+
+| From | Event | To | Where it comes from |
+|---|---|---|---|
+| none | `open_order` | Pending | `Pipeline::submit_strategy_actions` after the risk checks |
+| Pending | `Resting` | Resting | `OrderLedger::mark_resting` |
+| Pending | `Trade` / `PartialFill` | PartiallyFilled | an immediate marketable fill |
+| Pending | `Filled` | Filled | a full fill, or a fill that never rested |
+| Pending | `Cancelled` | Cancelled | a cancel before the order rested |
+| Pending | `Rejected` | Rejected | `Pipeline::handle_rejected_order` for a venue or broker refusal |
+| Resting | `Trade` / `PartialFill` | PartiallyFilled | the first fill of a resting order |
+| Resting | `Filled` | Filled | a terminal fill report |
+| Resting | `Cancelled` | Cancelled | user, venue, IOC, self-trade or timeout cancel |
+| Resting | `Rejected` | Rejected | a venue or broker refusal |
+| PartiallyFilled | `Trade` / `PartialFill` | PartiallyFilled | more fills; the state does not move |
+| PartiallyFilled | `Filled` | Filled | the remaining quantity completed |
+| PartiallyFilled | `Cancelled` | Cancelled | the remainder was pulled |
+| PartiallyFilled | `Rejected` | Rejected | the remainder was refused |
+| Filled / Cancelled / Rejected | any further report | no state | counted in `orphan_order_reports` |
+| any open state | a backwards event, e.g. `Resting` after a fill | no state | counted in `invalid_order_transitions` |
+
+The three terminal states all run the same cleanup: release the quantity the position gate reserved, close
+the audit entry and remove the order from the strategy's open set. A `Rejected` is not a `Cancelled`: it
+carries a `RejectReason` (venue, broker, timeout or risk), while a `Cancelled` carries a `CancelReason`
+(user, venue, IOC, self-trade or timeout). The reasons are annotations on the terminal report; they do not
+add states.
+
+Two things are intentionally outside this machine:
+
+* **A pre-trade refusal** has no order id and no reservation, so it never enters the ledger. It is delivered
+  through `Strategy::on_order_rejected` and a strategy that retries must do so itself.
+* **A gateway timeout** is not a terminal state. The order is still `Pending` in the ledger, the gateway
+  counts it in `ack_timeouts`, and resolving it requires a query or a reconciliation step; treating a
+  timeout as a cancellation would be inventing a fact.
+
+| Component | State it owns | File |
+|---|---|---|
+| `MatchingEngine` | the resting book and the order index | `src/exchange/matching_engine.*` |
+| `OrderGateway` | unacknowledged/in-flight orders, retries and timeout counts | `src/lines/order_gateway.*` |
+| `PaperBroker` | held orders, its own statement and the reports it withholds | `src/lines/paper_broker.*` |
+| `RiskPipeline` | the pre-trade decision and its counters; no order state | `src/app/risk_pipeline.*` |
+| `Pipeline` | position and pending reservations, plus the report fan-out | `src/app/pipeline.*` |
+| `OrderLedger` | per-order state, audit and state-transition counters | `src/app/order_ledger.*` |
+| each `Strategy` | its own open-order set and retry policy | `src/strategy/*` |
+
+`tests/order_state_test.cpp` is the executable version of this table: it walks Pending -> Resting ->
+PartiallyFilled -> Filled, checks that a backwards `Resting` is refused, checks that a duplicate terminal
+report is an orphan, and checks that a refused order releases its pending reservation so the next order is
+accepted.
+
 ### Strategy family map
 
 | Family | Input view | Main purpose | Execution model |
