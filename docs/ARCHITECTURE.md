@@ -100,7 +100,7 @@ The source map is:
 | Hand-off between threads | `src/concurrency/spsc_ring.h` | `SpscRing::try_push`, `SpscRing::try_pop`, `LatencyHistogram` |
 | Coordination | `src/app/application.*`, `src/app/pipeline.*` | `Pipeline::process_event`, legacy adapter, output callbacks |
 | Market view | `src/orderbook/top_of_book.h`, `l2_orderbook.*`, `l2_market_view.h`, `tick_ladder.*` | `TopOfBook`, `L2OrderBook`, `L2MarketView`, `TickLadder` |
-| Matching | `src/exchange/matching_engine.*`, `queue_model.h` | `MatchingEngine::match`, `send_order`, `QueueAheadModel::advance_quantity` |
+| Matching | `src/exchange/matching_engine.*`, `queue_model.h` | `MatchingEngine::match`, `send_order`, `TimeInForce`, `QueueAheadModel::advance_quantity` |
 | Strategy | `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/lines/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, baseline pair, active L2 family |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
@@ -656,7 +656,9 @@ identity, comparison, and ordering deterministic while retaining readable public
 
 **Files:** `src/exchange/order.h`, `execution_report.h`, `matching_engine.*`, `queue_model.h`
 
-The exchange namespace defines the order vocabulary. `Order` carries identity, symbol, side, limit or market type, original quantity, remaining quantity, timestamp, and owner. `ExecutionReport` adds the event type and reports either a fill or a lifecycle transition.
+The exchange namespace defines the order vocabulary. `Order` carries identity, symbol, side, limit or market type,
+original quantity, remaining quantity, timestamp, owner, and a `TimeInForce` (`gtc`, `ioc` or `fok`).
+`ExecutionReport` adds the event type and reports either a fill or a lifecycle transition.
 
 ```cpp
 struct ExecutionReport
@@ -684,6 +686,14 @@ The main matching rules are:
     top-level quantity. Subsequent market trades consume this `external_queue_ahead` before local
     FIFO orders become eligible to fill. Ordinary L1 replay keeps its existing BBO semantics, so an
     L1 maker fill is not charged any queue position.
+- A good-till-cancelled (`gtc`) order rests any unfilled quantity. An IOC matches the external touch and the
+    internal book once, then emits `Cancelled` with `CancelReason::Ioc` for the remainder; it never rests. A
+    FOK first computes the same immediately available quantity (external touch plus resting book, with
+    self-trade prevention applied) and cancels with `CancelReason::Fok` without trading unless the whole
+    quantity is available.
+- `--participation-limit=X` caps the external-BBO part of an aggressive fill at X of the displayed best size.
+    It is a capacity cap: the fill price stays the displayed touch, the rest is left to the order's time in
+    force, and there is no price-impact model.
 
 The matching algorithm is a direct price-time implementation:
 
@@ -698,8 +708,9 @@ qty -= traded;
 resting.remaining -= traded;
 ```
 
-The engine emits `Trade` reports for executions, then `PartialFill` or `Filled` for the resting
-order. An unfilled incoming limit order receives `Resting` and enters the appropriate queue.
+The engine emits `Trade` reports for executions, then `PartialFill` or `Filled` for the resting order. An
+unfilled incoming limit order receives `Resting` and enters the appropriate queue only when it is GTC; an
+immediate order's remainder is cancelled by `send_order_now` after `match` returns it.
 
 ```mermaid
 flowchart TD
@@ -831,9 +842,9 @@ A report that ends an order is `Filled`, `Cancelled` or `Rejected`, and one `is_
 the order from the strategy's open set. `Rejected` carries a `reject_reason` (venue, broker, timeout or
 risk) and is not a cancel the strategy asked for; a post-submission venue or broker refusal arrives this
 way, while a pre-trade refusal has no order id and uses `on_order_rejected` instead. `Cancelled` carries a
-`CancelReason` (user, venue, IOC, self-trade, timeout): a user cancel or an IOC expiry is expected, while a
-venue, self-trade or timeout cancel is treated like a rejection by `trend_l2`, which backs off instead of
-re-quoting immediately. Inside the ledger an order moves Pending -> Resting -> PartiallyFilled ->
+`CancelReason` (user, venue, IOC, FOK, self-trade, timeout): a user cancel or an IOC/FOK expiry is expected,
+while a venue, self-trade or timeout cancel is treated like a rejection by `trend_l2`, which backs off instead
+of re-quoting immediately. Inside the ledger an order moves Pending -> Resting -> PartiallyFilled ->
 Filled/Cancelled/Rejected; a transition that would move it backwards is counted in
 `invalid_order_transitions` instead of being applied, and a report for an order whose audit is already
 closed is counted in `orphan_order_reports`. Both counts are zero in a normal run and are printed only when

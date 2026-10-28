@@ -63,6 +63,8 @@ constexpr std::string_view kKillSwitchPrefix = "--kill-switch-loss-usd=";
 constexpr std::string_view kFatFingerPrefix = "--fat-finger-bps=";
 constexpr std::string_view kMaxOrdersPerSecondPrefix = "--max-orders-per-second=";
 constexpr std::string_view kOrderBurstPrefix = "--order-burst=";
+constexpr std::string_view kParticipationLimitPrefix = "--participation-limit=";
+constexpr std::string_view kTimeInForcePrefix = "--time-in-force=";
 constexpr std::string_view kTrendParamsPrefix = "--trend-params=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
@@ -114,6 +116,15 @@ bool parse_unsigned(const std::string& value, uint64_t& result)
     return parsed.ec == std::errc{} && parsed.ptr == end;
 }
 
+bool parse_time_in_force(const std::string& value, TimeInForce& result)
+{
+    if (value == "gtc") result = TimeInForce::Gtc;
+    else if (value == "ioc") result = TimeInForce::Ioc;
+    else if (value == "fok") result = TimeInForce::Fok;
+    else return false;
+    return true;
+}
+
 bool parse_queue_model(const std::string& value, QueueModel& result)
 {
     if (value == "conservative") result = QueueModel::Conservative;
@@ -163,6 +174,11 @@ void print_usage(const char* executable)
         std::cerr << "   risk: --fat-finger-bps=X refuses an order priced more than X basis points from the "
                      "current midpoint, and --max-orders-per-second=X with --order-burst=N caps submissions "
                      "with a token bucket; 0 leaves each of them off\n";
+        std::cerr << "   capacity: --participation-limit=X caps one aggressive external-BBO fill at X of the "
+                     "displayed best size; 1.0 is off, and the execution price remains the touch\n";
+        std::cerr << "   time in force: --time-in-force=gtc|ioc|fok applies to every strategy order; gtc is "
+                     "the default, ioc cancels any immediate remainder, and fok cancels without trading "
+                     "unless the whole quantity is available\n";
         std::cerr << "   trend: --trend-params=FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,COOLDOWN_VIEWS"
                      "[,HOLDING_VIEWS]] sets the non-market-making signal; the view counts are decisions and "
                      "the bands are ticks\n";
@@ -689,6 +705,26 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.order_burst = burst;
+            }
+            else if (flag.compare(0, kParticipationLimitPrefix.size(), kParticipationLimitPrefix) == 0)
+            {
+                double limit = 0.0;
+                std::istringstream stream(flag.substr(kParticipationLimitPrefix.size()));
+                if (!(stream >> limit) || !(limit > 0.0) || limit > 1.0)
+                {
+                    error = "--participation-limit must be greater than 0 and at most 1";
+                    return false;
+                }
+                cfg.participation_limit = limit;
+            }
+            else if (flag.compare(0, kTimeInForcePrefix.size(), kTimeInForcePrefix) == 0)
+            {
+                if (!parse_time_in_force(flag.substr(kTimeInForcePrefix.size()), cfg.time_in_force))
+                {
+                    error = "--time-in-force must be gtc, ioc, or fok";
+                    return false;
+                }
+                cfg.time_in_force_set = true;
             }
             else if (flag.compare(0, kTrendParamsPrefix.size(), kTrendParamsPrefix) == 0)
             {

@@ -77,6 +77,12 @@ class ProbeStrategy : public Strategy
 
 int main()
 {
+    // The pipeline's translation has to carry the strategy's time in force, or the engine would see every
+    // order as GTC and an IOC/FOK request would silently rest.
+    const auto translated = OrderLedger::to_exchange_order(
+        StrategyOrder{Side::Buy, "TEST", 100.0, 10, 1, TimeInForce::Ioc}, 123, "MarketMaker");
+    assert(translated.time_in_force == TimeInForce::Ioc);
+
     // The two terminal states the rest of the code now shares.
     assert(is_terminal(ExecType::Filled));
     assert(is_terminal(ExecType::Cancelled));

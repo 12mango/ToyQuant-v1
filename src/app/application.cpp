@@ -67,6 +67,7 @@ MatchingEngineConfig Application::engine_config(const InstrumentSpec& instrument
         .cancel_latency_us = cfg_.cancel_latency_us,
         .lot_size = instrument.lot_size,
         .min_order_quantity = instrument.min_order_quantity,
+        .participation_limit = cfg_.participation_limit,
     };
 }
 
@@ -133,6 +134,7 @@ void Application::apply_pipeline_limits(Pipeline& pipeline) const
     pipeline.set_kill_switch_loss_usd(cfg_.kill_switch_loss_usd);
     pipeline.set_fat_finger_bps(cfg_.fat_finger_bps);
     pipeline.set_order_rate_limit(cfg_.max_orders_per_second, cfg_.order_burst);
+    pipeline.set_time_in_force(cfg_.time_in_force, cfg_.time_in_force_set);
     pipeline.set_trace_order(cfg_.trace_order);
 }
 

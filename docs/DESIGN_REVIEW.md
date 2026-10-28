@@ -11,7 +11,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 101 files, 19,857 lines: `app` 5312, `market` 3890, `legacy` 1851, `lines` 2602, `exchange` 1286, `strategy` 1611, `orderbook` 560, `backtest` 467, `utils` 488, `accounting` 342, `common` 679, `bench` 563, `concurrency` 176, `main` 30 |
+| **Size** | 101 files, 20,065 lines: `app` 5369, `market` 3890, `legacy` 1851, `lines` 2602, `exchange` 1409, `strategy` 1615, `orderbook` 560, `backtest` 467, `utils` 488, `accounting` 342, `common` 703, `bench` 563, `concurrency` 176, `main` 30 |
 | **Tests** | 26 CTest binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | 40 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, two lints |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
@@ -491,7 +491,8 @@ rows are in [Performance History](PERFORMANCE_HISTORY.md).
 
 * **No connectivity, no FIX, no recovery, no risk gateway, no persistence.** The loop is meant to be readable
   in one sitting, and none of those would make a single number here more trustworthy.
-* **No market impact and no feedback from our own resting size** into the queue in front of us.
+* **No market impact and no feedback from our own resting size** into the queue in front of us. The optional
+  participation cap is a capacity limit on the displayed touch, not a price-impact model.
 * **One venue, one instrument, one day.** Deribit BTC-PERPETUAL on 2020-04-01, in windows of 200,000 to
   2,000,000 rows.
 * **The queue is a model, not a reconstruction.** The feed carries aggregated quantities, not order

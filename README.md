@@ -98,7 +98,7 @@ The same input and parameters produce deterministic runtime CSV output for this 
 - **Four current modes** — legacy CSV scenarios, legacy UDP ticks, Binance Trade+BBO replay, and Deribit L2 trade+depth replay. The Deribit L2 path is the mainline: it is the only one that models the queue a quote waits behind, so every result in these documents comes from it. The other three are kept for compatibility and for pinned regression invariants.
 - **L2 strategy line** — `passive_l2` is the conservative baseline, `inventory_aware_l2` emphasizes position control, `flow_aware_l2` isolates flow behavior, and `active_l2` is the comprehensive mainline combining depth, micro-price, trade flow, inventory limits, toxicity protection, weak-flow protection, and volatility adaptation. `adaptive_l2` remains a compatibility alias for `active_l2`. `trend_l2` is the non-market-making line beside them: an EWMA cross sets a target position, clips at the touch build it, and a stop, a time stop or the exit band closes it.
 - **One v2 event path** — Binance replay uses `MarketEvent`; CSV and UDP remain compatibility inputs for the older `Tick` model.
-- **Price–time priority matching** with self-trade prevention and partial fills.
+- **Price–time priority matching** with self-trade prevention, partial fills, and GTC/IOC/FOK time in force.
 - **Stateful execution reports** — position and working orders update from trade, cancel, and fill events.
 - **Deterministic backtests** — realized/unrealized PnL and a reusable drawdown calculation.
 - **Small toolchain** — CMake, a C++20 compiler, and Python 3 for the optional scenario and report tools.

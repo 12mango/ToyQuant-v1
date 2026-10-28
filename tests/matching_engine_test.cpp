@@ -510,6 +510,124 @@ int main()
         assert(has_report(depth_reports, 81, ExecType::PartialFill, 15));
     }
 
+    // A participation limit caps one aggressive fill by the displayed size, leaving the rest resting. It is
+    // a capacity cap, not a price-impact model: the trade still prints at the displayed touch.
+    {
+        MatchingEngine capped_engine(PRICE_TICK_SIZE, FeeSchedule{},
+                                     MatchingEngineConfig{.participation_limit = 0.25});
+        std::vector<ExecutionReport> capped_reports;
+        capped_engine.set_report_callback([&capped_reports](const ExecutionReport& report)
+                                          { capped_reports.push_back(report); });
+        capped_engine.process_bbo({1000, "TEST", 100.0, 100, 100.1, 10, 1, "test"});
+        capped_engine.send_order({82, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 100.1,
+                                  10, 10, 1001, "MarketMaker"});
+
+        const auto capped_trade = std::find_if(capped_reports.begin(), capped_reports.end(),
+                                               [](const ExecutionReport& report) {
+                                                   return report.order_id == 82 &&
+                                                          report.exec_type == ExecType::Trade;
+                                               });
+        assert(capped_trade != capped_reports.end());
+        assert(capped_trade->quantity == 2);
+        assert(capped_trade->price == 100.1);
+        assert(has_report(capped_reports, 82, ExecType::PartialFill, 8));
+        assert(has_report(capped_reports, 82, ExecType::Resting, 8));
+    }
+
+    // An IOC takes the displayed size and cancels the rest instead of resting it.
+    {
+        MatchingEngine ioc_engine;
+        std::vector<ExecutionReport> ioc_reports;
+        ioc_engine.set_report_callback([&ioc_reports](const ExecutionReport& report)
+                                       { ioc_reports.push_back(report); });
+        ioc_engine.process_bbo({2000, "TEST", 100.0, 100, 100.1, 5, 1, "test"});
+        ioc_engine.send_order({83, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 100.1, 10,
+                               10, 2001, "MarketMaker", TimeInForce::Ioc});
+
+        assert(has_report(ioc_reports, 83, ExecType::Trade, 5));
+        assert(has_report(ioc_reports, 83, ExecType::PartialFill, 5));
+        assert(has_report(ioc_reports, 83, ExecType::Cancelled, 5));
+        assert(std::any_of(ioc_reports.begin(), ioc_reports.end(),
+                           [](const ExecutionReport& report) {
+                               return report.order_id == 83 &&
+                                      report.exec_type == ExecType::Cancelled &&
+                                      report.cancel_reason == CancelReason::Ioc;
+                           }));
+        assert(std::none_of(ioc_reports.begin(), ioc_reports.end(),
+                            [](const ExecutionReport& report)
+                            { return report.order_id == 83 && report.exec_type == ExecType::Resting; }));
+        assert(ioc_engine.query_order(83) == OrderQuery::Unknown);
+    }
+
+    // A FOK that cannot fill completely cancels without trading anything.
+    {
+        MatchingEngine fok_engine;
+        std::vector<ExecutionReport> fok_reports;
+        fok_engine.set_report_callback([&fok_reports](const ExecutionReport& report)
+                                       { fok_reports.push_back(report); });
+        fok_engine.process_bbo({3000, "TEST", 100.0, 100, 100.1, 5, 1, "test"});
+        fok_engine.send_order({84, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 100.1, 10,
+                               10, 3001, "MarketMaker", TimeInForce::Fok});
+
+        assert(std::none_of(fok_reports.begin(), fok_reports.end(),
+                            [](const ExecutionReport& report)
+                            { return report.order_id == 84 && report.exec_type == ExecType::Trade; }));
+        assert(std::any_of(fok_reports.begin(), fok_reports.end(),
+                           [](const ExecutionReport& report) {
+                               return report.order_id == 84 &&
+                                      report.exec_type == ExecType::Cancelled &&
+                                      report.cancel_reason == CancelReason::Fok &&
+                                      report.quantity == 10;
+                           }));
+        assert(fok_engine.query_order(84) == OrderQuery::Unknown);
+    }
+
+    // A FOK counts both the external touch and the engine's own resting book before it decides. Here the
+    // displayed size is half the order and a resting sell is the other half, so the whole order fills.
+    {
+        MatchingEngine split_fok_engine;
+        std::vector<ExecutionReport> split_fok_reports;
+        split_fok_engine.set_report_callback([&split_fok_reports](const ExecutionReport& report)
+                                             { split_fok_reports.push_back(report); });
+        split_fok_engine.send_order({86, "TEST", exchange::Side::Sell, exchange::OrderType::Limit, 100.1,
+                                     5, 5, 5001, "LiquidityProvider"});
+        split_fok_engine.process_bbo({5000, "TEST", 100.0, 100, 100.1, 5, 1, "test"});
+        split_fok_engine.send_order({87, "TEST", exchange::Side::Buy, exchange::OrderType::Limit, 100.1,
+                                     10, 10, 5002, "MarketMaker", TimeInForce::Fok});
+
+        uint64_t traded = 0;
+        for (const auto& report : split_fok_reports)
+            if (report.order_id == 87 && report.exec_type == ExecType::Trade)
+                traded += report.quantity;
+        assert(traded == 10);
+        assert(has_report(split_fok_reports, 87, ExecType::Filled, 0));
+        assert(std::none_of(split_fok_reports.begin(), split_fok_reports.end(),
+                            [](const ExecutionReport& report) {
+                                return report.order_id == 87 &&
+                                       report.exec_type == ExecType::Cancelled;
+                            }));
+    }
+
+    // A FOK with enough displayed size fills completely and never produces a cancel.
+    {
+        MatchingEngine fok_filled_engine;
+        std::vector<ExecutionReport> fok_filled_reports;
+        fok_filled_engine.set_report_callback(
+            [&fok_filled_reports](const ExecutionReport& report)
+            { fok_filled_reports.push_back(report); });
+        fok_filled_engine.process_bbo({4000, "TEST", 100.0, 100, 100.1, 10, 1, "test"});
+        fok_filled_engine.send_order({85, "TEST", exchange::Side::Buy, exchange::OrderType::Limit,
+                                      100.1, 10, 10, 4001, "MarketMaker", TimeInForce::Fok});
+
+        assert(has_report(fok_filled_reports, 85, ExecType::Trade, 10));
+        assert(has_report(fok_filled_reports, 85, ExecType::Filled, 0));
+        assert(std::none_of(fok_filled_reports.begin(), fok_filled_reports.end(),
+                            [](const ExecutionReport& report) {
+                                return report.order_id == 85 &&
+                                       report.exec_type == ExecType::Cancelled;
+                            }));
+    }
+
     MatchingEngine fee_engine(0.1, FeeSchedule{.maker_rate = 0.001, .taker_rate = 0.002, .quantity_scale = 100});
     std::vector<ExecutionReport> fee_reports;
     fee_engine.set_report_callback([&fee_reports](const ExecutionReport& report)

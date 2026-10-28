@@ -38,6 +38,30 @@ enum class QueueModel : uint8_t
     Optimistic
 };
 
+// How long an order may work. The default is a good-till-cancelled limit order, which is the only thing the
+// engine accepted before this existed. IOC takes whatever is immediately available and cancels the rest;
+// FOK does the same only if the whole quantity is available, and otherwise cancels without trading.
+enum class TimeInForce : uint8_t
+{
+    Gtc = 0,
+    Ioc,
+    Fok
+};
+
+inline const char* time_in_force_name(TimeInForce tif)
+{
+    switch (tif)
+    {
+        case TimeInForce::Gtc:
+            return "gtc";
+        case TimeInForce::Ioc:
+            return "ioc";
+        case TimeInForce::Fok:
+            return "fok";
+    }
+    return "unknown";
+}
+
 inline const char* queue_model_name(QueueModel model)
 {
     switch (model)

@@ -78,6 +78,13 @@ struct AppConfig
     double fat_finger_bps = 0.0;
     double max_orders_per_second = 0.0;
     uint64_t order_burst = 1;
+    // The share of the displayed best size an aggressive order may take in one fill. 1.0 is off.
+    double participation_limit = 1.0;
+    // The time in force applied to every strategy order. The set flag distinguishes the default from an
+    // explicit `--time-in-force=gtc`, so a strategy that chooses its own TIF is not silently overridden by
+    // a run that did not ask for one.
+    TimeInForce time_in_force = TimeInForce::Gtc;
+    bool time_in_force_set = false;
     // The non-market-making signal. A run that does not name --trend-params leaves `set` false and the
     // strategy's own defaults in force.
     TrendParams trend{};

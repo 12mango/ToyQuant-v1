@@ -112,12 +112,102 @@ void MatchingEngine::send_order_now(const exchange::Order& order)
     }
 
     const SymbolId id = symbol_id(order.symbol);
+    auto& book = books_[id];
+    const bool immediate = order.time_in_force != TimeInForce::Gtc;
+
+    // FOK has to know the whole quantity is available before it trades anything, because a partial fill
+    // followed by a cancel is exactly what fill-or-kill forbids. The check uses the same external capacity
+    // and the same book the matcher is about to use; a self-trade stops the count because the matcher will
+    // refuse to cross that order.
+    if (order.time_in_force == TimeInForce::Fok)
+    {
+        const uint64_t available = external_available(order, id) + internal_available(book, order);
+        if (available < order.remaining)
+        {
+            report(ExecutionReport{.order_id = order.id,
+                                   .side = order.side,
+                                   .exec_type = ExecType::Cancelled,
+                                   .symbol = order.symbol,
+                                   .price = order.price,
+                                   .quantity = order.remaining,
+                                   .ts = order.ts,
+                                   .owner = order.owner,
+                                   .cancel_reason = CancelReason::Fok});
+            return;
+        }
+    }
+
     Order remaining_order = order;
     match_external_bbo(id, remaining_order);
     if (remaining_order.remaining == 0) return;
 
-    auto& book = books_[id];
-    match(book, remaining_order, true);
+    const uint64_t unfilled = match(book, remaining_order, !immediate);
+    if (unfilled > 0 && immediate)
+    {
+        // The remainder of an immediate order never rests, so there is nothing to remove from the book:
+        // the terminal report is the only record that it ended. An IOC cancel is expected flow, while a
+        // FOK cancel is the all-or-nothing condition failing.
+        report(ExecutionReport{.order_id = order.id,
+                               .side = order.side,
+                               .exec_type = ExecType::Cancelled,
+                               .symbol = order.symbol,
+                               .price = order.price,
+                               .quantity = unfilled,
+                               .ts = order.ts,
+                               .owner = order.owner,
+                               .cancel_reason = order.time_in_force == TimeInForce::Ioc
+                                                    ? CancelReason::Ioc
+                                                    : CancelReason::Fok});
+    }
+}
+
+uint64_t MatchingEngine::external_available(const exchange::Order& order, SymbolId id) const
+{
+    const auto quote_it = external_bbo_.find(id);
+    if (quote_it == external_bbo_.end() || order.type != exchange::OrderType::Limit) return 0;
+    const BboQuote& quote = quote_it->second;
+    uint64_t displayed = 0;
+    if (order.side == exchange::Side::Buy && quote.ask_quantity > 0 &&
+        to_price_tick(order.price, tick_size_) >= to_price_tick(quote.ask_price, tick_size_))
+        displayed = quote.ask_quantity;
+    else if (order.side == exchange::Side::Sell && quote.bid_quantity > 0 &&
+             to_price_tick(order.price, tick_size_) <= to_price_tick(quote.bid_price, tick_size_))
+        displayed = quote.bid_quantity;
+    if (participation_limit_ < 1.0)
+        displayed = static_cast<uint64_t>(static_cast<double>(displayed) * participation_limit_);
+    return displayed;
+}
+
+uint64_t MatchingEngine::internal_available(const MEOrderBook& book, const exchange::Order& order) const
+{
+    uint64_t available = 0;
+    const PriceTick limit = to_price_tick(order.price, tick_size_);
+    const auto add_level = [&](const PriceLevel& level)
+    {
+        for (const auto& resting : level.orders)
+        {
+            if (is_self_trade(resting, order)) return false;
+            available += resting.remaining;
+            if (available >= order.remaining) return false;
+        }
+        return true;
+    };
+
+    if (order.side == exchange::Side::Buy)
+    {
+        for (auto it = book.asks.begin(); it != book.asks.end() && it->first <= limit; ++it)
+        {
+            if (!add_level(it->second)) break;
+        }
+    }
+    else
+    {
+        for (auto it = book.bids.begin(); it != book.bids.end() && it->first >= limit; ++it)
+        {
+            if (!add_level(it->second)) break;
+        }
+    }
+    return std::min(available, order.remaining);
 }
 
 // The symbol reaches the engine as a string once per entry point and is resolved to an id there, so
@@ -304,7 +394,12 @@ void MatchingEngine::match_external_bbo(SymbolId id, Order& order)
 
     if (!available_quantity) return;
 
-    const uint64_t traded = std::min(order.remaining, *available_quantity);
+    uint64_t fillable = *available_quantity;
+    if (participation_limit_ < 1.0)
+        fillable = static_cast<uint64_t>(
+            static_cast<double>(*available_quantity) * participation_limit_);
+    const uint64_t traded = std::min(order.remaining, fillable);
+    if (traded == 0) return;
     order.remaining -= traded;
     *available_quantity -= traded;
     report_trade(order, execution_price, traded, LiquidityRole::Taker, order.ts);
@@ -373,7 +468,7 @@ void MatchingEngine::process_market_order(SymbolId id, const std::string& symbol
         ts,
         "Market"};
     auto& book = books_[id];
-    match(book, market_order, false);
+    (void)match(book, market_order, false);
 }
 
 void MatchingEngine::cancel_order(uint64_t order_id)
@@ -443,7 +538,7 @@ void MatchingEngine::cancel_order_immediate(uint64_t order_id)
                            .cancel_reason = CancelReason::User});
 }
 
-void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
+uint64_t MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
 {
     Order new_order = incoming;  // Copy because matching updates remaining quantity.
     uint64_t& qty = new_order.remaining;
@@ -659,4 +754,5 @@ void MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_i
                                    .owner = new_order.owner});
         }
     }
+    return qty;
 }

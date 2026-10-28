@@ -1,6 +1,6 @@
 # The main line: the order to read this repository in, and what to drop
 
-This repository is 19,857 lines of source and 26 test binaries, and most of that is not the thing worth learning from.
+This repository is 20,065 lines of source and 26 test binaries, and most of that is not the thing worth learning from.
 **The main line is about 5,000 lines**, and it is the path a single market event takes: a file becomes an event, an
 event becomes a book, a book becomes a decision, a decision becomes an order, an order becomes a fill, a fill becomes
 cash, and cash becomes the number a document quotes. Everything else is either evidence for a closed line, a
@@ -34,7 +34,7 @@ measured result that step produced**, so that reading the code and reading the e
 | 3 | `src/app/pipeline.*` | One event coordinated: filters, the L2 view, the strategy call, the engine call, the summary counters | The filters that stop a trade without a usable BBO from creating a synthetic fill |
 | 4 | `src/strategy/strategy.h`, `src/strategy/l2_market_maker_base.h` | The decision, smallest first: quote both sides, refresh on a price move, die on an age | The queue-preservation rule, and why a quote that is not repriced keeps its place |
 | 5 | `src/strategy/inventory_aware_l2_market_maker.h`, `src/strategy/active_l2_market_maker.h` | The same decision with inventory, toxicity, a volatility halt and the markout gate | The inventory shift made the ratio worse; the markout gate cut the one-tick loss from 0.859 to 0.050 |
-| 6 | `src/exchange/matching_engine.*` | Whether a quote fills: price–time priority, the four queue models, self-trade prevention, partial fills | The bound sweep: the conclusions do not move between the conservative and the optimistic model |
+| 6 | `src/exchange/matching_engine.*` | Whether a quote fills: price–time priority, the four queue models, self-trade prevention, partial fills, and the IOC/FOK terminal paths | The bound sweep: the conclusions do not move between the conservative and the optimistic model |
 | 7 | `src/exchange/matching_engine.*` (`fee_on_fill`) | What a fill costs: maker and taker rates, a commission a unit, a floor a **order instance**, a fee on a sale's proceeds, a credit for adding liquidity | The floor binds on 79 percent of order instances; a cancel and replace makes a new order |
 | 8 | `src/accounting/portfolio.*` | Cash, position, equity, realized and unrealized PnL, and a flow that accrues an interval at a time | The split that made quoting and carrying a position separable numbers |
 | 9 | `src/app/run_summary.h`, `src/app/pipeline.*` | What a run reports: the execution line, the order audit, the queue ratios, the markout, the minimum commission paid | Every table in [Performance History](PERFORMANCE_HISTORY.md) is one of these lines |

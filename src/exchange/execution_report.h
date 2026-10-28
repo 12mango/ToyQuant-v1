@@ -60,6 +60,7 @@ enum class CancelReason : uint8_t
     User,
     Venue,
     Ioc,
+    Fok,
     SelfTrade,
     Timeout
 };
@@ -74,6 +75,8 @@ inline const char* cancel_reason_name(CancelReason reason)
             return "venue";
         case CancelReason::Ioc:
             return "ioc";
+        case CancelReason::Fok:
+            return "fok";
         case CancelReason::SelfTrade:
             return "self_trade";
         case CancelReason::Timeout:

@@ -477,6 +477,8 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--fat-finger-bps=X` | Refuse an order whose price is more than X basis points from the current midpoint. It runs before the rate bucket and before the exposure and position gates, so a bad price spends neither a token nor a reservation | Off: no price band |
 | `--max-orders-per-second=X` | Cap submissions with a token bucket at X orders a second. A rejected order consumes no token, a reducing order passes without one, and the bucket runs after the price band and before the exposure gate | Off: no rate cap |
 | `--order-burst=N` | The bucket's size in orders; only meaningful with `--max-orders-per-second` | 1 |
+| `--participation-limit=X` | Cap one aggressive fill against the external touch at X of the displayed best size. The rest of the order is left to rest (GTC) or to its time in force. The execution price remains the touch, so this is a capacity cap rather than a price-impact model | 1.0, which takes the whole displayed size |
+| `--time-in-force=MODE` | Apply one time in force to every strategy order: `gtc`, `ioc` or `fok`. IOC takes the immediately available quantity and cancels the remainder; FOK checks the external touch and the internal book first and either fills completely or cancels without trading. Both end with a `Cancelled` report whose reason is `ioc` or `fok`, and neither leaves a `Resting` order | `gtc`, the historical behaviour |
 | `--trend-params=FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,COOLDOWN_VIEWS[,HOLDING_VIEWS]]` | The non-market-making signal: the two EWMA view counts, the entry, exit and stop bands in ticks, and optionally the post-stop cooldown and the time stop. Only `trend_l2` reads it | The strategy's own defaults: 10, 60, 2, 0.5, 6, 60, 2000 |
 | `--inventory-shift-ticks=X` | How far the inventory-aware strategy moves its quote centre at a full inventory, in ticks: the reservation price of Avellaneda and Stoikov in the form this engine can use, where the shift is proportional to the position rather than solved from a risk aversion. The unit matters as much as the number: the shift is in ticks against a quote spacing set by `--base-spread-ticks`, so at a one-tick spacing a shift of six is six times the half spread, which is far more aggressive than the model's optimal and is what the recorded sweep found | Off: the strategy's own 2.0 |
 | `--markout-cover` | Quote only where the capture also covers what passive fills at that distance have cost, measured from our own resolved fills | Off |
@@ -498,6 +500,14 @@ defaults, so a run without them reproduces the recorded numbers byte for byte:
 | `--order-gateway` | Put the client's side of the order path outside the broker: keep a table of orders from submission to answer, absorb a retry under the same client id, and report `[GATEWAY]` | Off, the plain venue |
 | `--gateway-ack-timeout-us=N` | Count an order the venue has not answered within N microseconds of market time | 0, count none |
 | `--gateway-retry-timeouts` | Re-send a timed-out order under the same client id, which the venue refuses as a duplicate | Off |
+
+An immediate order is terminal even when it does not fill. An IOC that takes part of the displayed size emits
+its fills and then a `Cancelled` for the remainder; a FOK that cannot fill the whole quantity emits no trade at
+all, just the cancel. The `participation-limit` is applied before either decision, so a FOK can fail because the
+cap leaves too little displayed capacity even when the raw BBO size would have been enough. `--time-in-force`
+overrides every strategy order, which is useful with the taker line (`trend_l2`) and deliberately hostile to a
+passive market maker: an IOC quote that does not cross is cancelled in the same event, so use the default `gtc`
+for the quoting strategies.
 
 ### Funding as an input
 

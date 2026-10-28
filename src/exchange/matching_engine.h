@@ -89,6 +89,10 @@ struct MatchingEngineConfig
     uint64_t cancel_latency_us{0};
     uint64_t lot_size{1};
     uint64_t min_order_quantity{1};
+    // The share of the displayed best size an aggressive order may take in one external-BBO fill. 1.0 is
+    // off; a smaller value keeps a replay from consuming more liquidity than the book actually showed. It is
+    // a capacity cap, not a price-impact model: the execution price is still the displayed touch.
+    double participation_limit{1.0};
 };
 
 struct MEOrderBook
@@ -202,7 +206,12 @@ class MatchingEngine : public IMatchingEngine
                     cancel_delay_events_(config.cancel_delay_events),
                     lot_size_(config.lot_size == 0 ? 1 : config.lot_size),
                     min_order_quantity_(config.min_order_quantity == 0 ? 1
-                                                                      : config.min_order_quantity)
+                                                                      : config.min_order_quantity),
+                    participation_limit_(config.participation_limit <= 0.0
+                                             ? 0.0
+                                             : config.participation_limit >= 1.0
+                                                   ? 1.0
+                                                   : config.participation_limit)
     {
     }
 
@@ -306,12 +315,19 @@ class MatchingEngine : public IMatchingEngine
     // The body of process_bbo, with the symbol already resolved.
     void process_bbo_for(SymbolId id, const BboQuote& quote);
     void match_external_bbo(SymbolId id, exchange::Order& order);
+    // What an order could trade immediately, used to decide FOK before any fill is applied. The external
+    // term is capped by participation_limit_; the internal term is the resting book inside the limit price
+    // and stops at a self-trade, because the matcher would refuse to cross it.
+    uint64_t external_available(const exchange::Order& order, SymbolId id) const;
+    uint64_t internal_available(const MEOrderBook& book, const exchange::Order& order) const;
     void cancel_order_immediate(uint64_t order_id);
     void apply_pending_cancels();
     uint64_t displayed_quantity_ahead(const exchange::Order& order) const;
     void process_market_order(SymbolId id, const std::string& symbol, Side side, double price,
                               uint64_t quantity, uint64_t ts);
-    void match(MEOrderBook& book, const exchange::Order& incoming, bool rest_incoming);
+    // Returns the quantity still unfilled. A good-till-cancelled order with a positive return rests it; an
+    // immediate order is cancelled by send_order_now instead.
+    uint64_t match(MEOrderBook& book, const exchange::Order& incoming, bool rest_incoming);
     void report_trade(const exchange::Order& order, double price, uint64_t quantity,
                       LiquidityRole liquidity_role, uint64_t ts);
     void report(const ExecutionReport& rpt)
@@ -382,4 +398,7 @@ class MatchingEngine : public IMatchingEngine
     // it was given them: a quantity below the minimum or off the lot grid is not a tradeable order anywhere.
     uint64_t lot_size_{1};
     uint64_t min_order_quantity_{1};
+    // Applied only in match_external_bbo: the internal book is already a finite queue, while the external
+    // best size is a display that a large order should not consume in one print.
+    double participation_limit_{1.0};
 };

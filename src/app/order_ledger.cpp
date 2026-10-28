@@ -46,6 +46,7 @@ exchange::Order OrderLedger::to_exchange_order(const StrategyOrder& strategy_ord
     order.remaining = strategy_order.quantity;
     order.ts = ts;
     order.owner = owner;
+    order.time_in_force = strategy_order.time_in_force;
     return order;
 }
 

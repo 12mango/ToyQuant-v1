@@ -33,17 +33,17 @@ existing design, architecture and user documents are the whole plan.
 | Part of a trading system | State | Next useful increment | Priority |
 |---|---|---|---|
 | market data: replay, recorder, local websocket | done | none for the demo | done |
-| L2 book, queue models, fees, latency | done | optional participation/slippage cap | P1 |
-| matching, partial fills, self-trade prevention | done | optional cancel/replace semantics | P2 |
+| L2 book, queue models, fees, latency | done; participation cap added | price impact remains out of scope | done |
+| matching, partial fills, self-trade prevention, IOC/FOK | done | optional cancel/replace semantics | P2 |
 | strategy framework and market making | done | none | done |
 | non-market-making line | `trend_l2` plus a measured negative result | another signal only if it teaches a new point | P2 |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
-| order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release | timeout/query visibility done; recovery policy remains P2 | done |
+| order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
 | portfolio and PnL | single instrument | multi-instrument and portfolio | P2 |
 | broker and gateway simulation | paper broker plus gateway faults and timeout queries | client-order-id recovery remains P2 | done |
 | persistence and recovery | missing | out of the demo; would need a venue-like query | P3 |
 | live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
-| market impact and realistic taker fills | missing; the 100% touch-fill assumption is stated | one small participation cap if it buys a lesson | P1 |
+| market impact and realistic taker fills | partial: capacity cap only; there is still no price-impact model | none inside the current boundary | done |
 | out-of-sample, Sharpe and capacity | not a demo goal | out of the demo | out |
 | documents and the maintained plan | done: one plan, no new documents | keep it current; no interview material required | done |
 
@@ -60,10 +60,14 @@ existing design, architecture and user documents are the whole plan.
 5. **Order timeout and query visibility — done.** `OrderQuery` lets the gateway ask whether the venue still
    holds a timed-out order; `[GATEWAY]` reports `unacknowledged`, `timeouts_queried`, `timeouts_working` and
    `timeouts_unknown`. Neither query result is a fill or a cancel; the ledger stays `Pending` until a report.
-6. **Participation cap only.** Cap the size an aggressive order can take from displayed liquidity; do not add
-   a price-impact model.
-7. **IOC/FOK, not cancel/replace.** Add a time-in-force field and cancel the unfilled remainder for IOC/FOK.
-   Cancel/replace stays deferred: it needs old/new id mapping, queue-priority reset, and a replace race.
+6. **Participation cap only — done.** `--participation-limit=X` caps one aggressive external-BBO fill at X
+   of the displayed best size, leaving the rest to rest or to the order's time in force. The execution price
+   is still the touch; there is deliberately no price-impact model.
+7. **IOC/FOK, not cancel/replace — done.** `TimeInForce` is carried by `StrategyOrder` and `exchange::Order`;
+   an IOC cancels its immediate remainder with `CancelReason::Ioc`, and a FOK checks the external touch and
+   the internal book first, then either fills completely or cancels with `CancelReason::Fok` without trading.
+   `--time-in-force=gtc|ioc|fok` applies one setting to every strategy order. Cancel/replace stays deferred:
+   it needs old/new id mapping, queue-priority reset, and a replace race.
 8. **Demo script.** Put the existing `verify_l2.sh`, `risk_check.sh` and `trend_sweep.sh` in one ordered
    command list with the expected lines; no new strategy.
 
@@ -100,6 +104,7 @@ Accepted: a bug fix, a test or explanation of existing behaviour, or a demo scri
 | 2026-10-28 | Consolidated the plan here; removed `PROJECT_BRIEF` and the separate decision log; reset the boundary to "deferred, can be lifted" | `2d23d5d` |
 | 2026-10-28 | Removed the interview walkthrough/Q&A from P0; the plan is project-quality only | `2078958` |
 | 2026-10-28 | P1-1 done: gateway timeout query/reconciliation; P1-2 is a participation cap only; P1-3 is IOC/FOK, cancel/replace deferred | this commit |
+| 2026-10-28 | P1-2 and P1-3 done: external-BBO participation cap, `TimeInForce` on orders, IOC/FOK terminal cancels, `--participation-limit` and `--time-in-force`; P1-4 remains | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan

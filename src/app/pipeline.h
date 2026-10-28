@@ -78,6 +78,14 @@ class Pipeline
         risk_pipeline_.set_order_rate_limit(orders_per_second, burst);
     }
 
+    // Applies one time in force to every order the strategy submits. `override_order` is false unless the
+    // run named the flag, which leaves a strategy's own choice intact by default.
+    void set_time_in_force(TimeInForce tif, bool override_order)
+    {
+        time_in_force_ = tif;
+        time_in_force_override_ = override_order;
+    }
+
     bool kill_switch_triggered() const
     {
         return risk_pipeline_.kill_switch_triggered();
@@ -181,6 +189,8 @@ class Pipeline
     uint64_t submitted_orders_{0};
     uint64_t submitted_quantity_{0};
     uint64_t cancel_requests_{0};
+    TimeInForce time_in_force_{TimeInForce::Gtc};
+    bool time_in_force_override_{false};
     uint64_t trade_reports_{0};
     uint64_t trade_report_quantity_{0};
     uint64_t last_buy_queue_ahead_consumed_{0};

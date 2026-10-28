@@ -17,11 +17,15 @@ struct StrategyOrder
     double price = 0.0;
     uint64_t quantity = 0;
     uint64_t order_id = 0;
+    // The strategy can ask for an immediate order without knowing how the pipeline or venue represent it.
+    // A good-till-cancelled order is the default, so existing strategy code and recorded runs are unchanged.
+    TimeInForce time_in_force{TimeInForce::Gtc};
 
     StrategyOrder() = default;
 
-    StrategyOrder(Side s, const std::string& sym, double p, uint64_t qty, uint64_t id)
-        : side(s), symbol(sym), price(p), quantity(qty), order_id(id)
+    StrategyOrder(Side s, const std::string& sym, double p, uint64_t qty, uint64_t id,
+                  TimeInForce tif = TimeInForce::Gtc)
+        : side(s), symbol(sym), price(p), quantity(qty), order_id(id), time_in_force(tif)
     {
     }
 };

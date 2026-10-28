@@ -64,6 +64,16 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   time, and re-sends it under the same id where the venue's duplicate check makes the retry safe. Reported as
   `[GATEWAY]`; with every knob at zero the run reports the numbers of the same run without it, and with a
   timeout and a retry the run reports the numbers of the same run with neither.
+- **A participation cap that is only a capacity cap.** `--participation-limit=X` caps one aggressive
+  external-BBO fill at X of the displayed best size. The fill price stays the touch and the remainder follows
+  the order's time in force, so the simulator does not acquire a price-impact model or a new calibration.
+- **IOC and FOK as order semantics, not strategy hacks.** `TimeInForce` lives on `StrategyOrder` and
+  `exchange::Order`; the matcher returns its unfilled quantity, and the engine cancels an immediate remainder
+  with `CancelReason::Ioc`. A FOK pre-checks external plus internal capacity, including the participation cap
+  and self-trade stopping, then fills completely or cancels with `CancelReason::Fok` without a print.
+  `--time-in-force=gtc|ioc|fok` applies it to a run; `tests/matching_engine_test.cpp` covers the cap, IOC,
+  FOK-unfilled, FOK-filled and the split external/internal FOK. GTC remains the default, so existing runs are
+  byte-for-byte unchanged.
 - **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's
@@ -92,7 +102,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   order from the strategy's open set. `Pipeline::handle_rejected_order` now reports a venue or broker refusal
   as `Rejected` rather than `Cancelled`, so a strategy can tell a refusal from a cancel it asked for;
   `[EXECUTION]` appends `audited_rejected_orders` only when there is one. `Cancelled` also carries a
-  `CancelReason` (`user`, `venue`, `ioc`, `self_trade`, `timeout`), so `trend_l2` backs off on a venue or
+  `CancelReason` (`user`, `venue`, `ioc`, `fok`, `self_trade`, `timeout`), so `trend_l2` backs off on a venue or
   self-trade cancel but re-quotes immediately after its own. The ledger now has an explicit state machine
   (Pending -> Resting -> PartiallyFilled -> Filled/Cancelled/Rejected); an illegal transition and a report for
   an already-closed audit are counted rather than applied, and `[EXECUTION]` prints those counters only when

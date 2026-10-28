@@ -486,6 +486,7 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
                 pending_sell_quantity_ += static_cast<int64_t>(order.quantity);
         }
         order.order_id = next_order_id_++;
+        if (time_in_force_override_) order.time_in_force = time_in_force_;
         auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
         ++submitted_orders_;
         submitted_quantity_ += order.quantity;
