@@ -136,6 +136,13 @@ void PaperBroker::cancel_order(uint64_t order_id)
     venue_.cancel_order(order_id);
 }
 
+OrderQuery PaperBroker::query_order(uint64_t order_id) const
+{
+    for (const exchange::Order& order : held_)
+        if (order.id == order_id) return OrderQuery::Working;
+    return venue_.query_order(order_id);
+}
+
 void PaperBroker::release_held()
 {
     // Swapped out before sending, so a venue that reports a fill synchronously cannot find the queue it

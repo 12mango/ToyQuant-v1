@@ -80,6 +80,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   path, in addition to the cancelled report that removes the order from the open set. The rate bucket, the
   exposure cap and the position gate also let a reducing order through, so a position that is too large can be
   worked down instead of trapped. `tools/risk_check.sh` holds the four runs.
+- **A timeout is a query, not a fake cancel.** `OrderQuery` lets the gateway ask the venue whether it still
+  holds an order that has not answered; `[GATEWAY]` reports `unacknowledged`, `timeouts_queried`,
+  `timeouts_working` and `timeouts_unknown`. The ledger keeps the order `Pending` until a real report, because
+  `Working` and `Unknown` are not a fill or a cancel. `tests/order_gateway_test.cpp` covers a timeout with no
+  retry: the query is `Unknown` before the order lands, `Working` after it rests, and no terminal report is
+  invented.
 - **A terminal order state, including rejection.** `ExecType` gains `Rejected` and `RejectReason` (venue,
   broker, timeout, risk), and the pipeline, ledger and strategies share one `is_terminal` predicate: a
   terminal report releases the quantity the position gate reserved, closes the audit entry and removes the

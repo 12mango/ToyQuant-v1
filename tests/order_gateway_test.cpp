@@ -53,6 +53,7 @@ int main()
         assert(gateway.in_flight() == 1);
         assert(gateway.summary().submissions == 1);
         assert(gateway.summary().acks == 1);
+        assert(gateway.query_order(1) == OrderQuery::Working);
 
         // The same client id again is a retry: the venue already has the order, so it never sees this.
         gateway.send_order(resting_buy(1, 11));
@@ -64,6 +65,7 @@ int main()
         gateway.cancel_order(1);
         assert(seen.back().exec_type == ExecType::Cancelled);
         assert(gateway.in_flight() == 0);
+        assert(gateway.query_order(1) == OrderQuery::Unknown);
 
         // The order is gone, so the second cancel is counted and not forwarded.
         gateway.cancel_order(1);
@@ -108,6 +110,37 @@ int main()
         assert(venue.rejected_orders() == 1);
         assert(gateway.rejected_orders() == venue.rejected_orders());
         assert(gateway.in_flight() == 1);
+    }
+
+    // 3. A timeout with no retry is a visible, reconciled state, not a synthetic cancel. The venue has
+    //    not received the order yet at 1060, so the query says Unknown and the order stays in flight;
+    //    at 1100 it lands, the report clears the unacknowledged count, and a query says Working.
+    {
+        MatchingEngine venue(PRICE_TICK_SIZE, FeeSchedule{},
+                             MatchingEngineConfig{.order_latency_us = 100});
+        OrderGateway gateway(venue, GatewayConfig{.ack_timeout_us = 50});
+        std::vector<ExecutionReport> seen;
+        gateway.set_report_callback([&seen](const ExecutionReport& report)
+                                    { seen.push_back(report); });
+
+        gateway.send_order(resting_buy(1, 1000));
+        gateway.process_bbo(quote_at(1060));
+        assert(gateway.summary().ack_timeouts == 1);
+        assert(gateway.summary().timeouts_queried == 1);
+        assert(gateway.summary().timeouts_unknown == 1);
+        assert(gateway.summary().timeouts_working == 0);
+        assert(gateway.summary().unacknowledged == 1);
+        assert(gateway.in_flight() == 1);
+        assert(gateway.query_order(1) == OrderQuery::Unknown);
+        assert(seen.empty());
+
+        gateway.process_bbo(quote_at(1100));
+        assert(seen.size() == 1);
+        assert(seen.back().exec_type == ExecType::Resting);
+        assert(gateway.summary().acks == 1);
+        assert(gateway.summary().unacknowledged == 0);
+        assert(gateway.in_flight() == 1);
+        assert(gateway.query_order(1) == OrderQuery::Working);
     }
 
     return 0;

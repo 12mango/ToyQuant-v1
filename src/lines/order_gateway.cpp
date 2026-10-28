@@ -8,6 +8,10 @@ std::string GatewaySummary::to_log_string() const
     return "submissions=" + std::to_string(submissions) +
            " duplicates_suppressed=" + std::to_string(duplicates_suppressed) +
            " acks=" + std::to_string(acks) + " ack_timeouts=" + std::to_string(ack_timeouts) +
+           " unacknowledged=" + std::to_string(unacknowledged) +
+           " timeouts_queried=" + std::to_string(timeouts_queried) +
+           " timeouts_working=" + std::to_string(timeouts_working) +
+           " timeouts_unknown=" + std::to_string(timeouts_unknown) +
            " retries=" + std::to_string(retries) +
            " retry_rejections=" + std::to_string(retry_rejections) +
            " venue_rejects=" + std::to_string(venue_rejects) +
@@ -70,6 +74,7 @@ void OrderGateway::send_order(const exchange::Order& order)
         ++summary_.venue_rejects;
         in_flight_.erase(order.id);
     }
+    refresh_unacknowledged();
 }
 
 void OrderGateway::cancel_order(uint64_t order_id)
@@ -117,12 +122,24 @@ void OrderGateway::on_venue_report(const ExecutionReport& report)
         }
         if (tracked.remaining == 0) in_flight_.erase(entry);
     }
+    refresh_unacknowledged();
     forward(report);
 }
 
 void OrderGateway::forward(const ExecutionReport& report)
 {
     if (consumer_) consumer_(report);
+}
+
+void OrderGateway::refresh_unacknowledged()
+{
+    uint64_t count = 0;
+    for (const auto& [id, tracked] : in_flight_)
+    {
+        (void)id;
+        if (tracked.timed_out && !tracked.answered) ++count;
+    }
+    summary_.unacknowledged = count;
 }
 
 void OrderGateway::sweep_timeouts(uint64_t now_ts)
@@ -133,13 +150,30 @@ void OrderGateway::sweep_timeouts(uint64_t now_ts)
     std::vector<exchange::Order> due;
     for (auto& [id, tracked] : in_flight_)
     {
-        (void)id;
-        if (tracked.answered || tracked.timed_out) continue;
-        // A feed whose timestamps went backwards cannot make an order older than it is.
-        if (now_ts < tracked.submitted_ts) continue;
-        if (now_ts - tracked.submitted_ts < config_.ack_timeout_us) continue;
-        tracked.timed_out = true;
-        ++summary_.ack_timeouts;
+        if (tracked.answered) continue;
+        if (!tracked.timed_out)
+        {
+            // A feed whose timestamps went backwards cannot make an order older than it is.
+            if (now_ts < tracked.submitted_ts) continue;
+            if (now_ts - tracked.submitted_ts < config_.ack_timeout_us) continue;
+            tracked.timed_out = true;
+            ++summary_.ack_timeouts;
+        }
+
+        // One reconciliation query per timed-out order. `Working` means the venue still holds it;
+        // `Unknown` means it does not, which is not proof of a fill or a cancel. Neither result closes the
+        // order: only a report does that.
+        if (!tracked.queried)
+        {
+            tracked.queried = true;
+            ++summary_.timeouts_queried;
+            tracked.venue_working = venue_.query_order(id) == OrderQuery::Working;
+            if (tracked.venue_working)
+                ++summary_.timeouts_working;
+            else
+                ++summary_.timeouts_unknown;
+        }
+
         if (config_.retry_on_timeout && !tracked.retried)
         {
             tracked.retried = true;
@@ -155,4 +189,5 @@ void OrderGateway::sweep_timeouts(uint64_t now_ts)
         venue_.send_order(order);
         if (venue_.rejected_orders() != rejected_before) ++summary_.retry_rejections;
     }
+    refresh_unacknowledged();
 }

@@ -311,8 +311,13 @@ of every order in between, printed as `[GATEWAY]`:
 ```
 
 ```text
-[GATEWAY] submissions=6 duplicates_suppressed=0 acks=6 ack_timeouts=6 retries=6 retry_rejections=0 venue_rejects=0 cancels=6 cancels_after_fill=0
+[GATEWAY] submissions=6 duplicates_suppressed=0 acks=6 ack_timeouts=6 unacknowledged=0 timeouts_queried=6 timeouts_working=0 timeouts_unknown=6 retries=6 retry_rejections=0 venue_rejects=0 cancels=6 cancels_after_fill=0
 ```
+
+A timeout is not a terminal state. The gateway queries the venue with `OrderQuery` and reports the
+reconciliation separately: `unacknowledged` is the number still waiting for an answer, `timeouts_working`
+means the venue still holds the order, and `timeouts_unknown` means it does not — neither result is treated
+as a fill or a cancel. The ledger keeps the order `Pending` until a real report arrives.
 
 The client order id is the strategy's order id, entered in the table before the venue is called. A second
 submission under an id already in the table is absorbed rather than forwarded, so a retry cannot become a

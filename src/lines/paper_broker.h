@@ -115,6 +115,8 @@ class PaperBroker : public IMatchingEngine
 
     uint64_t queue_ahead_consumed() const override;
     uint64_t queue_ahead_consumed(Side side) const override;
+    // An order the broker is still holding is working at the broker even though the venue has not seen it.
+    OrderQuery query_order(uint64_t order_id) const override;
     uint64_t queue_ahead_levels_cleared(Side side) const override;
     uint64_t queue_ahead_from_quantity_changes(Side side) const override;
     uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const override;

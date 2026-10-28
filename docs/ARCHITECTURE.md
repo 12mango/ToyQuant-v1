@@ -895,14 +895,15 @@ Two things are intentionally outside this machine:
 
 * **A pre-trade refusal** has no order id and no reservation, so it never enters the ledger. It is delivered
   through `Strategy::on_order_rejected` and a strategy that retries must do so itself.
-* **A gateway timeout** is not a terminal state. The order is still `Pending` in the ledger, the gateway
-  counts it in `ack_timeouts`, and resolving it requires a query or a reconciliation step; treating a
-  timeout as a cancellation would be inventing a fact.
+* **A gateway timeout** is not a terminal state. The order is still `Pending` in the ledger; the gateway
+  queries the venue with `OrderQuery` and reports `unacknowledged`, `timeouts_working` and `timeouts_unknown`.
+  `Working` means the venue still holds it, `Unknown` means it does not, and neither result is a fill or a
+  cancel. Treating a timeout as a cancellation would be inventing a fact.
 
 | Component | State it owns | File |
 |---|---|---|
 | `MatchingEngine` | the resting book and the order index | `src/exchange/matching_engine.*` |
-| `OrderGateway` | unacknowledged/in-flight orders, retries and timeout counts | `src/lines/order_gateway.*` |
+| `OrderGateway` | unacknowledged/in-flight orders, retries, timeout queries and their results | `src/lines/order_gateway.*` |
 | `PaperBroker` | held orders, its own statement and the reports it withholds | `src/lines/paper_broker.*` |
 | `RiskPipeline` | the pre-trade decision and its counters; no order state | `src/app/risk_pipeline.*` |
 | `Pipeline` | position and pending reservations, plus the report fan-out | `src/app/pipeline.*` |

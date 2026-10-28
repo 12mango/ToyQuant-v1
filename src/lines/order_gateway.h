@@ -60,6 +60,14 @@ struct GatewaySummary
     // the answer, which is why a marketable order that never rests still counts here.
     uint64_t acks{0};
     uint64_t ack_timeouts{0};
+    // A timed-out order that is still unanswered. It is not terminal: the order stays in the table and the
+    // ledger stays Pending; the count makes the unresolved state visible.
+    uint64_t unacknowledged{0};
+    // The reconciliation query, run once per timed-out order. `working` means the venue still holds it;
+    // `unknown` means the venue does not, which is not the same as filled or cancelled.
+    uint64_t timeouts_queried{0};
+    uint64_t timeouts_working{0};
+    uint64_t timeouts_unknown{0};
     uint64_t retries{0};
     // Retries the venue refused, counted when the refusal is visible at the moment of the retry. A
     // duplicate delivered later, from the venue's own in-flight queue, shows up in `venue_rejects`
@@ -97,6 +105,13 @@ class OrderGateway : public IMatchingEngine
     uint64_t rejected_orders() const override
     {
         return venue_.rejected_orders();
+    }
+
+    // The reconciliation query goes to the venue, not to the client table: the question is what the venue
+    // holds, not what the gateway hoped it had sent.
+    OrderQuery query_order(uint64_t order_id) const override
+    {
+        return venue_.query_order(order_id);
     }
 
     uint64_t queue_ahead_consumed() const override
@@ -141,11 +156,14 @@ class OrderGateway : public IMatchingEngine
         uint64_t remaining{0};
         bool answered{false};
         bool timed_out{false};
+        bool queried{false};
+        bool venue_working{false};
         bool retried{false};
     };
 
     void on_venue_report(const ExecutionReport& report);
     void forward(const ExecutionReport& report);
+    void refresh_unacknowledged();
     // Called after a market event has been given to the venue, so an answer carried by that event is
     // applied before an order is called late.
     void sweep_timeouts(uint64_t now_ts);

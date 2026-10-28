@@ -97,6 +97,16 @@ struct MEOrderBook
     std::map<PriceTick, PriceLevel> asks;                           // Lowest price first.
 };
 
+// What a query can learn about an order that has not produced a terminal report. A venue can only say
+// whether it still holds the order: a filled or cancelled order is gone, and no local state can recover a
+// report that was lost. The distinction is what makes a timeout reconcilable without inventing a terminal
+// state.
+enum class OrderQuery : uint8_t
+{
+    Unknown = 0,
+    Working
+};
+
 class IMatchingEngine
 {
    public:
@@ -151,6 +161,14 @@ class IMatchingEngine
     virtual uint64_t rejected_orders() const
     {
         return 0;
+    }
+
+    // A query, not a report: it says whether the venue still holds the order. It is the reconciliation step
+    // a timeout needs; it must never be used to synthesize a fill or a cancel.
+    virtual OrderQuery query_order(uint64_t order_id) const
+    {
+        (void)order_id;
+        return OrderQuery::Unknown;
     }
 };
 
@@ -224,6 +242,11 @@ class MatchingEngine : public IMatchingEngine
     uint64_t rejected_orders() const override
     {
         return rejected_orders_;
+    }
+
+    OrderQuery query_order(uint64_t order_id) const override
+    {
+        return order_index_.contains(order_id) ? OrderQuery::Working : OrderQuery::Unknown;
     }
 
     uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const override;
