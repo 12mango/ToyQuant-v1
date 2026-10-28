@@ -7,7 +7,7 @@ project that is a mechanical answer: most of the claims here are re-derived by t
 
 | If you want to... | Read | Then |
 |---|---|---|
-| hand the project to another engineer or AI | [Project Brief](PROJECT_BRIEF.md) | [Design Review](DESIGN_REVIEW.md) for the argument and [Roadmap](ROADMAP.md) for the plan |
+| review the current iteration plan | [Roadmap](ROADMAP.md#current-iteration-plan-maintained) | [Design Review](DESIGN_REVIEW.md) for the argument and [Architecture](ARCHITECTURE.md) for the code |
 | evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
 | understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the evidence |
 | read the code | [Main Line](MAINLINE.md) | the module reference in [Architecture](ARCHITECTURE.md) |
@@ -16,19 +16,18 @@ project that is a mechanical answer: most of the claims here are re-derived by t
 | know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](LATENCY_DESIGN.md) for why each change is faster |
 | see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the section named in whichever document quoted it |
 
-**If you want the one-page handoff, read the [Project Brief](PROJECT_BRIEF.md); if you want the argument,
-read the [Design Review](DESIGN_REVIEW.md).** The brief says what exists and what is deliberately out; the
-review carries the constraints the project holds itself to, the decisions and the rejected alternatives
-behind each component, the measured headline results, an explicit list of what is wrong with the demo, and
-the three lengths of the same story for talking about it out loud.
+**If you want the current plan, read the [Current iteration plan](ROADMAP.md#current-iteration-plan-maintained);
+if you want the argument, read the [Design Review](DESIGN_REVIEW.md).** The plan lists what is next, what is
+deferred and where to stop; the review carries the constraints the project holds itself to, the decisions and
+the rejected alternatives behind each component, the measured headline results, an explicit list of what is
+wrong with the demo, and the three lengths of the same story for talking about it out loud.
 
 ## Every document
 
 | Document | What it is for | Not the place for | Kept honest by |
 |---|---|---|---|
-| [Project Brief](PROJECT_BRIEF.md) | A one-page handoff: what exists, what is deliberately out, the demo boundary, commands and measured headlines | the argument (`DESIGN_REVIEW`), the module reference (`ARCHITECTURE`), or the plan (`ROADMAP`) | prose linted with the rest |
 | [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way, the C++ decisions with code anchors and measured effects, the headline results, the limitations, and the interview versions | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked by `tools/lint_prose.py`: the flags, the queue models, the tool paths, the size figures and the test-binary count it states, and the flags its own `--help` text names |
-| [Roadmap](ROADMAP.md) | The phases from this demo to a personal execution system, what each one buys, and what is deliberately not planned | what exists today, or how to run it | prose linted with the rest |
+| [Roadmap](ROADMAP.md) | The maintained current iteration plan, the phases from this demo to a personal execution system, what each one buys, and what is deliberately not planned | what exists today, or how to run it | prose linted with the rest |
 | [Main Line](MAINLINE.md) | The order to read the source in, the measured result each step produced, what each step is arguing, and the per-part verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result (`LEARNING`) | prose linted |
 | [Retrospective](RETROSPECTIVE.md) | The closing document: the eight markets this project closed, the number that closed each one, and the rules that came out of it | what exists in the code, or how to run it | prose linted |
 | [Architecture](ARCHITECTURE.md) | What each module is, the data contracts between them, and the matching rules | the rationale and trade-offs (`DESIGN_REVIEW`) | marked blocks re-run by `tools/check_docs.py`; prose linted |

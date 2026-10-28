@@ -33,7 +33,6 @@ theme:
 
 nav:
   - Home: index.md
-  - Project Brief: PROJECT_BRIEF.md
   - Design Review: DESIGN_REVIEW.md
   - Learning Path: LEARNING.md
   - Main Line: MAINLINE.md

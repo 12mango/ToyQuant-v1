@@ -17,7 +17,105 @@ reader, and paper trading is the existing book and matching engine against that 
 | Frozen | the pre-queue-model line is tagged `v1.0-demo` |
 | Open | the conclusions rest on one day, and nothing has been run against a venue's own live feed; the paced replay, the recorder and the websocket reader are in place, so the seam is closed at the desk and what remains is a credential; phase 2b is the plan from the first positive window to a running system |
 
+## Current iteration plan (maintained)
+
+This is the one plan for the next iterations. It is written for an interview conversation about implementation
+and knowledge points, not for a live demo and not for a production trading system. Results do not need
+statistical rigor; the goal is to cover the technical parts of a trading system in a small, readable
+implementation, with a stated place to stop. Every deferred item is a **current scope boundary**, not a
+permanent no: a later request can lift it, and the change is recorded here.
+
+**Maintenance.** At the end of every iteration, update the statuses, the change log and the stop line in this
+section, and report the diff in the chat. Do not create another planning document; this section plus the
+existing design, architecture and user documents are the whole plan.
+
+### Coverage at a glance
+
+| Part of a trading system | State | Next useful increment | Priority |
+|---|---|---|---|
+| market data: replay, recorder, local websocket | done | none for the demo | done |
+| L2 book, queue models, fees, latency | done | optional participation/slippage cap | P1 |
+| matching, partial fills, self-trade prevention | done | optional cancel/replace semantics | P2 |
+| strategy framework and market making | done | none | done |
+| non-market-making line | `trend_l2` plus a measured negative result | another signal only if it teaches a new point | P2 |
+| pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
+| order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release | timeout/query reconciliation for a live-like path | P1 |
+| portfolio and PnL | single instrument | multi-instrument and portfolio | P2 |
+| broker and gateway simulation | paper broker plus gateway faults and timeouts | client-order-id recovery and reconciliation | P1 |
+| persistence and recovery | missing | out of the demo; would need a venue-like query | P3 |
+| live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
+| market impact and realistic taker fills | missing; the 100% touch-fill assumption is stated | one small participation cap if it buys a lesson | P1 |
+| out-of-sample, Sharpe and capacity | not a demo goal | out of the demo | out |
+| documents and the interview narrative | in progress | consolidate to one plan and one walkthrough | P0 |
+
+### Ordered backlog
+
+**P0 — this iteration (no new features).**
+
+1. Delete `PROJECT_BRIEF.md` and the separate decision-log file; make this section the only plan.
+2. Make `index.md` the map of five core documents, and add no new planning document.
+3. Write a 5–10 minute walkthrough: one L2 event, one risk refusal and backoff, one order-state path, and the
+   negative non-market-making result.
+4. Write 8–10 interview questions with short answers, each pointing at a file or function.
+
+**P1 — small, explainable increments.**
+
+5. **Order timeout and query visibility.** The gateway already counts `ack_timeouts`; make the "still
+   unacknowledged" state visible and add a simulated query/reconcile step. A timeout is not a rejection and
+   must not be booked as one.
+6. **Bounded taker realism.** One optional participation or slippage cap on aggressive fills; no full market
+   impact model.
+7. **One execution semantic.** A cancel/replace path or an explicit IOC/FOK mode, whichever is smaller; record
+   the other as deferred.
+8. **Demo script.** Put the existing `verify_l2.sh`, `risk_check.sh` and `trend_sweep.sh` in one ordered
+   command list with the expected lines; no new strategy.
+
+**P2 — only after P1, or when the owner asks.**
+
+9. Multi-instrument, portfolio and netting.
+10. Persistence and restart recovery.
+11. Full venue semantics, live venue/TLS, market impact, out-of-sample studies, and performance experiments
+    (block parsing, shared memory, binary telemetry, configuration hot reload).
+
+**P3 — current boundaries, not permanent.**
+
+Everything in P2 is deferred for this stage. Lifting one requires a new request; add it as a new row here
+rather than pretending the boundary was never there.
+
+### Stop line
+
+Stop when the P0 items are done and the P1 items that buy a new knowledge point are done. The demo is
+complete for this stage when:
+
+1. `ctest` is 26/26 and `tools/verify_l2.sh fast` is tier 0 and tier 1 OK;
+2. one L2 event, one risk refusal/backoff and one order-state path can be explained end to end;
+3. one short replay and `tools/risk_check.sh` can be shown if asked, without claiming a profitable strategy;
+4. this plan and the five core documents still describe the binary;
+5. no known bug on the demo path is hidden.
+
+**Not accepted during the freeze:** a new strategy, venue, risk control, performance experiment or document.
+Accepted: a bug fix, a test or explanation of existing behaviour, or a demo script.
+
+### Change log
+
+| Date | Change | Commit |
+|---|---|---|
+| 2026-10-28 | Consolidated the plan here; removed `PROJECT_BRIEF` and the separate decision log; reset the boundary to "deferred, can be lifted" | this commit |
+| 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
+
+### For an AI reviewing this plan
+
+Read this section, then the [Design Review](DESIGN_REVIEW.md) and [Architecture](ARCHITECTURE.md). Review it
+against the goal above: an interview conversation about implementation and knowledge, not a live demo and not
+a production system. Check for scope creep, missing knowledge links, duplicate documents, a clear stop line,
+and any deferred item written as permanent. Do not propose production features unless they buy a new
+interview-relevant lesson.
+
 ## The phases
+
+**Historical view.** The phases below are the earlier live-system plan; the
+[Current iteration plan](#current-iteration-plan-maintained) decides what is built next. Where they disagree,
+the current plan wins.
 
 | Phase | Work | What it buys | Cost |
 |---|---|---|---|
@@ -1120,9 +1218,11 @@ single-instrument accounting, funding, the paper broker, reconciliation and the 
 here by hand is the other half of a trading system, and each row points the existing book and engine at a new
 workload rather than rewriting them:
 
+**Status note.** This is the learning-path view; status and priority live in the current plan at the top.
+
 | To build by hand | What it teaches |
 |---|---|
-| the order gateway and the order lifecycle behind it (Stage B) | submit, cancel and modify, partial fills, rejects, timeouts, and idempotent client order ids |
+| the order gateway and the order lifecycle behind it (Stage B) | landed: submit, cancel, partial fills, rejects and timeouts; the remaining item is timeout/query reconciliation (P1) |
 | a strategy that is not market making | signal, then target position, then risk, then exit — landed as `trend_l2`: an EWMA cross, clips at the touch, a stop, a time stop, a cooldown and an exit band, on the shared pre-trade gates |
 | live ingestion pointed at a real venue (Stage A) | the venue protocol, subscription, heartbeat, gap detection and reconnect |
 | multi-instrument accounting and a portfolio layer | from one instrument to a portfolio and a risk budget |
@@ -1239,45 +1339,16 @@ to a licensed multicast feed this demo does not have; the recorder's buffered st
 background socket are enough for the volumes a public stream produces. If a capture ever drops a row, the
 first fix is a writer thread behind a queue, not direct I/O.
 
-**A production checklist, sorted by this repository's measurements.** Five suggestions came from outside:
-shared-memory IPC, SIMD parsing, RCU configuration, a template pre-trade risk pipeline, and binary telemetry.
-Each is a real technique, but only two have a reason in this repository's own record -- a missing control and a
-measured bottleneck; the other three are recorded with the condition that would make them worth doing, so the
-list does not become a checklist that drives work by itself.
+**Deferred technical bets.** The five external suggestions are folded into the current plan rather than kept
+as a separate checklist: the risk pipeline landed; the other four are deferred with the trigger that would
+make them worth doing.
 
-1. **A pre-trade risk pipeline is landed.** The kill switch, the exposure cap and the position gate moved out
-   of `Pipeline::submit_strategy_actions` into `src/app/risk_pipeline.*`, an ordered list of five checks, and
-   the two missing controls are in it: a fat-finger band around the midpoint and a token bucket on
-   submissions. `tests/risk_pipeline_test.cpp` covers each check and the precedence, and
-   `tools/risk_check.sh` measures four runs: the no-flag run must reproduce the baseline, a permissive
-   setting must leave `[EXECUTION]` unchanged, and each named control must refuse orders and still reconcile.
-   The first measurement found the next problem: a rejected order is retried on the next view, so a 0.01
-   orders-a-second bucket produced 33,685 refusals for four submissions. `on_order_rejected` and an exponential
-   backoff in `trend_l2` cut that to 15, and a reducing order now bypasses the bucket and the two position
-   gates, so a position can be worked down instead of trapped. `docs/PERFORMANCE_HISTORY.md` records both
-   measurements. The next one is a higher-fidelity taker fill model, since a 100% fill rate is the remaining
-   idealization.
-2. **A block/SIMD parse is worth one bounded experiment, on the replay path.** `read+parse` is 61% of an
-   event and the row loop is at its floor; the one shape change left in the performance record is parsing a
-   block instead of a row. `simdjson` does not apply -- the wire format is CSV -- so the experiment is a
-   delimiter scan plus the existing fixed-point conversion, measured on the 2M-row slice with
-   `--profile-stages`, byte-identical output, and rejected if the `read+parse` p50 does not move by more than
-   10%. It does nothing for a live session at 800 rows a second.
-3. **Configuration hot update, when live tuning exists.** The direction is right -- an immutable parameter
-   snapshot behind an atomic pointer, or a seqlock -- but a bare `std::atomic<Config*>` swap is a
-   use-after-free waiting for a reader that still holds the old pointer. The safe minimal form is a snapshot
-   the reader takes once per decision and the writer replaces whole; full RCU needs epochs or hazard pointers
-   and is more machinery than a single strategy thread justifies.
-4. **Shared-memory IPC is deferred.** The live path carries about 800 frames a second, an event every 1.3 ms,
-   and the decision is a small part of that; local TCP's tens of microseconds is not the limit. The cheaper
-   step first is the C++ relay with OpenSSL, which removes Python and the local hop
-   entirely. A shared-memory ring would also have to carry a fixed-size POD, not `MarketEvent` with its
-   strings and variant, and a Python writer with the right release/acquire ordering; the debug and replay
-   formats would both grow a decoder.
-5. **Binary telemetry is deferred.** The two-hour run wrote 10,673 orders and 142 fills -- 1.5 orders a
-   second -- so CSV is not on a hot path, and it is part of the verification story: the gate counts rows and
-   the documents quote the fields. Revisit above a few thousand orders a second, with an SPSC queue to a
-   writer thread and a binary format, and keep CSV as the audit format rather than replacing it.
+| Bet | Status | Trigger |
+|---|---|---|
+| block/SIMD parse | P2 | one bounded 2M-row experiment, byte-identical, rejected if the p50 improvement is below 10 percent |
+| configuration hot reload | P3 | live tuning exists; immutable snapshot behind an atomic pointer or a seqlock |
+| shared-memory IPC | P3 | C++ relay/TLS first; then a measured IPC share of the event |
+| binary telemetry | P3 | a few thousand orders a second; CSV remains the audit format |
 
 ### The same code, second purpose: the demo and the interview
 
