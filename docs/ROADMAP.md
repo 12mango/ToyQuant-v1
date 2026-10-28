@@ -19,11 +19,10 @@ reader, and paper trading is the existing book and matching engine against that 
 
 ## Current iteration plan (maintained)
 
-This is the one plan for the next iterations. It is written for an interview conversation about implementation
-and knowledge points, not for a live demo and not for a production trading system. Results do not need
-statistical rigor; the goal is to cover the technical parts of a trading system in a small, readable
-implementation, with a stated place to stop. Every deferred item is a **current scope boundary**, not a
-permanent no: a later request can lift it, and the change is recorded here.
+This is the one plan for the next iterations. It is a project-quality plan: cover the technical parts of a
+trading system in a small, readable implementation, without requiring production connectivity or statistical
+rigor, and stop at a stated boundary. Every deferred item is a **current scope boundary**, not a permanent
+no: a later request can lift it, and the change is recorded here.
 
 **Maintenance.** At the end of every iteration, update the statuses, the change log and the stop line in this
 section, and report the diff in the chat. Do not create another planning document; this section plus the
@@ -46,19 +45,17 @@ existing design, architecture and user documents are the whole plan.
 | live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
 | market impact and realistic taker fills | missing; the 100% touch-fill assumption is stated | one small participation cap if it buys a lesson | P1 |
 | out-of-sample, Sharpe and capacity | not a demo goal | out of the demo | out |
-| documents and the interview narrative | in progress | consolidate to one plan and one walkthrough | P0 |
+| documents and the maintained plan | done: one plan, no new documents | keep it current; no interview material required | done |
 
 ### Ordered backlog
 
-**P0 — this iteration (no new features).**
+**P0 — documentation consolidation (done; no interview material).**
 
 1. Delete `PROJECT_BRIEF.md` and the separate decision-log file; make this section the only plan.
 2. Make `index.md` the map of five core documents, and add no new planning document.
-3. Write a 5–10 minute walkthrough: one L2 event, one risk refusal and backoff, one order-state path, and the
-   negative non-market-making result.
-4. Write 8–10 interview questions with short answers, each pointing at a file or function.
+3. No walkthrough or interview Q&A is planned; the project itself is the deliverable.
 
-**P1 — small, explainable increments.**
+**P1 — next small, explainable increments; start here.**
 
 5. **Order timeout and query visibility.** The gateway already counts `ack_timeouts`; make the "still
    unacknowledged" state visible and add a simulated query/reconcile step. A timeout is not a rejection and
@@ -84,11 +81,10 @@ rather than pretending the boundary was never there.
 
 ### Stop line
 
-Stop when the P0 items are done and the P1 items that buy a new knowledge point are done. The demo is
-complete for this stage when:
+Stop when the P1 items that buy a new technical point are done. The current iteration is complete when:
 
 1. `ctest` is 26/26 and `tools/verify_l2.sh fast` is tier 0 and tier 1 OK;
-2. one L2 event, one risk refusal/backoff and one order-state path can be explained end to end;
+2. one L2 event, one risk refusal/backoff and one order-state path can be traced end to end;
 3. one short replay and `tools/risk_check.sh` can be shown if asked, without claiming a profitable strategy;
 4. this plan and the five core documents still describe the binary;
 5. no known bug on the demo path is hidden.
@@ -100,16 +96,16 @@ Accepted: a bug fix, a test or explanation of existing behaviour, or a demo scri
 
 | Date | Change | Commit |
 |---|---|---|
-| 2026-10-28 | Consolidated the plan here; removed `PROJECT_BRIEF` and the separate decision log; reset the boundary to "deferred, can be lifted" | this commit |
+| 2026-10-28 | Consolidated the plan here; removed `PROJECT_BRIEF` and the separate decision log; reset the boundary to "deferred, can be lifted" | `2d23d5d` |
+| 2026-10-28 | Removed the interview walkthrough/Q&A from P0; the plan is project-quality only | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
 
 Read this section, then the [Design Review](DESIGN_REVIEW.md) and [Architecture](ARCHITECTURE.md). Review it
-against the goal above: an interview conversation about implementation and knowledge, not a live demo and not
-a production system. Check for scope creep, missing knowledge links, duplicate documents, a clear stop line,
-and any deferred item written as permanent. Do not propose production features unless they buy a new
-interview-relevant lesson.
+against the goal above: a bounded, technically broad demo, not a production system. Check for scope creep,
+missing technical coverage, duplicate documents, a clear stop line, and any deferred item written as
+permanent. Do not propose production features unless they buy a concrete project improvement.
 
 ## The phases
 
