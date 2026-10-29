@@ -559,6 +559,30 @@ int main()
         assert(ioc_engine.query_order(83) == OrderQuery::Unknown);
     }
 
+    // The sell side goes through the same shared matcher, including the external touch and the IOC exit.
+    {
+        MatchingEngine sell_ioc_engine;
+        std::vector<ExecutionReport> sell_ioc_reports;
+        sell_ioc_engine.set_report_callback([&sell_ioc_reports](const ExecutionReport& report)
+                                            { sell_ioc_reports.push_back(report); });
+        sell_ioc_engine.process_bbo({2500, "TEST", 100.0, 5, 100.1, 100, 1, "test"});
+        sell_ioc_engine.send_order({88, "TEST", exchange::Side::Sell, exchange::OrderType::Limit,
+                                    99.9, 10, 10, 2501, "MarketMaker", TimeInForce::Ioc});
+
+        assert(has_report(sell_ioc_reports, 88, ExecType::Trade, 5));
+        assert(has_report(sell_ioc_reports, 88, ExecType::PartialFill, 5));
+        assert(has_report(sell_ioc_reports, 88, ExecType::Cancelled, 5));
+        assert(std::any_of(sell_ioc_reports.begin(), sell_ioc_reports.end(),
+                           [](const ExecutionReport& report) {
+                               return report.order_id == 88 &&
+                                      report.exec_type == ExecType::Cancelled &&
+                                      report.cancel_reason == CancelReason::Ioc;
+                           }));
+        assert(std::none_of(sell_ioc_reports.begin(), sell_ioc_reports.end(),
+                            [](const ExecutionReport& report)
+                            { return report.order_id == 88 && report.exec_type == ExecType::Resting; }));
+    }
+
     // A FOK that cannot fill completely cancels without trading anything.
     {
         MatchingEngine fok_engine;

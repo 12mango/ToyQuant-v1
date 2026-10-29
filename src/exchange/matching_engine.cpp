@@ -161,21 +161,41 @@ void MatchingEngine::send_order_now(const exchange::Order& order)
     }
 }
 
-uint64_t MatchingEngine::external_available(const exchange::Order& order, SymbolId id) const
+bool MatchingEngine::external_touch(const exchange::Order& order, SymbolId id,
+                                    double& execution_price, uint64_t& displayed_quantity) const
 {
     const auto quote_it = external_bbo_.find(id);
-    if (quote_it == external_bbo_.end() || order.type != exchange::OrderType::Limit) return 0;
+    if (quote_it == external_bbo_.end() || order.type != exchange::OrderType::Limit) return false;
     const BboQuote& quote = quote_it->second;
-    uint64_t displayed = 0;
     if (order.side == exchange::Side::Buy && quote.ask_quantity > 0 &&
         to_price_tick(order.price, tick_size_) >= to_price_tick(quote.ask_price, tick_size_))
-        displayed = quote.ask_quantity;
-    else if (order.side == exchange::Side::Sell && quote.bid_quantity > 0 &&
-             to_price_tick(order.price, tick_size_) <= to_price_tick(quote.bid_price, tick_size_))
-        displayed = quote.bid_quantity;
-    if (participation_limit_ < 1.0)
-        displayed = static_cast<uint64_t>(static_cast<double>(displayed) * participation_limit_);
-    return displayed;
+    {
+        execution_price = quote.ask_price;
+        displayed_quantity = quote.ask_quantity;
+        return true;
+    }
+    if (order.side == exchange::Side::Sell && quote.bid_quantity > 0 &&
+        to_price_tick(order.price, tick_size_) <= to_price_tick(quote.bid_price, tick_size_))
+    {
+        execution_price = quote.bid_price;
+        displayed_quantity = quote.bid_quantity;
+        return true;
+    }
+    return false;
+}
+
+uint64_t MatchingEngine::capped_external_quantity(uint64_t displayed_quantity) const
+{
+    if (participation_limit_ >= 1.0) return displayed_quantity;
+    return static_cast<uint64_t>(static_cast<double>(displayed_quantity) * participation_limit_);
+}
+
+uint64_t MatchingEngine::external_available(const exchange::Order& order, SymbolId id) const
+{
+    double execution_price = 0.0;
+    uint64_t displayed = 0;
+    if (!external_touch(order, id, execution_price, displayed)) return 0;
+    return capped_external_quantity(displayed);
 }
 
 uint64_t MatchingEngine::internal_available(const MEOrderBook& book, const exchange::Order& order) const
@@ -373,35 +393,17 @@ uint64_t MatchingEngine::displayed_quantity_ahead(const Order& order) const
 
 void MatchingEngine::match_external_bbo(SymbolId id, Order& order)
 {
-    const auto quote_it = external_bbo_.find(id);
-    if (quote_it == external_bbo_.end() || order.type != exchange::OrderType::Limit) return;
-
-    BboQuote& quote = quote_it->second;
     double execution_price = 0.0;
-    uint64_t* available_quantity = nullptr;
-    if (order.side == exchange::Side::Buy && quote.ask_quantity > 0 &&
-        to_price_tick(order.price, tick_size_) >= to_price_tick(quote.ask_price, tick_size_))
-    {
-        execution_price = quote.ask_price;
-        available_quantity = &quote.ask_quantity;
-    }
-    else if (order.side == exchange::Side::Sell && quote.bid_quantity > 0 &&
-             to_price_tick(order.price, tick_size_) <= to_price_tick(quote.bid_price, tick_size_))
-    {
-        execution_price = quote.bid_price;
-        available_quantity = &quote.bid_quantity;
-    }
+    uint64_t displayed = 0;
+    if (!external_touch(order, id, execution_price, displayed)) return;
 
-    if (!available_quantity) return;
-
-    uint64_t fillable = *available_quantity;
-    if (participation_limit_ < 1.0)
-        fillable = static_cast<uint64_t>(
-            static_cast<double>(*available_quantity) * participation_limit_);
-    const uint64_t traded = std::min(order.remaining, fillable);
+    const uint64_t traded = std::min(order.remaining, capped_external_quantity(displayed));
     if (traded == 0) return;
     order.remaining -= traded;
-    *available_quantity -= traded;
+
+    BboQuote& quote = external_bbo_.find(id)->second;
+    (order.side == exchange::Side::Buy ? quote.ask_quantity : quote.bid_quantity) -= traded;
+
     report_trade(order, execution_price, traded, LiquidityRole::Taker, order.ts);
     report(ExecutionReport{
         .order_id = order.id,
@@ -507,24 +509,17 @@ void MatchingEngine::cancel_order_immediate(uint64_t order_id)
     const Order cancelled_order = *ord;
     auto& book = books_[symbol_id(cancelled_order.symbol)];
 
+    const auto remove_from = [&](auto& levels)
+    {
+        auto pit = levels.find(to_price_tick(cancelled_order.price, tick_size_));
+        if (pit == levels.end()) return;
+        pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
+        if (pit->second.orders.empty()) levels.erase(pit);
+    };
     if (cancelled_order.side == exchange::Side::Buy)
-    {
-        auto pit = book.bids.find(to_price_tick(cancelled_order.price, tick_size_));
-        if (pit != book.bids.end())
-        {
-            pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
-            if (pit->second.orders.empty()) book.bids.erase(pit);
-        }
-    }
+        remove_from(book.bids);
     else
-    {
-        auto pit = book.asks.find(to_price_tick(cancelled_order.price, tick_size_));
-        if (pit != book.asks.end())
-        {
-            pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
-            if (pit->second.orders.empty()) book.asks.erase(pit);
-        }
-    }
+        remove_from(book.asks);
     order_index_.erase(it);
 
     report(ExecutionReport{.order_id = order_id,
@@ -541,41 +536,51 @@ void MatchingEngine::cancel_order_immediate(uint64_t order_id)
 uint64_t MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
 {
     Order new_order = incoming;  // Copy because matching updates remaining quantity.
+    match_side(book, new_order, rest_incoming, incoming.side == exchange::Side::Buy);
+    return new_order.remaining;
+}
+
+void MatchingEngine::match_side(MEOrderBook& book, Order& new_order, bool rest_incoming,
+                                bool buy_side)
+{
     uint64_t& qty = new_order.remaining;
     const uint64_t starting_qty = qty;
     const PriceTick incoming_price = to_price_tick(new_order.price, tick_size_);
 
-    // ==================== Buy-Side Matching ====================
-    if (incoming.side == exchange::Side::Buy)
+    // The two books have different comparators, so a generic lambda is what lets one body serve both
+    // without turning the whole engine into a template.
+    const auto match_levels = [&](auto& levels)
     {
-        while (qty > 0 && !book.asks.empty())
+        while (qty > 0 && !levels.empty())
         {
             // Price-time priority:
-            // 1) choose the best price level first (lowest ask for a buy order)
+            // 1) choose the best executable price first
             // 2) within the same price level, match the earliest resting order first
-            auto best_ask_it = book.asks.begin();
-            PriceTick best_price = best_ask_it->first;
+            auto best_it = levels.begin();
+            const PriceTick best_price = best_it->first;
+            if (buy_side ? incoming_price < best_price : incoming_price > best_price) break;
 
-            if (incoming_price < best_price) break;
-
-            if (new_order.owner == "Market" && best_ask_it->second.external_queue_ahead > 0)
+            if (new_order.owner == "Market" && best_it->second.external_queue_ahead > 0)
             {
-                const uint64_t consumed =
-                    std::min(qty, best_ask_it->second.external_queue_ahead);
+                const uint64_t consumed = std::min(qty, best_it->second.external_queue_ahead);
                 qty -= consumed;
-                best_ask_it->second.external_queue_ahead -= consumed;
+                best_it->second.external_queue_ahead -= consumed;
                 queue_ahead_consumed_ += consumed;
-                sell_queue_ahead_consumed_ += consumed;
-                if (best_ask_it->second.external_queue_ahead == 0 &&
-                    !best_ask_it->second.orders.empty())
-                    ++sell_queue_ahead_cleared_;
+                uint64_t& side_consumed =
+                    buy_side ? sell_queue_ahead_consumed_ : buy_queue_ahead_consumed_;
+                side_consumed += consumed;
+                uint64_t& side_cleared =
+                    buy_side ? sell_queue_ahead_cleared_ : buy_queue_ahead_cleared_;
+                if (best_it->second.external_queue_ahead == 0 &&
+                    !best_it->second.orders.empty())
+                    ++side_cleared;
                 if (qty == 0) break;
             }
 
-            auto& ask_queue = best_ask_it->second.orders;
-            while (qty > 0 && !ask_queue.empty())
+            auto& queue = best_it->second.orders;
+            while (qty > 0 && !queue.empty())
             {
-                Order& resting = ask_queue.front();
+                Order& resting = queue.front();
                 if (is_self_trade(resting, new_order))
                 {
                     report(ExecutionReport{.order_id = new_order.id,
@@ -590,8 +595,7 @@ uint64_t MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool re
                     qty = 0;
                     break;
                 }
-                uint64_t traded = std::min(qty, resting.remaining);
-
+                const uint64_t traded = std::min(qty, resting.remaining);
                 report_trade(new_order, to_price(best_price, tick_size_), traded,
                              LiquidityRole::Taker, new_order.ts);
                 report_trade(resting, to_price(best_price, tick_size_), traded,
@@ -599,7 +603,6 @@ uint64_t MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool re
 
                 qty -= traded;
                 resting.remaining -= traded;
-
                 report(ExecutionReport{
                     .order_id = resting.id,
                     .side = resting.side,
@@ -613,146 +616,53 @@ uint64_t MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool re
                 if (resting.remaining == 0)
                 {
                     order_index_.erase(resting.id);
-                    ask_queue.pop_front();
+                    queue.pop_front();
                 }
             }
-            if (ask_queue.empty()) book.asks.erase(best_ask_it);
+            if (queue.empty()) levels.erase(best_it);
         }
+    };
 
-        if (starting_qty > qty)
-        {
-            report(ExecutionReport{.order_id = new_order.id,
-                                   .side = new_order.side,
-                                   .exec_type = qty == 0 ? ExecType::Filled : ExecType::PartialFill,
-                                   .symbol = new_order.symbol,
-                                   .price = new_order.price,
-                                   .quantity = qty,
-                                   .ts = new_order.ts,
-                                   .owner = new_order.owner});
-        }
+    const auto rest_unfilled = [&](auto& levels)
+    {
+        auto& level = levels[incoming_price];
+        if (level.orders.empty()) level.external_queue_ahead = displayed_quantity_ahead(new_order);
+        level.orders.push_back(new_order);
+        order_index_[new_order.id] = &level.orders.back();
 
-        // Rest any unfilled quantity in the bid book.
-        if (qty > 0 && rest_incoming)
-        {
-            auto& level = book.bids[incoming_price];
-            if (level.orders.empty()) level.external_queue_ahead = displayed_quantity_ahead(new_order);
-            level.orders.push_back(new_order);
-            order_index_[new_order.id] = &level.orders.back();
+        report(ExecutionReport{.order_id = new_order.id,
+                               .side = new_order.side,
+                               .exec_type = ExecType::Resting,
+                               .symbol = new_order.symbol,
+                               .price = new_order.price,
+                               .quantity = qty,
+                               .ts = new_order.ts,
+                               .owner = new_order.owner});
+    };
 
-            report(ExecutionReport{.order_id = new_order.id,
-                                   .side = new_order.side,
-                                   .exec_type = ExecType::Resting,
-                                   .symbol = new_order.symbol,
-                                   .price = new_order.price,
-                                   .quantity = qty,
-                                   .ts = new_order.ts,
-                                   .owner = new_order.owner});
-        }
-
-        // ==================== Sell-Side Matching ====================
-    }
+    if (buy_side)
+        match_levels(book.asks);
     else
+        match_levels(book.bids);
+
+    if (starting_qty > qty)
     {
-        while (qty > 0 && !book.bids.empty())
-        {
-            // Price-time priority:
-            // 1) choose the best price level first (highest bid for a sell order)
-            // 2) within the same price level, match the earliest resting order first
-            auto best_bid_it = book.bids.begin();
-            PriceTick best_price = best_bid_it->first;
-
-            if (incoming_price > best_price) break;
-
-            if (new_order.owner == "Market" && best_bid_it->second.external_queue_ahead > 0)
-            {
-                const uint64_t consumed =
-                    std::min(qty, best_bid_it->second.external_queue_ahead);
-                qty -= consumed;
-                best_bid_it->second.external_queue_ahead -= consumed;
-                queue_ahead_consumed_ += consumed;
-                buy_queue_ahead_consumed_ += consumed;
-                if (best_bid_it->second.external_queue_ahead == 0 &&
-                    !best_bid_it->second.orders.empty())
-                    ++buy_queue_ahead_cleared_;
-                if (qty == 0) break;
-            }
-
-            auto& bid_queue = best_bid_it->second.orders;
-            while (qty > 0 && !bid_queue.empty())
-            {
-                Order& resting = bid_queue.front();
-                if (is_self_trade(resting, new_order))
-                {
-                    report(ExecutionReport{.order_id = new_order.id,
-                                           .side = new_order.side,
-                                           .exec_type = ExecType::Cancelled,
-                                           .symbol = new_order.symbol,
-                                           .price = new_order.price,
-                                           .quantity = qty,
-                                           .ts = new_order.ts,
-                                           .owner = new_order.owner,
-                                           .cancel_reason = CancelReason::SelfTrade});
-                    qty = 0;
-                    break;
-                }
-                uint64_t traded = std::min(qty, resting.remaining);
-
-                report_trade(new_order, to_price(best_price, tick_size_), traded,
-                             LiquidityRole::Taker, new_order.ts);
-                report_trade(resting, to_price(best_price, tick_size_), traded,
-                             LiquidityRole::Maker, new_order.ts);
-
-                qty -= traded;
-                resting.remaining -= traded;
-
-                report(ExecutionReport{
-                    .order_id = resting.id,
-                    .side = resting.side,
-                    .exec_type = resting.remaining == 0 ? ExecType::Filled : ExecType::PartialFill,
-                    .symbol = resting.symbol,
-                    .price = to_price(best_price, tick_size_),
-                    .quantity = resting.remaining,
-                    .ts = new_order.ts,
-                    .owner = resting.owner});
-
-                if (resting.remaining == 0)
-                {
-                    order_index_.erase(resting.id);
-                    bid_queue.pop_front();
-                }
-            }
-            if (bid_queue.empty()) book.bids.erase(best_bid_it);
-        }
-
-        if (starting_qty > qty)
-        {
-            report(ExecutionReport{.order_id = new_order.id,
-                                   .side = new_order.side,
-                                   .exec_type = qty == 0 ? ExecType::Filled : ExecType::PartialFill,
-                                   .symbol = new_order.symbol,
-                                   .price = new_order.price,
-                                   .quantity = qty,
-                                   .ts = new_order.ts,
-                                   .owner = new_order.owner});
-        }
-
-        // Rest any unfilled quantity in the ask book.
-        if (qty > 0 && rest_incoming)
-        {
-            auto& level = book.asks[incoming_price];
-            if (level.orders.empty()) level.external_queue_ahead = displayed_quantity_ahead(new_order);
-            level.orders.push_back(new_order);
-            order_index_[new_order.id] = &level.orders.back();
-
-            report(ExecutionReport{.order_id = new_order.id,
-                                   .side = new_order.side,
-                                   .exec_type = ExecType::Resting,
-                                   .symbol = new_order.symbol,
-                                   .price = new_order.price,
-                                   .quantity = qty,
-                                   .ts = new_order.ts,
-                                   .owner = new_order.owner});
-        }
+        report(ExecutionReport{.order_id = new_order.id,
+                               .side = new_order.side,
+                               .exec_type = qty == 0 ? ExecType::Filled : ExecType::PartialFill,
+                               .symbol = new_order.symbol,
+                               .price = new_order.price,
+                               .quantity = qty,
+                               .ts = new_order.ts,
+                               .owner = new_order.owner});
     }
-    return qty;
+
+    // Rest any unfilled quantity on our own side of the book.
+    if (qty > 0 && rest_incoming)
+    {
+        if (buy_side)
+            rest_unfilled(book.bids);
+        else
+            rest_unfilled(book.asks);
+    }
 }

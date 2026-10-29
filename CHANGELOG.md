@@ -79,6 +79,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   lines to expect. It adds no strategy or script: the negative trend PnL is presented as the measured result
   rather than a failure, and the gate, the risk invariants and the cost of a taker signal are all visible in
   one sitting.
+- **A smaller matching core.** The buy and sell sides now share one side-generic matcher, and the real
+  external-BBO fill and the FOK pre-check share one touch predicate and one participation cap. The pipeline
+  also has one `submit_order` step instead of a ninety-line loop body. This is a behavior-preserving
+  refactor: the buy/sell report order, queue counters and all pinned run outputs are unchanged, and the gate
+  stays green.
 - **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's

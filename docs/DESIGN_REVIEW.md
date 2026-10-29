@@ -11,7 +11,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 101 files, 20,065 lines: `app` 5369, `market` 3890, `legacy` 1851, `lines` 2602, `exchange` 1409, `strategy` 1615, `orderbook` 560, `backtest` 467, `utils` 488, `accounting` 342, `common` 703, `bench` 563, `concurrency` 176, `main` 30 |
+| **Size** | 101 files, 19,980 lines: `app` 5366, `market` 3890, `legacy` 1851, `lines` 2602, `exchange` 1327, `strategy` 1615, `orderbook` 560, `backtest` 467, `utils` 488, `accounting` 342, `common` 703, `bench` 563, `concurrency` 176, `main` 30 |
 | **Tests** | 26 CTest binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | 40 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, two lints |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
@@ -58,7 +58,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
     while (!pending_markouts_.empty() && quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
     { ... }                                     // five-cycle markout resolution
 
-    submit_strategy_actions(view.symbol, view.ts, strategy_.on_l2_market_view(view));
+    submit_strategy_actions(view.ts, strategy_.on_l2_market_view(view));
     sample_resting_queues();                    // queue distribution: one lookup per open order
 }
 ```

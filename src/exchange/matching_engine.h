@@ -314,6 +314,11 @@ class MatchingEngine : public IMatchingEngine
 
     // The body of process_bbo, with the symbol already resolved.
     void process_bbo_for(SymbolId id, const BboQuote& quote);
+    // The external touch and its displayed size, if this order crosses it. Both the real fill and the FOK
+    // pre-check use this one predicate, so a cap or a crossing rule cannot be changed in only one of them.
+    bool external_touch(const exchange::Order& order, SymbolId id, double& execution_price,
+                        uint64_t& displayed_quantity) const;
+    uint64_t capped_external_quantity(uint64_t displayed_quantity) const;
     void match_external_bbo(SymbolId id, exchange::Order& order);
     // What an order could trade immediately, used to decide FOK before any fill is applied. The external
     // term is capped by participation_limit_; the internal term is the resting book inside the limit price
@@ -328,6 +333,9 @@ class MatchingEngine : public IMatchingEngine
     // Returns the quantity still unfilled. A good-till-cancelled order with a positive return rests it; an
     // immediate order is cancelled by send_order_now instead.
     uint64_t match(MEOrderBook& book, const exchange::Order& incoming, bool rest_incoming);
+    // One side of the book. The two sides have the same price-time rules, queue counters and report order;
+    // keeping them in one routine is what stops a change from being made on the buy side only.
+    void match_side(MEOrderBook& book, exchange::Order& order, bool rest_incoming, bool buy_side);
     void report_trade(const exchange::Order& order, double price, uint64_t quantity,
                       LiquidityRole liquidity_role, uint64_t ts);
     void report(const ExecutionReport& rpt)

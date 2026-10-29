@@ -174,9 +174,10 @@ class Pipeline
         if (profiler_ != nullptr) profiler_->end(stage);
     }
 
-    void submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top);
-    void submit_strategy_actions(const std::string& symbol, uint64_t ts,
-                                 std::vector<StrategyOrder> orders);
+    void submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> orders);
+    // One order's path from risk to the engine. It is separate from the loop so a future non-MM
+    // executor can reuse the same risk, ledger and rejection handling without copying this body.
+    void submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote);
 
     OrderLedger ledger_;
     Strategy& strategy_;

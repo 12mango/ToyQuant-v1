@@ -243,7 +243,7 @@ void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const
 {
     accounting_.apply_due_funding(ts, portfolio_, last_mid_);
     current_ts_ = ts;
-    submit_strategy_actions(symbol, ts, top);
+    submit_strategy_actions(ts, strategy_.on_top_of_book(symbol, top));
     // The L1 path has no depth view to sample on, so it samples on its own updates; without this the
     // profile would report that no L1 quote ever moved toward the front, which would be an absence of
     // measurement rather than a fact.
@@ -309,7 +309,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
     profiler_end(Stage::QueueAccounting);
 
     profiler_begin(Stage::Strategy);
-    submit_strategy_actions(view.symbol, view.ts, strategy_.on_l2_market_view(view));
+    submit_strategy_actions(view.ts, strategy_.on_l2_market_view(view));
     profiler_end(Stage::Strategy);
 
     // Sampled last, so the row describes the queue the way this event left it: the engine has already
@@ -430,16 +430,8 @@ RunSummary Pipeline::summary() const
             .queue_trace = ledger_.trace_rows()};
 }
 
-void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts, const TopOfBook& top)
+void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> orders)
 {
-    submit_strategy_actions(symbol, ts, strategy_.on_top_of_book(symbol, top));
-}
-
-void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
-                                       std::vector<StrategyOrder> orders)
-{
-    (void)symbol;
-
     for (uint64_t order_id : strategy_.cancel_requests())
     {
         if (!ledger_.begin_cancel(order_id, engine_)) continue;
@@ -459,67 +451,71 @@ void Pipeline::submit_strategy_actions(const std::string& symbol, uint64_t ts,
     for (auto& order : orders)
     {
         const auto quote_it = latest_quotes_.find(order.symbol);
-        RiskContext risk_context;
-        risk_context.position = position_;
-        risk_context.pending_buy_quantity = pending_buy_quantity_;
-        risk_context.pending_sell_quantity = pending_sell_quantity_;
-        risk_context.quantity_scale = std::max<uint64_t>(1, quantity_scale_);
-        risk_context.unit_notional_usd = unit_notional_usd_;
-        risk_context.multiplier = multiplier_;
-        risk_context.quote = quote_it != latest_quotes_.end() ? &quote_it->second : nullptr;
-        risk_context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
+        submit_order(order, ts, quote_it != latest_quotes_.end() ? &quote_it->second : nullptr);
+    }
+}
 
-        const RiskPipeline::Decision risk_decision = risk_pipeline_.check(order, risk_context);
-        if (!risk_decision.allowed)
-        {
-            strategy_.on_order_rejected(order, RiskPipeline::reason_name(risk_decision.reason));
-            continue;
-        }
+void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote)
+{
+    RiskContext risk_context;
+    risk_context.position = position_;
+    risk_context.pending_buy_quantity = pending_buy_quantity_;
+    risk_context.pending_sell_quantity = pending_sell_quantity_;
+    risk_context.quantity_scale = std::max<uint64_t>(1, quantity_scale_);
+    risk_context.unit_notional_usd = unit_notional_usd_;
+    risk_context.multiplier = multiplier_;
+    risk_context.quote = quote;
+    risk_context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
 
-        // The position gate reserves what it lets through, because those orders can still fill. The rule is
-        // unchanged: the reservation happens only when the gate is on.
-        if (risk_pipeline_.position_limit() > 0 && order.quantity > 0)
-        {
-            if (order.side == Side::Buy)
-                pending_buy_quantity_ += static_cast<int64_t>(order.quantity);
-            else if (order.side == Side::Sell)
-                pending_sell_quantity_ += static_cast<int64_t>(order.quantity);
-        }
-        order.order_id = next_order_id_++;
-        if (time_in_force_override_) order.time_in_force = time_in_force_;
-        auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
-        ++submitted_orders_;
-        submitted_quantity_ += order.quantity;
-        if (quote_it != latest_quotes_.end())
-        {
-            const BboQuote& quote = quote_it->second;
-            const double reference = order.side == Side::Buy ? quote.bid_price : quote.ask_price;
-            const double distance = order.side == Side::Buy ? reference - order.price
-                                                             : order.price - reference;
-            ++execution_quality_.quote_observations;
-            execution_quality_.total_quote_distance += std::max(0.0, distance);
-            execution_quality_.total_quote_distance_ticks +=
-                std::max(0.0, distance) / std::max(tick_size_, PRICE_TICK_SIZE);
-            if (distance <= 0.5 * std::max(tick_size_, PRICE_TICK_SIZE))
-                ++execution_quality_.bbo_quote_observations;
-            // At the touch means the quote joined the venue's own best price, where the displayed queue
-            // is deepest and the flow actually arrives; behind it means the spread protects the quote
-            // while the queue in front clears. The two accounts are what a fill-rate question needs:
-            // a low fill count means something different for each of them.
-            if (distance <= 0.0)
-                ++execution_quality_.quote_at_touch_orders;
-            else
-                ++execution_quality_.quote_behind_touch_orders;
-        }
-        ledger_.write_order(ts, order);
-        strategy_.on_order_submitted(order);
-        ledger_.open_order(order.order_id, quote_cycle_, execution_quality_);
-        ledger_.trace_submit(order, ts, engine_);
-        const uint64_t rejected_before = engine_.rejected_orders();
-        engine_.send_order(exchange_order);
-        if (engine_.rejected_orders() != rejected_before)
-        {
-            handle_rejected_order(exchange_order, order, ts);
-        }
+    const RiskPipeline::Decision risk_decision = risk_pipeline_.check(order, risk_context);
+    if (!risk_decision.allowed)
+    {
+        strategy_.on_order_rejected(order, RiskPipeline::reason_name(risk_decision.reason));
+        return;
+    }
+
+    // The position gate reserves what it lets through, because those orders can still fill. The rule is
+    // unchanged: the reservation happens only when the gate is on.
+    if (risk_pipeline_.position_limit() > 0 && order.quantity > 0)
+    {
+        if (order.side == Side::Buy)
+            pending_buy_quantity_ += static_cast<int64_t>(order.quantity);
+        else if (order.side == Side::Sell)
+            pending_sell_quantity_ += static_cast<int64_t>(order.quantity);
+    }
+    order.order_id = next_order_id_++;
+    if (time_in_force_override_) order.time_in_force = time_in_force_;
+    auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
+    ++submitted_orders_;
+    submitted_quantity_ += order.quantity;
+    if (quote != nullptr)
+    {
+        const double reference = order.side == Side::Buy ? quote->bid_price : quote->ask_price;
+        const double distance = order.side == Side::Buy ? reference - order.price
+                                                         : order.price - reference;
+        ++execution_quality_.quote_observations;
+        execution_quality_.total_quote_distance += std::max(0.0, distance);
+        execution_quality_.total_quote_distance_ticks +=
+            std::max(0.0, distance) / std::max(tick_size_, PRICE_TICK_SIZE);
+        if (distance <= 0.5 * std::max(tick_size_, PRICE_TICK_SIZE))
+            ++execution_quality_.bbo_quote_observations;
+        // At the touch means the quote joined the venue's own best price, where the displayed queue
+        // is deepest and the flow actually arrives; behind it means the spread protects the quote
+        // while the queue in front clears. The two accounts are what a fill-rate question needs:
+        // a low fill count means something different for each of them.
+        if (distance <= 0.0)
+            ++execution_quality_.quote_at_touch_orders;
+        else
+            ++execution_quality_.quote_behind_touch_orders;
+    }
+    ledger_.write_order(ts, order);
+    strategy_.on_order_submitted(order);
+    ledger_.open_order(order.order_id, quote_cycle_, execution_quality_);
+    ledger_.trace_submit(order, ts, engine_);
+    const uint64_t rejected_before = engine_.rejected_orders();
+    engine_.send_order(exchange_order);
+    if (engine_.rejected_orders() != rejected_before)
+    {
+        handle_rejected_order(exchange_order, order, ts);
     }
 }
