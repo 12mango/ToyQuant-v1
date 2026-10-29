@@ -43,6 +43,35 @@ void Pipeline::handle_report(const ExecutionReport& report)
     if (report.exec_type == ExecType::Resting)
         ledger_.mark_resting(report, engine_, execution_quality_);
     if (report.owner == "MarketMaker") portfolio_.apply(report);
+    if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
+        apply_market_maker_fill(report);
+    strategy_.on_order_update(report);
+    // The strategy keeps its own position from the same reports. A divergence is silent drift
+    // in every quote it sizes, so it is counted here rather than assumed away.
+    if (report.owner == "MarketMaker" && strategy_.net_position() != position_)
+        ++strategy_position_mismatches_;
+    if (is_terminal(report.exec_type))
+    {
+        const auto remaining = static_cast<int64_t>(report.remaining_quantity());
+        if (report.side == exchange::Side::Buy)
+            pending_buy_quantity_ -= std::min(pending_buy_quantity_, remaining);
+        else
+            pending_sell_quantity_ -= std::min(pending_sell_quantity_, remaining);
+    }
+    const double owed =
+        ledger_.on_report(report, quote_cycle_, execution_quality_, quantity_scale_,
+                          commission_per_unit_, min_commission_per_order_);
+    if (owed > 0.0) portfolio_.charge_fee(owed);
+    if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
+    {
+        ++trade_reports_;
+        trade_report_quantity_ += report.executed_quantity();
+    }
+    ledger_.write_trade(report);
+}
+
+void Pipeline::apply_market_maker_fill(const ExecutionReport& report)
+{
     // The notional a maker fill traded, which is what its fee was charged on. The breakeven fee rate
     // needs it, and it cannot be recovered from the fee itself once the rate is zero, which is
     // exactly the case that has to be measured.
@@ -118,29 +147,6 @@ void Pipeline::handle_report(const ExecutionReport& report)
                               report.price, report.executed_quantity(), quote_cycle_,
                               markout_bucket);
     }
-    strategy_.on_order_update(report);
-    // The strategy keeps its own position from the same reports. A divergence is silent drift
-    // in every quote it sizes, so it is counted here rather than assumed away.
-    if (report.owner == "MarketMaker" && strategy_.net_position() != position_)
-        ++strategy_position_mismatches_;
-    if (is_terminal(report.exec_type))
-    {
-        const auto remaining = static_cast<int64_t>(report.remaining_quantity());
-        if (report.side == exchange::Side::Buy)
-            pending_buy_quantity_ -= std::min(pending_buy_quantity_, remaining);
-        else
-            pending_sell_quantity_ -= std::min(pending_sell_quantity_, remaining);
-    }
-    const double owed =
-        ledger_.on_report(report, quote_cycle_, execution_quality_, quantity_scale_,
-                          commission_per_unit_, min_commission_per_order_);
-    if (owed > 0.0) portfolio_.charge_fee(owed);
-    if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
-    {
-        ++trade_reports_;
-        trade_report_quantity_ += report.executed_quantity();
-    }
-    ledger_.write_trade(report);
 }
 
 void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,

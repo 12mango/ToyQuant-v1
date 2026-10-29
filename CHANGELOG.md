@@ -91,6 +91,10 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
 - **Market events named at the boundary.** `Pipeline::process_event` now dispatches through four named
   `handle_event` overloads instead of an `if constexpr` chain inside one visitor. Trade and BBO handling stay
   byte-for-byte the same, while a future non-MM event or strategy path has a named place to land.
+- **Fill accounting as its own step.** `handle_report()` now keeps the report order and delegates one of
+  our fills to `apply_market_maker_fill()`, which owns position, reservation, exposure, edge and markout
+  updates. A future non-MM path can replace that fill accounting without copying the ledger and strategy
+  callbacks.
 - **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's

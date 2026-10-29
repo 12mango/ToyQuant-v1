@@ -185,6 +185,10 @@ class Pipeline
     // It is named here rather than buried in the constructor's callback lambda so the order lifecycle can
     // be read as one path.
     void handle_report(const ExecutionReport& report);
+    // What one of our fills does to position, reservation, exposure and execution quality. It is a
+    // separate step from the report fan-out so a future non-MM path can replace the fill accounting
+    // without copying the ledger and strategy callback sequence.
+    void apply_market_maker_fill(const ExecutionReport& report);
     // One order's path from risk to the engine. It is separate from the loop so a future non-MM
     // executor can reuse the same risk, ledger and rejection handling without copying this body.
     void submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote);
