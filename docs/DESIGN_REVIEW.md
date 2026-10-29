@@ -11,7 +11,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 103 files, 20,102 lines: `app` 5488, `market` 3890, `legacy` 1851, `lines` 2602, `exchange` 1327, `strategy` 1615, `orderbook` 560, `backtest` 467, `utils` 488, `accounting` 342, `common` 703, `bench` 563, `concurrency` 176, `main` 30 |
+| **Size** | 103 files, 20,151 lines: `app` 5537, `market` 3890, `legacy` 1851, `lines` 2602, `exchange` 1327, `strategy` 1615, `orderbook` 560, `backtest` 467, `utils` 488, `accounting` 342, `common` 703, `bench` 563, `concurrency` 176, `main` 30 |
 | **Tests** | 26 CTest binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | 40 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, two lints |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
@@ -45,7 +45,7 @@ One L2 event, top to bottom. `Pipeline::process_l2_market_view` (`src/app/pipeli
 ```cpp
 void Pipeline::process_l2_market_view(const L2MarketView& view)
 {
-    current_ts_ = view.ts;
+    begin_event(view.ts);                       // funding settlement + the event clock
     ...
     latest_quotes_.insert_or_assign(view.symbol, quote);
 
@@ -53,19 +53,19 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
 
     // The report callback runs inside process_l2_top and reads last_mid_, so this
     // update has to stay after that call.
-    last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
-    ++quote_cycle_;
-    while (!pending_markouts_.empty() && quote_cycle_ >= pending_markouts_.front().start_cycle + 5)
-    { ... }                                     // five-cycle markout resolution
+    advance_mid((view.top.bid_price + view.top.ask_price) / 2.0);
+    record_market_prints();                     // L2-only: the venue's prints, same horizon
 
     submit_strategy_actions(view.ts, strategy_.on_l2_market_view(view));
-    sample_resting_queues();                    // queue distribution: one lookup per open order
+    ledger_.sample_resting(engine_);            // queue distribution: one lookup per open order
 }
 ```
 
 Two decisions are visible in that excerpt rather than in prose. **The strategy runs last**, so it sees the
 book the engine just applied instead of the previous one. **The queue sampling is unconditional**, so the
-distribution covers every order rather than only the ones a trace was asked for.
+distribution covers every order rather than only the ones a trace was asked for. `begin_event()` and
+`advance_mid()` are the two pieces every event path shares, so the L1, L2-view and L2-trade paths cannot
+drift in the order they advance the clock, publish the midpoint or drain a mature markout.
 
 ## 2. C++ decisions
 

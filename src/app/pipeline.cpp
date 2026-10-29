@@ -64,10 +64,7 @@ void Pipeline::handle_report(const ExecutionReport& report)
         fill_accounting_.release(
             report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
             report.remaining_quantity(), true);
-    const double owed =
-        ledger_.on_report(report, quote_cycle_, execution_quality_, quantity_scale_,
-                          commission_per_unit_, min_commission_per_order_);
-    if (owed > 0.0) portfolio_.charge_fee(owed);
+    settle_order(report);
     ledger_.write_trade(report);
 }
 
@@ -90,10 +87,7 @@ void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
     fill_accounting_.release(strategy_order.side, strategy_order.quantity, false);
     ledger_.trace_report(rejected, current_ts_, engine_);
     strategy_.on_order_update(rejected);
-    const double owed =
-        ledger_.on_report(rejected, quote_cycle_, execution_quality_, quantity_scale_,
-                          commission_per_unit_, min_commission_per_order_);
-    if (owed > 0.0) portfolio_.charge_fee(owed);
+    settle_order(rejected);
 }
 
 void Pipeline::process_event(const MarketEvent& event)
@@ -148,15 +142,8 @@ void Pipeline::handle_event(const BboQuote& quote)
                               ? TopOfBook{quote.bid_price, quote.bid_quantity,
                                           quote.ask_price, quote.ask_quantity}
                               : TopOfBook{};
-    last_mid_ = (quote.bid_price + quote.ask_price) / 2.0;
-    ++quote_cycle_;
-    accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_,
-                                      multiplier_, quantity_scale_, execution_quality_);
-    const double abs_inventory = static_cast<double>(std::abs(fill_accounting_.position()));
-    ++inventory_samples_;
-    execution_quality_.average_abs_inventory +=
-        (abs_inventory - execution_quality_.average_abs_inventory) /
-        static_cast<double>(inventory_samples_);
+    advance_mid((quote.bid_price + quote.ask_price) / 2.0);
+    record_inventory_sample();
     process_top_of_book(quote.symbol, quote.ts, top);
 }
 
@@ -172,8 +159,7 @@ void Pipeline::handle_event(const IncrementalBookBatch& batch)
 
 void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top)
 {
-    accounting_.apply_due_funding(ts, portfolio_, last_mid_);
-    current_ts_ = ts;
+    begin_event(ts);
     submit_strategy_actions(ts, strategy_.on_top_of_book(symbol, top));
     // The L1 path has no depth view to sample on, so it samples on its own updates; without this the
     // profile would report that no L1 quote ever moved toward the front, which would be an absence of
@@ -183,8 +169,7 @@ void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const
 
 void Pipeline::process_l2_market_view(const L2MarketView& view)
 {
-    accounting_.apply_due_funding(view.ts, portfolio_, last_mid_);
-    current_ts_ = view.ts;
+    begin_event(view.ts);
     if (view.top.bid_price > 0.0 && view.top.ask_price > 0.0)
     {
         const BboQuote quote{.ts = view.ts,
@@ -206,37 +191,13 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
         // The report callback runs inside process_l2_top and reads last_mid_, so this
         // update has to stay after that call.
         profiler_begin(Stage::TopBookKeeping);
-        last_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
-        ++quote_cycle_;
-        // The report callback above pushes a markout for every fill, but only the L1 path drained
-        // them, so on this path adverse selection stayed at zero however many fills there were. Same
-        // five cycle horizon as the L1 branch.
-        accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_, multiplier_, quantity_scale_, execution_quality_);
-        // The market's own prints, resolved by the same five cycle horizon. A print at or through a price is
-        // what a resting quote there would have traded with, so its markout is the adverse selection a quote at
-        // that distance would have suffered, and unlike our own fills it exists from the first event rather than
-        // from the first one we win.
-        if (accounting_.market_markouts_enabled())
-        {
-            accounting_.drain_mature_prints(quote_cycle_, last_mid_, tick_size_);
-            accounting_.publish_markout_estimate(execution_quality_, strategy_);
-        }
+        advance_mid((view.top.bid_price + view.top.ask_price) / 2.0);
+        record_market_prints();
         profiler_end(Stage::TopBookKeeping);
     }
 
     profiler_begin(Stage::QueueAccounting);
-    const uint64_t buy_queue = engine_.queue_ahead_consumed(Side::Buy);
-    const uint64_t sell_queue = engine_.queue_ahead_consumed(Side::Sell);
-    if (buy_queue > last_buy_queue_ahead_consumed_)
-    {
-        strategy_.on_queue_activity(Side::Buy, buy_queue - last_buy_queue_ahead_consumed_);
-        last_buy_queue_ahead_consumed_ = buy_queue;
-    }
-    if (sell_queue > last_sell_queue_ahead_consumed_)
-    {
-        strategy_.on_queue_activity(Side::Sell, sell_queue - last_sell_queue_ahead_consumed_);
-        last_sell_queue_ahead_consumed_ = sell_queue;
-    }
+    record_queue_activity();
     profiler_end(Stage::QueueAccounting);
 
     profiler_begin(Stage::Strategy);
@@ -251,8 +212,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
 
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 {
-    accounting_.apply_due_funding(trade.ts, portfolio_, last_mid_);
-    current_ts_ = trade.ts;
+    begin_event(trade.ts);
     if (accounting_.market_markouts_enabled() && trade.aggressor_side != Side::Unknown &&
         last_mid_ > 0.0)
     {
@@ -390,17 +350,23 @@ void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> o
     }
 }
 
+RiskContext Pipeline::make_risk_context(const BboQuote* quote, uint64_t ts) const
+{
+    RiskContext context;
+    context.position = fill_accounting_.position();
+    context.pending_buy_quantity = fill_accounting_.pending_buy_quantity();
+    context.pending_sell_quantity = fill_accounting_.pending_sell_quantity();
+    context.quantity_scale = std::max<uint64_t>(1, quantity_scale_);
+    context.unit_notional_usd = unit_notional_usd_;
+    context.multiplier = multiplier_;
+    context.quote = quote;
+    context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
+    return context;
+}
+
 void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote)
 {
-    RiskContext risk_context;
-    risk_context.position = fill_accounting_.position();
-    risk_context.pending_buy_quantity = fill_accounting_.pending_buy_quantity();
-    risk_context.pending_sell_quantity = fill_accounting_.pending_sell_quantity();
-    risk_context.quantity_scale = std::max<uint64_t>(1, quantity_scale_);
-    risk_context.unit_notional_usd = unit_notional_usd_;
-    risk_context.multiplier = multiplier_;
-    risk_context.quote = quote;
-    risk_context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
+    const RiskContext risk_context = make_risk_context(quote, ts);
 
     const RiskPipeline::Decision risk_decision = risk_pipeline_.check(order, risk_context);
     if (!risk_decision.allowed)
@@ -428,6 +394,66 @@ void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* q
     if (engine_.rejected_orders() != rejected_before)
     {
         handle_rejected_order(exchange_order, order, ts);
+    }
+}
+
+void Pipeline::settle_order(const ExecutionReport& report)
+{
+    const double owed =
+        ledger_.on_report(report, quote_cycle_, execution_quality_, quantity_scale_,
+                          commission_per_unit_, min_commission_per_order_);
+    if (owed > 0.0) portfolio_.charge_fee(owed);
+}
+
+void Pipeline::begin_event(uint64_t ts)
+{
+    accounting_.apply_due_funding(ts, portfolio_, last_mid_);
+    current_ts_ = ts;
+}
+
+void Pipeline::advance_mid(double mid)
+{
+    last_mid_ = mid;
+    ++quote_cycle_;
+    // The report callback pushes a markout for every fill, but only this drain closes them, so on the
+    // L2 path adverse selection used to stay at zero however many fills there were. Both paths use the
+    // same five-cycle horizon.
+    accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_,
+                                      multiplier_, quantity_scale_, execution_quality_);
+}
+
+void Pipeline::record_inventory_sample()
+{
+    const double abs_inventory = static_cast<double>(std::abs(fill_accounting_.position()));
+    ++inventory_samples_;
+    execution_quality_.average_abs_inventory +=
+        (abs_inventory - execution_quality_.average_abs_inventory) /
+        static_cast<double>(inventory_samples_);
+}
+
+void Pipeline::record_market_prints()
+{
+    if (!accounting_.market_markouts_enabled()) return;
+    // A print at or through a price is what a resting quote there would have traded with, so its
+    // markout is the adverse selection a quote at that distance would have suffered. Unlike our own
+    // fills it exists from the first event rather than from the first one we win.
+    accounting_.drain_mature_prints(quote_cycle_, last_mid_, tick_size_);
+    accounting_.publish_markout_estimate(execution_quality_, strategy_);
+}
+
+void Pipeline::record_queue_activity()
+{
+    const uint64_t buy_queue = engine_.queue_ahead_consumed(Side::Buy);
+    const uint64_t sell_queue = engine_.queue_ahead_consumed(Side::Sell);
+    if (buy_queue > last_buy_queue_ahead_consumed_)
+    {
+        strategy_.on_queue_activity(Side::Buy, buy_queue - last_buy_queue_ahead_consumed_);
+        last_buy_queue_ahead_consumed_ = buy_queue;
+    }
+    if (sell_queue > last_sell_queue_ahead_consumed_)
+    {
+        strategy_.on_queue_activity(Side::Sell, sell_queue - last_sell_queue_ahead_consumed_);
+        last_sell_queue_ahead_consumed_ = sell_queue;
     }
 }
 

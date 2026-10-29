@@ -189,8 +189,31 @@ class Pipeline
     // One order's path from risk to the engine. It is separate from the loop so a future non-MM
     // executor can reuse the same risk, ledger and rejection handling without copying this body.
     void submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote);
+    // The per-order settlement shared by a venue report and a submission refusal: close the audit
+    // entry, count the state transition, and charge the minimum-commission shortfall the order ended
+    // with. Both paths reach the same ledger step, so a second one cannot forget the fee.
+    void settle_order(const ExecutionReport& report);
+
     // Quote-placement statistics are a market-making concern, not part of generic order submission.
     void record_quote_observation(const StrategyOrder& order, const BboQuote& quote);
+
+    // The bookkeeping every event path shares. `begin_event` advances the run clock and applies any
+    // funding settlement that fell due; `advance_mid` records the new midpoint, starts the next quote
+    // cycle and drains fills old enough to be marked out. Keeping them here means the L1, L2-view and
+    // L2-trade paths cannot drift in the order they do it.
+    void begin_event(uint64_t ts);
+    void advance_mid(double mid);
+    // The risk answer is a pure function of the fill accounting and the event clock; keeping the
+    // projection here means a second order path cannot forget one of its four quantities.
+    RiskContext make_risk_context(const BboQuote* quote, uint64_t ts) const;
+    // The L1 path samples inventory at its own decision point; the L2 path does not, and adding it here
+    // would change a reported number rather than move code.
+    void record_inventory_sample();
+    // The market's own prints, resolved on the same five-cycle horizon as our fills. This is an L2-path
+    // measurement: the L1 replay has no per-print arrival to resolve.
+    void record_market_prints();
+    // Queue consumption is reported to the strategy once per view, as a delta since the previous view.
+    void record_queue_activity();
 
     OrderLedger ledger_;
     Strategy& strategy_;

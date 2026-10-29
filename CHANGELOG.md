@@ -99,6 +99,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   notional, exposure and the trade counters; `Pipeline` reads it through accessors and keeps only the
   config inputs that also feed the report and engine. This removes eight mutable fields from the
   coordinator and gives a non-MM path one boundary to replace.
+- **One event clock and one settlement step.** The L1, L2-view and L2-trade paths now share
+  `begin_event()` (funding plus the event clock) and `advance_mid()` (midpoint, quote cycle and the
+  five-cycle markout drain), and queue consumption is reported through `record_queue_activity()`. A
+  venue report and a submission refusal settle through the same `settle_order()` call, so the
+  minimum-commission charge cannot be forgotten on one of them. The helper bodies are the code they
+  replaced, in the same order; no reported field changes.
 - **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's

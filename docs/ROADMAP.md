@@ -112,7 +112,8 @@ Accepted: a bug fix, a test or explanation of existing behaviour, or a demo scri
 | 2026-10-29 | Internal refactor: report fan-out named as `handle_report`; quote observation separated from generic order submission | `b05898e` |
 | 2026-10-29 | Internal refactor: named `handle_event` overloads replace the `if constexpr` market-event chain | `7ba3927` |
 | 2026-10-29 | Internal refactor: fill accounting extracted from `handle_report` into `apply_market_maker_fill` | `3ac6994` |
-| 2026-10-29 | Internal refactor: fill state moved into `FillAccounting`; Pipeline now reads position/reservations/counters through it | this commit |
+| 2026-10-29 | Internal refactor: fill state moved into `FillAccounting`; Pipeline now reads position/reservations/counters through it | `0526993` |
+| 2026-10-30 | Internal refactor: shared event clock/mid/queue helpers, one risk-context builder and one order-settlement step; no behavior change | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
