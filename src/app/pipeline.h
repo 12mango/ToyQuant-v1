@@ -174,6 +174,12 @@ class Pipeline
         if (profiler_ != nullptr) profiler_->end(stage);
     }
 
+    // One named entry point per MarketEvent alternative. The dispatch itself stays in process_event; these
+    // overloads keep a new event type or a new non-MM path from having to edit an if-constexpr chain.
+    void handle_event(const MarketTrade& trade);
+    void handle_event(const BboQuote& quote);
+    void handle_event(const MarketDepthSnapshot& snapshot);
+    void handle_event(const IncrementalBookBatch& batch);
     void submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> orders);
     // The report fan-out: ledger, portfolio, risk reservation, execution metrics and strategy callbacks.
     // It is named here rather than buried in the constructor's callback lambda so the order lifecycle can

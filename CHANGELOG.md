@@ -88,6 +88,9 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   calls `handle_report()` instead of holding a hundred-line lambda, and quote-distance statistics moved to
   `record_quote_observation()`, so generic order submission no longer carries market-making metrics. The
   report fan-out still runs in the same order and every pinned output is unchanged.
+- **Market events named at the boundary.** `Pipeline::process_event` now dispatches through four named
+  `handle_event` overloads instead of an `if constexpr` chain inside one visitor. Trade and BBO handling stay
+  byte-for-byte the same, while a future non-MM event or strategy path has a named place to land.
 - **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's

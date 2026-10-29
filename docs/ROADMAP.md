@@ -109,7 +109,8 @@ Accepted: a bug fix, a test or explanation of existing behaviour, or a demo scri
 | 2026-10-28 | P1-2 and P1-3 done: external-BBO participation cap, `TimeInForce` on orders, IOC/FOK terminal cancels, `--participation-limit` and `--time-in-force` | `f832873` |
 | 2026-10-28 | P1-4 done: the three-command demo path and expected lines in the User Guide; P1 is complete | `95d3216` |
 | 2026-10-29 | Internal refactor: one side-generic matcher, one external-touch predicate, and a single-order submission step; no behavior change and gate green | `87be6ba` |
-| 2026-10-29 | Internal refactor: report fan-out named as `handle_report`; quote observation separated from generic order submission | this commit |
+| 2026-10-29 | Internal refactor: report fan-out named as `handle_report`; quote observation separated from generic order submission | `b05898e` |
+| 2026-10-29 | Internal refactor: named `handle_event` overloads replace the `if constexpr` market-event chain | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <type_traits>
 
 #include "backtest/performance.h"
 #include "exchange/execution_report.h"
@@ -187,60 +186,65 @@ void Pipeline::process_event(const MarketEvent& event)
             throw std::invalid_argument("market event exchange does not match pipeline source");
     }
 
-    std::visit(
-        [this](const auto& value)
-        {
-            using Event = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<Event, MarketTrade>)
-            {
-                const auto quote_it = latest_quotes_.find(value.symbol);
-                if (quote_it == latest_quotes_.end())
-                {
-                    ++filtered_market_trades_;
-                    return;
-                }
-                const BboQuote& quote = quote_it->second;
-                const double mid = (quote.bid_price + quote.ask_price) / 2.0;
-                const double deviation_bps = std::abs(value.price - mid) / mid * 10000.0;
-                if (deviation_bps > 5.0)
-                {
-                    ++filtered_market_trades_;
-                    return;
-                }
-                strategy_.on_market_trade(value, &quote);
-                engine_.process_market_trade(value);
-            }
-            else if constexpr (std::is_same_v<Event, BboQuote>)
-            {
-                latest_quotes_[value.symbol] = value;
-                engine_.process_bbo(value);
-                // A quote is already a top of book, and this used to prove it by writing the quote into an
-                // `OrderBook` and reading it straight back out. What that round trip added was one test,
-                // the book's own rule for a quote it can use: both sides positive and not crossed. Doing
-                // the conversion here is what lets this class describe its own input without being handed
-                // a book, and what lets the L2 path stop building one it never reads.
-                const bool usable_quote = value.bid_price > 0.0 && value.ask_price > 0.0 &&
-                                          value.bid_price <= value.ask_price;
-                const TopOfBook top = usable_quote
-                                          ? TopOfBook{value.bid_price, value.bid_quantity,
-                                                      value.ask_price, value.ask_quantity}
-                                          : TopOfBook{};
-                last_mid_ = (value.bid_price + value.ask_price) / 2.0;
-                ++quote_cycle_;
-                accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_, multiplier_, quantity_scale_, execution_quality_);
-                const double abs_inventory = static_cast<double>(std::abs(position_));
-                ++inventory_samples_;
-                execution_quality_.average_abs_inventory +=
-                    (abs_inventory - execution_quality_.average_abs_inventory) /
-                    static_cast<double>(inventory_samples_);
-                process_top_of_book(value.symbol, value.ts, top);
-            }
-            else
-            {
-                return;
-            }
-        },
-        event);
+    std::visit([this](const auto& value) { handle_event(value); }, event);
+}
+
+
+void Pipeline::handle_event(const MarketTrade& trade)
+{
+    const auto quote_it = latest_quotes_.find(trade.symbol);
+    if (quote_it == latest_quotes_.end())
+    {
+        ++filtered_market_trades_;
+        return;
+    }
+    const BboQuote& quote = quote_it->second;
+    const double mid = (quote.bid_price + quote.ask_price) / 2.0;
+    const double deviation_bps = std::abs(trade.price - mid) / mid * 10000.0;
+    if (deviation_bps > 5.0)
+    {
+        ++filtered_market_trades_;
+        return;
+    }
+    strategy_.on_market_trade(trade, &quote);
+    engine_.process_market_trade(trade);
+}
+
+void Pipeline::handle_event(const BboQuote& quote)
+{
+    latest_quotes_[quote.symbol] = quote;
+    engine_.process_bbo(quote);
+    // A quote is already a top of book, and this used to prove it by writing the quote into an
+    // `OrderBook` and reading it straight back out. What that round trip added was one test,
+    // the book's own rule for a quote it can use: both sides positive and not crossed. Doing
+    // the conversion here is what lets this class describe its own input without being handed
+    // a book, and what lets the L2 path stop building one it never reads.
+    const bool usable_quote = quote.bid_price > 0.0 && quote.ask_price > 0.0 &&
+                              quote.bid_price <= quote.ask_price;
+    const TopOfBook top = usable_quote
+                              ? TopOfBook{quote.bid_price, quote.bid_quantity,
+                                          quote.ask_price, quote.ask_quantity}
+                              : TopOfBook{};
+    last_mid_ = (quote.bid_price + quote.ask_price) / 2.0;
+    ++quote_cycle_;
+    accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_,
+                                      multiplier_, quantity_scale_, execution_quality_);
+    const double abs_inventory = static_cast<double>(std::abs(position_));
+    ++inventory_samples_;
+    execution_quality_.average_abs_inventory +=
+        (abs_inventory - execution_quality_.average_abs_inventory) /
+        static_cast<double>(inventory_samples_);
+    process_top_of_book(quote.symbol, quote.ts, top);
+}
+
+void Pipeline::handle_event(const MarketDepthSnapshot& snapshot)
+{
+    (void)snapshot;
+}
+
+void Pipeline::handle_event(const IncrementalBookBatch& batch)
+{
+    (void)batch;
 }
 
 void Pipeline::process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top)
