@@ -175,9 +175,15 @@ class Pipeline
     }
 
     void submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> orders);
+    // The report fan-out: ledger, portfolio, risk reservation, execution metrics and strategy callbacks.
+    // It is named here rather than buried in the constructor's callback lambda so the order lifecycle can
+    // be read as one path.
+    void handle_report(const ExecutionReport& report);
     // One order's path from risk to the engine. It is separate from the loop so a future non-MM
     // executor can reuse the same risk, ledger and rejection handling without copying this body.
     void submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote);
+    // Quote-placement statistics are a market-making concern, not part of generic order submission.
+    void record_quote_observation(const StrategyOrder& order, const BboQuote& quote);
 
     OrderLedger ledger_;
     Strategy& strategy_;
