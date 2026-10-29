@@ -79,6 +79,7 @@ set(LINE_SOURCES
 # The application layer's own files, listed here for the same reason as the two above: a target takes the
 # layer rather than repeating what is in it.
 set(APP_SOURCES
+    src/app/fill_accounting.cpp
     src/app/order_ledger.cpp
     src/app/pipeline.cpp
     src/app/risk_pipeline.cpp

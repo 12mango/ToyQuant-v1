@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "app/fill_accounting.h"
 #include "app/order_ledger.h"
 #include "app/risk_pipeline.h"
 #include "app/run_accounting.h"
@@ -185,10 +186,6 @@ class Pipeline
     // It is named here rather than buried in the constructor's callback lambda so the order lifecycle can
     // be read as one path.
     void handle_report(const ExecutionReport& report);
-    // What one of our fills does to position, reservation, exposure and execution quality. It is a
-    // separate step from the report fan-out so a future non-MM path can replace the fill accounting
-    // without copying the ledger and strategy callback sequence.
-    void apply_market_maker_fill(const ExecutionReport& report);
     // One order's path from risk to the engine. It is separate from the loop so a future non-MM
     // executor can reuse the same risk, ledger and rejection handling without copying this body.
     void submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote);
@@ -208,18 +205,11 @@ class Pipeline
     uint64_t cancel_requests_{0};
     TimeInForce time_in_force_{TimeInForce::Gtc};
     bool time_in_force_override_{false};
-    uint64_t trade_reports_{0};
-    uint64_t trade_report_quantity_{0};
     uint64_t last_buy_queue_ahead_consumed_{0};
     uint64_t last_sell_queue_ahead_consumed_{0};
     uint64_t filtered_market_trades_{0};
     ExecutionQualityMetrics execution_quality_;
-    int64_t position_{0};
     uint64_t quote_cycle_{0};
-    // Quantity reserved by resting orders, so the gate accounts for what could still fill rather than
-    // only for the position as it stands.
-    int64_t pending_buy_quantity_{0};
-    int64_t pending_sell_quantity_{0};
     // The pre-trade controls in one object, so the order path and the summary read the same counters and
     // the order of the checks is a property of the risk pipeline rather than of this loop.
     RiskPipeline risk_pipeline_;
@@ -232,20 +222,17 @@ class Pipeline
     // The two schedule terms charged per order rather than per fill. See set_schedule_terms.
     double commission_per_unit_{0.0};
     double min_commission_per_order_{0.0};
-    double max_abs_exposure_usd_{0.0};
-    uint64_t exposure_over_collateral_fills_{0};
     uint64_t strategy_position_mismatches_{0};
     double last_mid_{0.0};
     uint64_t inventory_samples_{0};
-    // Maker notional traded, which is what the maker fees were charged on. It is what turns a PnL into the
-    // fee rate that would have made it zero, which is the question a market-making run has to answer and
-    // which cannot be answered from the fee itself once a fee of zero is one of the cases.
-    double maker_notional_usd_{0.0};
 
     // The run's own measurements: the funding series, and the markout of our fills and of the venue's
     // prints. Both are measured over the clock rather than per order, so they hold a queue of what is not
     // resolved yet and the horizon it is drained on.
     RunAccounting accounting_;
+    // The state one of our own fills changes. Its inputs stay in Pipeline because they also configure
+    // the engine and the report; the mutable state lives here.
+    FillAccounting fill_accounting_;
     bool gate_diagnostics_{false};
 
     // Unwinds the pipeline's own bookkeeping for an order the engine refused. Nothing rests, so no report

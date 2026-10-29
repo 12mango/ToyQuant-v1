@@ -95,6 +95,10 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   our fills to `apply_market_maker_fill()`, which owns position, reservation, exposure, edge and markout
   updates. A future non-MM path can replace that fill accounting without copying the ledger and strategy
   callbacks.
+- **Fill state in one component.** `FillAccounting` now owns position, position-gate reservations, maker
+  notional, exposure and the trade counters; `Pipeline` reads it through accessors and keeps only the
+  config inputs that also feed the report and engine. This removes eight mutable fields from the
+  coordinator and gives a non-MM path one boundary to replace.
 - **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's

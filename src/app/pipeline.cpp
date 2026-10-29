@@ -29,7 +29,8 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, Strateg
       strategy_(strategy),
       engine_(engine),
       portfolio_(portfolio),
-      tick_size_(tick_size)
+      tick_size_(tick_size),
+      fill_accounting_(execution_quality_, accounting_)
 {
     engine_.set_report_callback([this](const ExecutionReport& report)
     {
@@ -44,109 +45,30 @@ void Pipeline::handle_report(const ExecutionReport& report)
         ledger_.mark_resting(report, engine_, execution_quality_);
     if (report.owner == "MarketMaker") portfolio_.apply(report);
     if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
-        apply_market_maker_fill(report);
+    {
+        const FillContext context{.last_mid = last_mid_,
+                                  .tick_size = tick_size_,
+                                  .unit_notional_usd = unit_notional_usd_,
+                                  .multiplier = multiplier_,
+                                  .quantity_scale = quantity_scale_,
+                                  .starting_cash_usd = starting_cash_usd_,
+                                  .quote_cycle = quote_cycle_};
+        fill_accounting_.apply(report, context);
+    }
     strategy_.on_order_update(report);
     // The strategy keeps its own position from the same reports. A divergence is silent drift
     // in every quote it sizes, so it is counted here rather than assumed away.
-    if (report.owner == "MarketMaker" && strategy_.net_position() != position_)
+    if (report.owner == "MarketMaker" && strategy_.net_position() != fill_accounting_.position())
         ++strategy_position_mismatches_;
     if (is_terminal(report.exec_type))
-    {
-        const auto remaining = static_cast<int64_t>(report.remaining_quantity());
-        if (report.side == exchange::Side::Buy)
-            pending_buy_quantity_ -= std::min(pending_buy_quantity_, remaining);
-        else
-            pending_sell_quantity_ -= std::min(pending_sell_quantity_, remaining);
-    }
+        fill_accounting_.release(
+            report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
+            report.remaining_quantity(), true);
     const double owed =
         ledger_.on_report(report, quote_cycle_, execution_quality_, quantity_scale_,
                           commission_per_unit_, min_commission_per_order_);
     if (owed > 0.0) portfolio_.charge_fee(owed);
-    if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")
-    {
-        ++trade_reports_;
-        trade_report_quantity_ += report.executed_quantity();
-    }
     ledger_.write_trade(report);
-}
-
-void Pipeline::apply_market_maker_fill(const ExecutionReport& report)
-{
-    // The notional a maker fill traded, which is what its fee was charged on. The breakeven fee rate
-    // needs it, and it cannot be recovered from the fee itself once the rate is zero, which is
-    // exactly the case that has to be measured.
-    if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade &&
-        report.liquidity_role == LiquidityRole::Maker)
-        maker_notional_usd_ +=
-            fill_notional_usd(unit_notional_usd_, multiplier_, report.price, report.executed_quantity(),
-                              quantity_scale_);
-    if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
-    {
-        const int64_t previous_position = position_;
-        position_ += report.side == exchange::Side::Buy
-                         ? static_cast<int64_t>(report.executed_quantity())
-                         : -static_cast<int64_t>(report.executed_quantity());
-        // The position only changes here, so this is where the peak and the sign changes
-        // belong. Sampling the peak from a market view instead missed a fill that arrived as
-        // the last event, and the summary then reported a maximum inventory of zero next to an
-        // open marked position. The sign changes were never counted at all.
-        execution_quality_.max_abs_inventory =
-            std::max(execution_quality_.max_abs_inventory, std::abs(position_));
-        if (previous_position != 0 && position_ != 0 &&
-            (previous_position < 0) != (position_ < 0))
-            ++execution_quality_.inventory_sign_changes;
-        // The order is no longer resting, so give the gate its reserved quantity back.
-        if (report.side == exchange::Side::Buy)
-            pending_buy_quantity_ -=
-                std::min(pending_buy_quantity_,
-                         static_cast<int64_t>(report.executed_quantity()));
-        else
-            pending_sell_quantity_ -=
-                std::min(pending_sell_quantity_,
-                         static_cast<int64_t>(report.executed_quantity()));
-        // Marked exposure against the collateral the run started with. The documented model is
-        // cash only and no margin, and nothing else in the simulator enforces or reports it:
-        // a strategy without an inventory limit reached a cash balance of -120,940 USD on this
-        // feed while equity still printed +29%, which no component flagged.
-        const double exposure =
-            std::abs(static_cast<double>(position_)) /
-            static_cast<double>(quantity_scale_) *
-            unit_notional_at(unit_notional_usd_, multiplier_, report.price);
-        max_abs_exposure_usd_ = std::max(max_abs_exposure_usd_, exposure);
-        if (starting_cash_usd_ > 0.0 && exposure > starting_cash_usd_)
-            ++exposure_over_collateral_fills_;
-        const double unit_edge = report.side == exchange::Side::Buy
-                                     ? last_mid_ - report.price
-                                     : report.price - last_mid_;
-        // The raw sum mixes prices and quantities, so it cannot be compared against the
-        // half-spread the quote sat at, nor across runs whose fills have different sizes.
-        // The weighted sums behind it produce a quantity-weighted average in ticks, which is
-        // the number a market maker would actually quote a spread against.
-        const auto executed = static_cast<double>(report.executed_quantity());
-        execution_quality_.captured_edge += unit_edge;
-        execution_quality_.captured_edge_quantity += executed;
-        execution_quality_.captured_edge_ticks_quantity +=
-            unit_edge / std::max(tick_size_, PRICE_TICK_SIZE) * executed;
-        // The same edge in money. A price difference on an inverse contract moves the position
-        // by quantity * face value * edge / price, so this is the figure that can be compared
-        // with fees_paid. For a spot instrument the face value is zero, the price is the unit
-        // value, and the expression reduces to quantity * edge.
-        const double unit_value_at_fill = unit_notional_at(unit_notional_usd_, multiplier_, report.price);
-        execution_quality_.captured_edge_usd +=
-            executed / static_cast<double>(quantity_scale_) * unit_value_at_fill *
-            unit_edge / std::max(report.price, 1e-9);
-        // The condition is read here, at the fill: the side, and whether the fill price was at least a
-        // tick away from the midpoint then. The first attempt used the position, and it showed that with
-        // this sizing every fill starts from flat, so the second dimension has to be one that varies and
-        // that a quote decision could act on.
-        const bool at_least_a_tick_away =
-            std::abs(report.price - last_mid_) >= std::max(tick_size_, PRICE_TICK_SIZE);
-        const int markout_bucket =
-            (report.side == exchange::Side::Buy ? 0 : 2) + (at_least_a_tick_away ? 0 : 1);
-        accounting_.note_fill(report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
-                              report.price, report.executed_quantity(), quote_cycle_,
-                              markout_bucket);
-    }
 }
 
 void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
@@ -165,12 +87,7 @@ void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
                                    .ts = ts,
                                    .owner = "MarketMaker",
                                    .reject_reason = RejectReason::Venue};
-    if (strategy_order.side == Side::Buy)
-        pending_buy_quantity_ -=
-            std::min(pending_buy_quantity_, static_cast<int64_t>(strategy_order.quantity));
-    else if (strategy_order.side == Side::Sell)
-        pending_sell_quantity_ -=
-            std::min(pending_sell_quantity_, static_cast<int64_t>(strategy_order.quantity));
+    fill_accounting_.release(strategy_order.side, strategy_order.quantity, false);
     ledger_.trace_report(rejected, current_ts_, engine_);
     strategy_.on_order_update(rejected);
     const double owed =
@@ -235,7 +152,7 @@ void Pipeline::handle_event(const BboQuote& quote)
     ++quote_cycle_;
     accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_,
                                       multiplier_, quantity_scale_, execution_quality_);
-    const double abs_inventory = static_cast<double>(std::abs(position_));
+    const double abs_inventory = static_cast<double>(std::abs(fill_accounting_.position()));
     ++inventory_samples_;
     execution_quality_.average_abs_inventory +=
         (abs_inventory - execution_quality_.average_abs_inventory) /
@@ -361,7 +278,9 @@ RunSummary Pipeline::summary() const
     // close, and `unrealized_pnl` is the position it was still holding when the input ended: the first is
     // the quoting result and the second is the bet the run left open, and the two are worth different
     // conclusions, so both are reported and neither is called "the PnL".
-    PnlSummary pnl = RunAccounting::pnl_summary(portfolio_, maker_notional_usd_, trade_reports_);
+    PnlSummary pnl =
+        RunAccounting::pnl_summary(portfolio_, fill_accounting_.maker_notional_usd(),
+                                   fill_accounting_.trade_reports());
     // The longest waiting order that is still in the book: the audit map holds the open orders, so the
     // maximum over it names the quote whose queue is worth watching. It has survived every requote the run
     // made.
@@ -370,8 +289,8 @@ RunSummary Pipeline::summary() const
     return {.submitted_orders = submitted_orders_,
             .submitted_quantity = submitted_quantity_,
             .cancel_requests = cancel_requests_,
-            .trade_reports = trade_reports_,
-            .trade_report_quantity = trade_report_quantity_,
+            .trade_reports = fill_accounting_.trade_reports(),
+            .trade_report_quantity = fill_accounting_.trade_report_quantity(),
             .queue_ahead_consumed = engine_.queue_ahead_consumed(),
             .buy_queue_ahead_levels_cleared = engine_.queue_ahead_levels_cleared(Side::Buy),
             .sell_queue_ahead_levels_cleared = engine_.queue_ahead_levels_cleared(Side::Sell),
@@ -380,7 +299,8 @@ RunSummary Pipeline::summary() const
             .sell_queue_from_quantity_changes =
                 engine_.queue_ahead_from_quantity_changes(Side::Sell),
             .filtered_market_trades = filtered_market_trades_,
-            .fill_rate = metrics::compute_fill_rate(submitted_quantity_, trade_report_quantity_),
+            .fill_rate = metrics::compute_fill_rate(
+                submitted_quantity_, fill_accounting_.trade_report_quantity()),
             .cancel_rate = metrics::compute_cancel_rate(submitted_orders_, cancel_requests_),
             .position_limit = risk_pipeline_.position_limit(),
             .strategy_net_position = strategy_.net_position(),
@@ -400,8 +320,9 @@ RunSummary Pipeline::summary() const
             .fat_finger_rejections = risk_pipeline_.fat_finger_rejections(),
             .rate_limited_orders = risk_pipeline_.rate_limited_orders(),
             .starting_cash_usd = starting_cash_usd_,
-            .max_abs_exposure_usd = max_abs_exposure_usd_,
-            .exposure_over_collateral_fills = exposure_over_collateral_fills_,
+            .max_abs_exposure_usd = fill_accounting_.max_abs_exposure_usd(),
+            .exposure_over_collateral_fills =
+                fill_accounting_.exposure_over_collateral_fills(),
             .working_orders = strategy_.working_order_count(),
             .portfolio = portfolio_.metrics(),
             .pnl = pnl,
@@ -472,9 +393,9 @@ void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> o
 void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* quote)
 {
     RiskContext risk_context;
-    risk_context.position = position_;
-    risk_context.pending_buy_quantity = pending_buy_quantity_;
-    risk_context.pending_sell_quantity = pending_sell_quantity_;
+    risk_context.position = fill_accounting_.position();
+    risk_context.pending_buy_quantity = fill_accounting_.pending_buy_quantity();
+    risk_context.pending_sell_quantity = fill_accounting_.pending_sell_quantity();
     risk_context.quantity_scale = std::max<uint64_t>(1, quantity_scale_);
     risk_context.unit_notional_usd = unit_notional_usd_;
     risk_context.multiplier = multiplier_;
@@ -491,12 +412,7 @@ void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* q
     // The position gate reserves what it lets through, because those orders can still fill. The rule is
     // unchanged: the reservation happens only when the gate is on.
     if (risk_pipeline_.position_limit() > 0 && order.quantity > 0)
-    {
-        if (order.side == Side::Buy)
-            pending_buy_quantity_ += static_cast<int64_t>(order.quantity);
-        else if (order.side == Side::Sell)
-            pending_sell_quantity_ += static_cast<int64_t>(order.quantity);
-    }
+        fill_accounting_.reserve(order.side, order.quantity);
     order.order_id = next_order_id_++;
     if (time_in_force_override_) order.time_in_force = time_in_force_;
     auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
