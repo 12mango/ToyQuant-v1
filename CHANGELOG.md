@@ -74,6 +74,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   `--time-in-force=gtc|ioc|fok` applies it to a run; `tests/matching_engine_test.cpp` covers the cap, IOC,
   FOK-unfilled, FOK-filled and the split external/internal FOK. GTC remains the default, so existing runs are
   byte-for-byte unchanged.
+- **A three-command demo path.** The User Guide's "A short demo path" runs `verify_l2.sh fast`,
+  `risk_check.sh` and a one-cell `trend_sweep.sh` in the order their prerequisites require, with the exact
+  lines to expect. It adds no strategy or script: the negative trend PnL is presented as the measured result
+  rather than a failure, and the gate, the risk invariants and the cost of a taker signal are all visible in
+  one sitting.
 - **A strategy that is not a market maker.** `trend_l2` is the other workflow on the same pipeline: an EWMA
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's

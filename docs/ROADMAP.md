@@ -12,7 +12,7 @@ reader, and paper trading is the existing book and matching engine against that 
 
 | | |
 |---|---|
-| Delivered | the queue model, the fee model, the two latency legs, the order trace and the queue distribution, four sweeps of the strategy levers, and a four-tier gate |
+| Delivered | the queue model, the fee model, the two latency legs, the order trace and the queue distribution, four sweeps of the strategy levers, a four-tier gate, and a three-command demo path |
 | The binding result | at a one-tick spread the fee is 2.57 ticks against 0.088 captured, and no lever moves that ratio |
 | Frozen | the pre-queue-model line is tagged `v1.0-demo` |
 | Open | the conclusions rest on one day, and nothing has been run against a venue's own live feed; the paced replay, the recorder and the websocket reader are in place, so the seam is closed at the desk and what remains is a credential; phase 2b is the plan from the first positive window to a running system |
@@ -55,7 +55,7 @@ existing design, architecture and user documents are the whole plan.
 2. Make `index.md` the map of five core documents, and add no new planning document.
 3. No walkthrough or interview Q&A is planned; the project itself is the deliverable.
 
-**P1 — next small, explainable increments; start here.**
+**P1 — current iteration (complete).**
 
 5. **Order timeout and query visibility — done.** `OrderQuery` lets the gateway ask whether the venue still
    holds a timed-out order; `[GATEWAY]` reports `unacknowledged`, `timeouts_queried`, `timeouts_working` and
@@ -68,8 +68,10 @@ existing design, architecture and user documents are the whole plan.
    the internal book first, then either fills completely or cancels with `CancelReason::Fok` without trading.
    `--time-in-force=gtc|ioc|fok` applies one setting to every strategy order. Cancel/replace stays deferred:
    it needs old/new id mapping, queue-priority reset, and a replace race.
-8. **Demo script.** Put the existing `verify_l2.sh`, `risk_check.sh` and `trend_sweep.sh` in one ordered
-   command list with the expected lines; no new strategy.
+8. **Demo path — done.** The ordered command list and expected lines are in the
+   [User Guide](USER_GUIDE.md#a-short-demo-path): `verify_l2.sh fast`, `risk_check.sh`, then a one-cell
+   `trend_sweep.sh`. It uses the existing scripts, adds no strategy, and states that the negative trend PnL
+   is the measured result rather than a demo failure.
 
 **P2 — only after P1, or when the owner asks.**
 
@@ -104,7 +106,8 @@ Accepted: a bug fix, a test or explanation of existing behaviour, or a demo scri
 | 2026-10-28 | Consolidated the plan here; removed `PROJECT_BRIEF` and the separate decision log; reset the boundary to "deferred, can be lifted" | `2d23d5d` |
 | 2026-10-28 | Removed the interview walkthrough/Q&A from P0; the plan is project-quality only | `2078958` |
 | 2026-10-28 | P1-1 done: gateway timeout query/reconciliation; P1-2 is a participation cap only; P1-3 is IOC/FOK, cancel/replace deferred | this commit |
-| 2026-10-28 | P1-2 and P1-3 done: external-BBO participation cap, `TimeInForce` on orders, IOC/FOK terminal cancels, `--participation-limit` and `--time-in-force`; P1-4 remains | this commit |
+| 2026-10-28 | P1-2 and P1-3 done: external-BBO participation cap, `TimeInForce` on orders, IOC/FOK terminal cancels, `--participation-limit` and `--time-in-force` | `f832873` |
+| 2026-10-28 | P1-4 done: the three-command demo path and expected lines in the User Guide; P1 is complete | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
