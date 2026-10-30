@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <vector>
 
 #include "accounting/portfolio.h"
@@ -158,6 +159,12 @@ class RunAccounting
                                                double total_notional_usd,
                                                double starting_cash_usd);
 
+    // The same distribution over the trades whose position was opened on one side. A market maker's long and
+    // short round trips are different populations -- one is filled by sellers, the other by buyers -- so the
+    // aggregate can hide a side that never wins, which is the question this split exists to answer.
+    static RoundTripSummary side_round_trip_summary(const std::vector<ClosedTrade>& trades,
+                                                    exchange::Side side);
+
     // The horizons the taker markout is reported at, in quote cycles, fixed because the comparison between
     // them is the point: 5 is the horizon the passive markout has always used and the first bucket the
     // Python benchmark measures, 20 is its second, and 60 is the long end where a breakout's drift either
@@ -226,6 +233,12 @@ class RunAccounting
                                   uint64_t trade_reports);
 
    private:
+    // The win/loss half of the distribution, over every trade or over one side. An empty `side` means every
+    // trade, and the notional figures stay with the caller because they belong to the account rather than to
+    // a side.
+    static void fill_round_trip_distribution(const std::vector<ClosedTrade>& trades,
+                                             std::optional<exchange::Side> side, RoundTripSummary& summary);
+
     struct FillObservation
     {
         Side side;

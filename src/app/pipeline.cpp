@@ -295,6 +295,10 @@ RunSummary Pipeline::summary() const
             .round_trips = RunAccounting::round_trip_summary(
                 portfolio_.closed_trades(), fill_accounting_.taker_notional_usd(),
                 fill_accounting_.traded_notional_usd(), starting_cash_usd_),
+            .long_round_trips =
+                RunAccounting::side_round_trip_summary(portfolio_.closed_trades(), exchange::Side::Buy),
+            .short_round_trips =
+                RunAccounting::side_round_trip_summary(portfolio_.closed_trades(), exchange::Side::Sell),
             .taker = accounting_.taker_summary(),
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,

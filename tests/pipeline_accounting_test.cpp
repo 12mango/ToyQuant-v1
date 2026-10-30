@@ -292,6 +292,24 @@ int main()
         assert(std::abs(round_trips.total_notional_usd - 30.0) < 1e-12);
         assert(std::abs(round_trips.turnover - 3.0) < 1e-12);
 
+        // The same distribution split by the side the position was opened on: two longs (one win, one loss at
+        // -0.1 net) and one short (a loss). The split has to add up to the aggregate, and a side with no
+        // round trips has to say zero rather than carry the other side's numbers.
+        const auto longs = RunAccounting::side_round_trip_summary(trades, exchange::Side::Buy);
+        const auto shorts = RunAccounting::side_round_trip_summary(trades, exchange::Side::Sell);
+        assert(longs.trades == 2);
+        assert(shorts.trades == 1);
+        assert(longs.trades + shorts.trades == round_trips.trades);
+        assert(std::abs(longs.win_rate - 0.5) < 1e-12);
+        assert(std::abs(longs.profit_factor - 8.0) < 1e-12);
+        assert(std::abs(longs.expectancy_usd - 0.35) < 1e-12);
+        assert(std::abs(longs.average_loss_usd + 0.1) < 1e-12);
+        assert(std::abs(longs.average_holding_seconds - 1.25) < 1e-12);
+        assert(shorts.win_rate == 0.0);
+        assert(shorts.profit_factor == 0.0);
+        assert(std::abs(shorts.expectancy_usd + 1.2) < 1e-12);
+        assert(RunAccounting::side_round_trip_summary({}, exchange::Side::Buy).trades == 0);
+
         // A run that never closed a position reports no distribution and still reports its turnover; a run
         // with no collateral has no turnover to state.
         const auto empty = RunAccounting::round_trip_summary({}, 0.0, 0.0, 0.0);

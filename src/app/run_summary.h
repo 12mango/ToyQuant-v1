@@ -324,6 +324,12 @@ struct RunSummary
     // The per-trade distribution behind the aggregate PnL, printed as its own [ROUND_TRIPS] line under the
     // same switch: a run that does not ask keeps every line it had.
     RoundTripSummary round_trips;
+    // The same distribution split by the side the position was opened on, printed as one
+    // [ROUND_TRIPS_SIDE] line per side that completed at least one round trip. The account-level notional and
+    // turnover stay on the aggregate line: a fill belongs to the account, not to the side of the position it
+    // happened to close.
+    RoundTripSummary long_round_trips;
+    RoundTripSummary short_round_trips;
     // What the aggressive side cost: arrival slippage, the drift after a crossing fill, and the shortfall
     // of the IOC/FOK orders. Its own line for the same reason as the round trips.
     TakerSummary taker;
@@ -481,6 +487,22 @@ struct RunSummary
                    << " taker_notional_usd=" << round_trips.taker_notional_usd
                    << " total_notional_usd=" << round_trips.total_notional_usd
                    << " turnover=" << round_trips.turnover;
+        if (metrics_requested && long_round_trips.trades > 0)
+            stream << "\n[ROUND_TRIPS_SIDE] side=long trades=" << long_round_trips.trades
+                   << " win_rate=" << long_round_trips.win_rate
+                   << " profit_factor=" << long_round_trips.profit_factor
+                   << " expectancy_usd=" << long_round_trips.expectancy_usd
+                   << " average_win_usd=" << long_round_trips.average_win_usd
+                   << " average_loss_usd=" << long_round_trips.average_loss_usd
+                   << " average_holding_seconds=" << long_round_trips.average_holding_seconds;
+        if (metrics_requested && short_round_trips.trades > 0)
+            stream << "\n[ROUND_TRIPS_SIDE] side=short trades=" << short_round_trips.trades
+                   << " win_rate=" << short_round_trips.win_rate
+                   << " profit_factor=" << short_round_trips.profit_factor
+                   << " expectancy_usd=" << short_round_trips.expectancy_usd
+                   << " average_win_usd=" << short_round_trips.average_win_usd
+                   << " average_loss_usd=" << short_round_trips.average_loss_usd
+                   << " average_holding_seconds=" << short_round_trips.average_holding_seconds;
         if (metrics_requested)
             stream << "\n[TAKER] fills=" << taker.fills
                    << " arrival_slippage_ticks=" << taker.arrival_slippage_ticks

@@ -159,26 +159,22 @@ PerformanceSummary RunAccounting::performance_summary() const
     return summary;
 }
 
-RoundTripSummary RunAccounting::round_trip_summary(const std::vector<ClosedTrade>& trades,
-                                                  double taker_notional_usd,
-                                                  double total_notional_usd,
-                                                  double starting_cash_usd)
+void RunAccounting::fill_round_trip_distribution(const std::vector<ClosedTrade>& trades,
+                                                 std::optional<exchange::Side> side,
+                                                 RoundTripSummary& summary)
 {
-    RoundTripSummary summary;
-    summary.trades = static_cast<uint64_t>(trades.size());
-    summary.taker_notional_usd = taker_notional_usd;
-    summary.total_notional_usd = total_notional_usd;
-    summary.turnover = starting_cash_usd > 0.0 ? total_notional_usd / starting_cash_usd : 0.0;
-    if (trades.empty()) return summary;
-
     double net_total = 0.0;
     double win_sum = 0.0;
     double loss_sum = 0.0;
     double holding_seconds = 0.0;
     uint64_t wins = 0;
     uint64_t losses = 0;
+    uint64_t count = 0;
     for (const auto& trade : trades)
     {
+        // An empty filter is the whole book; otherwise only the positions opened on that side are counted.
+        if (side.has_value() && trade.side != *side) continue;
+        ++count;
         // The fee belongs to the fill, and the slice of it that closed this quantity was apportioned when
         // the trade was booked, so the net here is what the round trip contributed to realized PnL.
         const double net = trade.pnl - trade.fee;
@@ -197,13 +193,35 @@ RoundTripSummary RunAccounting::round_trip_summary(const std::vector<ClosedTrade
             holding_seconds += static_cast<double>(trade.exit_ts - trade.entry_ts) / 1'000'000.0;
     }
 
-    const double count = static_cast<double>(summary.trades);
-    summary.win_rate = static_cast<double>(wins) / count;
+    summary.trades = count;
+    if (count == 0) return;
+    const double trades_count = static_cast<double>(count);
+    summary.win_rate = static_cast<double>(wins) / trades_count;
     summary.profit_factor = loss_sum < 0.0 ? -win_sum / loss_sum : 0.0;
-    summary.expectancy_usd = net_total / count;
+    summary.expectancy_usd = net_total / trades_count;
     summary.average_win_usd = wins > 0 ? win_sum / static_cast<double>(wins) : 0.0;
     summary.average_loss_usd = losses > 0 ? loss_sum / static_cast<double>(losses) : 0.0;
-    summary.average_holding_seconds = holding_seconds / count;
+    summary.average_holding_seconds = holding_seconds / trades_count;
+}
+
+RoundTripSummary RunAccounting::round_trip_summary(const std::vector<ClosedTrade>& trades,
+                                                  double taker_notional_usd,
+                                                  double total_notional_usd,
+                                                  double starting_cash_usd)
+{
+    RoundTripSummary summary;
+    summary.taker_notional_usd = taker_notional_usd;
+    summary.total_notional_usd = total_notional_usd;
+    summary.turnover = starting_cash_usd > 0.0 ? total_notional_usd / starting_cash_usd : 0.0;
+    fill_round_trip_distribution(trades, std::nullopt, summary);
+    return summary;
+}
+
+RoundTripSummary RunAccounting::side_round_trip_summary(const std::vector<ClosedTrade>& trades,
+                                                       exchange::Side side)
+{
+    RoundTripSummary summary;
+    fill_round_trip_distribution(trades, side, summary);
     return summary;
 }
 

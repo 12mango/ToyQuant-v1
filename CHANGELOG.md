@@ -152,6 +152,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   and total notional against the starting collateral as turnover. A fill that closes part of a position and
   opens the rest splits its fee by quantity, so the sum of the trips plus the carried entry fees of the
   position still open is the run's realized PnL rather than a second opinion about it.
+- **The distribution split by side.** `--metrics` also prints one `[ROUND_TRIPS_SIDE]` line per side that
+  completed a round trip, with the same win rate, profit factor, expectancy, average win and loss and holding
+  time. The aggregate hides which side a win came from: on the 2M slice one win in twelve is five longs with
+  that single win at -0.022 USD a trade, and seven shorts with none at -0.010. The account-level notional and
+  turnover stay on the aggregate line, because a fill belongs to the account rather than to the side of the
+  position it closed.
 - **What the crossing side cost.** `--metrics` records the midpoint each order decided at and reports
   `[TAKER]`: the arrival slippage of every aggressive fill in ticks, basis points and dollars, the drift from
   the fill to the midpoint 5, 20 and 60 quote cycles later — positive when the move covered the spread, the
