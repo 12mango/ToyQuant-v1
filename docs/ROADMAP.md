@@ -132,6 +132,7 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-30 | Execution benchmark: the parent is also measured against the time-weighted midpoint of its own window. `twap` lands within 3.2 bps of it in every cell while a single crossing sits at −11.92 and +7.79, so the crossing is a drift bet and the schedule pays a stable half point | `bbbe087` |
 | 2026-10-30 | Execution entry: `--algo-entry=post:N` rests each slice and crosses the remainder on timeout. Four timeouts on two windows: the fee falls with patience (5.00 → 1.80 bps) but fills fall with it (100 % → 60 %) and the opportunity cost rises faster (0.00 → 10.85 bps), so crossing stays the entry | `509e811` |
 | 2026-10-30 | Execution cleanup: two dead fields removed, `--algo-entry=cross` refuses a parameter it would ignore, `complete` documents that a truncated window makes the shortfall a lower bound, and the architecture's file and family counts now include the execution line | `605af3f` |
+| 2026-10-30 | Capacity ladder 1,000–100,000 contracts on both windows: the shortfall in basis points is flat (every term is proportional to quantity) while the crossings needed go from one to six for `market` and to 97 for `twap`; no size reorders the schedules, so the capacity question closes | `6c6aa7a` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
