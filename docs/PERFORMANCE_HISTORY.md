@@ -3033,31 +3033,40 @@ cell, gives the tick hypothesis a control it never had:
 
 | venue | symbol | windows | fills per window | break-even maker rate |
 |---|---|---:|---:|---|
-| Deribit | BTC-PERPETUAL | 2 | 7, 12 | **+5.35 bps** |
-| Deribit | ETH-PERPETUAL | 2 | 27, 22 | **-2.09 bps** |
+| Deribit | BTC-PERPETUAL | 4 | 7 to 24 | **+0.19 bps** |
+| Deribit | ETH-PERPETUAL | 4 | 22 to 44 | **-2.64 bps** |
 | OKX | BTC-USDT-SWAP | 4 | 115 to 138 | **-1.14 bps** |
 | OKX | ETH-USDT-SWAP | 4 | 171 to 246 | **-1.24 bps** |
 
-Deribit's gap is **+7.44 bps** and both of its days agree (+8.14, +6.74) -- and it is the gap the earlier hint
-reported, 6.9 bps, even though that run's absolute levels sat on the other side of zero. The gap is the stable
-quantity and the level is not. The venue where both ticks are negligible has a gap of **+0.10 bps** over eight
-windows, and its two daily means fall on opposite sides of zero (+0.49 and -0.29), which is what a difference with
-no cause behind it looks like.
+Deribit's gap is **+2.83 bps** across four days, and that number is not one a reader should trust: the daily gaps
+are **-3.27, +8.14, -0.27 and +6.74**, so the standard error is 2.7 bps and the estimate sits one standard error from
+zero. An earlier two-day version of this table quoted +7.44 bps and called it agreement; the two days it used were
+the two that happened to agree, and the two days added afterwards disagree. **58 and 127 fills are not enough to pin
+a gap on that venue** -- which is the original complaint, restated honestly rather than escaped.
 
-So the 7.4 bps is the tick and nothing else: where the two ticks differ by a factor of 4.8 and are worth 0.78 and
-3.76 bps of price, the coarser contract earns 7.4 bps more for the same schedule; where they differ by 2.2 and are
-worth a hundredth of a basis point, the two symbols are indistinguishable.
+What the four days do establish is the mechanism, from the other venue. Where both ticks are negligible the two
+symbols are indistinguishable: a gap of **+0.10 bps** across eight windows and 1,287 fills, with the two daily means
+on opposite sides of zero (+0.49 and -0.29). The gap therefore **cannot be the asset** -- the venue that removed the
+tick removed the gap -- and the sign and size of it on a coarser venue is what a few hundred fills cannot measure.
 
-The better sample also answers what the hint could not: on the venue where the tick is negligible the gross is
+A second thing the four days show, and it is the plainest evidence that frequency is not a knob: the same strategy,
+the same parameters, holds a round trip for **0.03 to 0.14 seconds** on the venue whose tick is 0.015 bps and for
+**60 to 720 seconds** on the venue whose tick is 0.78. The quote's distance from the mid, in units of the noise,
+decides how often it trades; nothing in the configuration does.
+
+The better sample also answers what the hint could not. On the venue where the tick is negligible the gross is
 **negative in all eight windows**, -0.50 to -1.87 bps, so the passive quote loses money *before* the 2 bps maker fee
-is charged. The maker line's closing therefore survives the larger sample -- at 2 bps to rest against a hundredth of
-a basis point of tick, a two-tick quote does not pay -- and what would pay is a coarser tick against the same fee or
-a fee below the capture, neither of which that venue offers.
+is charged. And on the coarse-tick venue the ETH contract loses in all four of its days (-1.52 to -3.23), while the
+BTC contract is positive on two of four (-6.44, +5.47, -3.50, +5.22), which is a coin landing the way the drift
+pushed it. The maker line's closing therefore survives both venues: at 2 bps to rest, neither a hundredth of a basis
+point of tick nor a tick worth 3.76 pays.
 
-Two caveats belong with the numbers. Round trips close in 0.03 to 0.14 seconds, so this measures a quote that is run
-over and re-flattened rather than one that rests, and the gross includes the inventory's mark to market, which is why
-the level moves with the day's drift and only the gap is stable. Both are visible in the lines the runs print
-(`average_holding_seconds`, `gross_pnl_usd`), so a reader can weigh them rather than take the summary.
+
+Two caveats belong with the numbers. Round trips close in 0.03 to 0.14 seconds on the fine-tick venue, so this
+measures a quote that is run over and re-flattened rather than one that rests, and the gross includes the inventory's
+mark to market, which is why the level moves with the day's drift and only the gap is stable. Both are visible in the
+lines the runs print (`average_holding_seconds`, `gross_pnl_usd`), so a reader can weigh them rather than take the
+summary.
 
 The data is the venue's own archive: the order book is one `tar.gz` per symbol and day from the download portal, cut
 on **UTC** midnight and re-sending a full snapshot about once a minute, while the trades come from the same venue's

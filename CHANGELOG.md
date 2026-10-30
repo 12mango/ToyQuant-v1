@@ -199,14 +199,18 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dollars still cost 0.73. The formula is `fee + max(half a tick, impact)`, and the depth term is the whole cost on
   a book whose touch is smaller than the venue's own minimum notional would suggest. That also re-reads the flat
   capacity ladder: it was flat because that book is deep, not because size never matters.
-- **The maker hint, settled on a venue whose tick is negligible.** The earlier BTC/ETH gap of 6.9 bps could not be
-  attributed with 1 to 86 fills per window. The venue whose order book archive is free and daily from March 2023
-  offers 115 to 246 fills per window instead, and it also removes the variable under test: its BTC and ETH ticks are
-  0.015 and 0.033 bps of price, so both are a rounding error beside the 2 bps maker fee. There the two symbols are
-  indistinguishable -- a gap of +0.10 bps across eight windows, with the two daily means on opposite sides of zero --
-  while Deribit's gap is +7.44 bps and agrees with the hint's 6.9. So the difference is the tick, and only the gap
-  survives across venues; the level follows the day's drift. The larger sample also keeps the line closed: on the
-  negligible-tick venue the gross is negative in all eight windows, -0.50 to -1.87 bps, before any fee is charged.
+- **The maker hint, settled on a venue whose tick is negligible -- and an earlier claim of mine narrowed.** The
+  BTC/ETH gap of 6.9 bps could not be attributed with 1 to 86 fills per window. The venue whose order book archive is
+  free and daily from March 2023 offers 115 to 246 fills per window instead, and it also removes the variable under
+  test: its BTC and ETH ticks are 0.015 and 0.033 bps of price, both a rounding error beside the 2 bps maker fee.
+  There the two symbols are indistinguishable -- a gap of +0.10 bps across eight windows, with the two daily means on
+  opposite sides of zero -- so the difference **cannot be the asset**: the venue that removed the tick removed the
+  gap. What I first read as a measured gap on the coarse-tick venue (+7.44 bps over two days) does not survive four
+  days: the daily gaps are -3.27, +8.14, -0.27 and +6.74, a standard error of 2.7 bps, so the sign and size there is
+  what a few hundred fills cannot pin. The line stays closed either way: the fine-tick venue's gross is negative in
+  all eight windows (-0.50 to -1.87 bps, before the fee) and the coarse-tick venue's ETH contract is negative on all
+  four of its days. Frequency turned out not to be a knob at all: the same strategy holds a round trip 0.03 to 0.14
+  seconds where the tick is 0.015 bps and 60 to 720 seconds where it is 0.78.
 - **`--parent` on the best-bid-offer path, and the two things that path gets wrong.** The futures venue publishes
   percentage bands rather than a price ladder, so an execution run there reads the touch, which is all a crossing
   child needs. Two consequences. That path keeps the venue's millisecond event time where the book path carries
