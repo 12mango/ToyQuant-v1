@@ -115,6 +115,7 @@ Accepted: a bug fix, a test or explanation of existing behaviour, or a demo scri
 | 2026-10-29 | Internal refactor: fill state moved into `FillAccounting`; Pipeline now reads position/reservations/counters through it | `0526993` |
 | 2026-10-30 | Internal refactor: shared event clock/mid/queue helpers, one risk-context builder and one order-settlement step; no behavior change | `96f652f` |
 | 2026-10-30 | Metrics batch 1: the equity series sampled once per 60-second bucket behind `--metrics`, and a `[PERFORMANCE]` line with drawdown, its duration, volatility, Sharpe, Sortino and Calmar; default output unchanged | `f0a7b9d` |
+| 2026-10-30 | Metrics batch 2: every closing fill booked as a round trip (side, entry and exit price and time, PnL, both halves of the fee), with `[ROUND_TRIPS]` reporting win rate, profit factor, expectancy, average win and loss, holding time, taker and total notional, and turnover | `8b259fb` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
