@@ -2978,9 +2978,13 @@ each run exactly flat:
 
 The venue charges 2 bps to rest, so both are outside what it offers -- but they are 6.9 bps apart on one fee
 schedule, and the whole difference is the tick: a passive fill that captures a tick earns 0.78 bps on the BTC
-contract and 3.76 on the ETH one for the same 2 bps of fee. This is one window each, with 25 and 86 fills, so it
-is a hint and not a result -- but it is now a cheap one to turn into a result, because both instruments are
-registered and the same command runs on either.
+contract and 3.76 on the ETH one for the same 2 bps of fee.
+
+That gap is recorded as a hint and not as a result, because the sample cannot settle it: the maker line produces
+1 to 86 fills on a 200k-row window and 25 to 86 on a 2M-row one, so a four-day study would compare a few dozen
+trades per cell, and a 200k-row snapshot slice is 1.3 GB once the twenty-five levels are written out. Resolving
+it needs a larger fill count -- more history than the free first-of-month days give, or a looser quote than the
+two-tick spread these runs use -- and that is data, not code.
 
 ## The pre-trade controls: what the backoff changed
 

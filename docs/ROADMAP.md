@@ -40,7 +40,7 @@ existing design, architecture and user documents are the whole plan.
 | execution algorithms | `execution_l2` with three schedules, two entry modes and parent-level shortfall against both the arrival price and the window's TWAP; the schedule wins at most half a basis point, posting loses the fills it saves, and size moves the number of crossings but not the cost | nothing while the closure stands; a venue with a materially different fee would be a new row | closed |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
 | order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
-| portfolio and PnL | single instrument per run; a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows (`PERFORMANCE_HISTORY.md`), and the two instruments' maker break-even rates are 6.9 bps apart | a controlled two-instrument maker study, since both are now registered | P2 |
+| portfolio and PnL | single instrument per run; a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows, and the two instruments' maker break-even rates are 6.9 bps apart (both in `PERFORMANCE_HISTORY.md`) | the maker comparison needs a larger fill count than the free days give; that is data, not code | P2 |
 | broker and gateway simulation | paper broker plus gateway faults and timeout queries | client-order-id recovery remains P2 | done |
 | persistence and recovery | missing | out of the demo; would need a venue-like query | P3 |
 | live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
@@ -133,6 +133,9 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-30 | Execution entry: `--algo-entry=post:N` rests each slice and crosses the remainder on timeout. Four timeouts on two windows: the fee falls with patience (5.00 → 1.80 bps) but fills fall with it (100 % → 60 %) and the opportunity cost rises faster (0.00 → 10.85 bps), so crossing stays the entry | `509e811` |
 | 2026-10-30 | Execution cleanup: two dead fields removed, `--algo-entry=cross` refuses a parameter it would ignore, `complete` documents that a truncated window makes the shortfall a lower bound, and the architecture's file and family counts now include the execution line | `605af3f` |
 | 2026-10-30 | Capacity ladder 1,000–100,000 contracts on both windows: the shortfall in basis points is flat (every term is proportional to quantity) while the crossings needed go from one to six for `market` and to 97 for `twap`; no size reorders the schedules, so the capacity question closes | `6c6aa7a` |
+| 2026-10-30 | Pair pre-check before building a multi-symbol pipeline: Tardis serves ETH-PERPETUAL in the same schema without a key, and a fixed z-score rule captures 2–10 bps of reversion against a 28 bps round trip, so the pair closes by measurement rather than by missing data | `53f7f63` |
+| 2026-10-30 | Second instrument: `ETH-PERPETUAL` registered (five-cent tick, one dollar of face value, same fee), its account numbers separated from the BTC contract's, and the crossing floor measured at 6.88 against 5.39 bps for an identical fee | `432dc18` |
+| 2026-10-30 | Maker break-even is tick-dependent: −5.65 bps on the BTC contract against +1.26 on the ETH one, same venue and fee; recorded as a hint, because the free days give too few fills to settle it | `0b79452` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
