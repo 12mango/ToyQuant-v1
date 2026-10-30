@@ -327,6 +327,100 @@ TakerSummary RunAccounting::taker_summary() const
     return summary;
 }
 
+void RunAccounting::set_parent_order(const ParentSpec& spec)
+{
+    parent_spec_ = spec;
+    parent_requested_ =
+        spec.side != Side::Unknown && spec.quantity > 0 && spec.horizon_us > 0;
+}
+
+void RunAccounting::start_parent(uint64_t ts, double decision_mid, double unit_notional_usd,
+                                 double multiplier, uint64_t quantity_scale)
+{
+    if (!parent_requested_ || parent_started_ || decision_mid <= 0.0) return;
+    parent_started_ = true;
+    parent_start_ts_ = ts;
+    parent_decision_mid_ = decision_mid;
+    parent_unit_notional_usd_ = unit_notional_usd;
+    parent_multiplier_ = multiplier;
+    parent_quantity_scale_ = std::max<uint64_t>(1, quantity_scale);
+    // The denominator of every basis point figure is the notional at the decision price, not the notional
+    // actually traded: an order that never filled would otherwise have no denominator at all, which is exactly
+    // the order whose shortfall matters most.
+    const double units =
+        static_cast<double>(parent_spec_.quantity) / static_cast<double>(parent_quantity_scale_);
+    parent_decision_usd_ =
+        units * unit_notional_at(parent_unit_notional_usd_, parent_multiplier_, parent_decision_mid_);
+}
+
+void RunAccounting::note_parent_child()
+{
+    if (!parent_started_ || parent_finished_) return;
+    ++parent_children_;
+}
+
+void RunAccounting::note_parent_fill(Side side, double price, uint64_t quantity, double fee)
+{
+    if (!parent_started_ || parent_finished_ || quantity == 0) return;
+    parent_filled_quantity_ += quantity;
+    parent_fees_usd_ += fee;
+    const double units = static_cast<double>(quantity) / static_cast<double>(parent_quantity_scale_);
+    // Signed as a cost, the same form the child arrival slippage uses: a buy above the decision price and a
+    // sell below it are both money paid away.
+    const double signed_move =
+        side == Side::Buy ? price - parent_decision_mid_ : parent_decision_mid_ - price;
+    parent_filled_usd_ +=
+        units * unit_notional_at(parent_unit_notional_usd_, parent_multiplier_, parent_decision_mid_) *
+        signed_move / parent_decision_mid_;
+}
+
+void RunAccounting::finish_parent(uint64_t ts, double horizon_mid)
+{
+    if (!parent_started_ || parent_finished_) return;
+    parent_finished_ = true;
+    parent_horizon_mid_ = horizon_mid;
+    parent_span_seconds_ =
+        ts > parent_start_ts_ ? static_cast<double>(ts - parent_start_ts_) / 1'000'000.0 : 0.0;
+
+    const uint64_t unfilled = parent_spec_.quantity > parent_filled_quantity_
+                                  ? parent_spec_.quantity - parent_filled_quantity_
+                                  : 0;
+    if (unfilled == 0 || horizon_mid <= 0.0 || parent_decision_mid_ <= 0.0) return;
+    // What the quantity the parent never got would have cost at the horizon. This is the term an IOC run is
+    // most likely to lose and the one a fill-only account cannot see.
+    const double units = static_cast<double>(unfilled) / static_cast<double>(parent_quantity_scale_);
+    const double signed_move = parent_spec_.side == Side::Buy ? horizon_mid - parent_decision_mid_
+                                                              : parent_decision_mid_ - horizon_mid;
+    parent_opportunity_usd_ +=
+        units * unit_notional_at(parent_unit_notional_usd_, parent_multiplier_, parent_decision_mid_) *
+        signed_move / parent_decision_mid_;
+}
+
+ExecutionAlgoSummary RunAccounting::parent_summary() const
+{
+    ExecutionAlgoSummary summary;
+    summary.requested = parent_requested_;
+    summary.complete = parent_finished_;
+    summary.buy = parent_spec_.side == Side::Buy;
+    summary.quantity = parent_spec_.quantity;
+    summary.filled_quantity = parent_filled_quantity_;
+    summary.child_orders = parent_children_;
+    summary.decision_mid = parent_decision_mid_;
+    summary.horizon_mid = parent_horizon_mid_;
+    summary.span_seconds = parent_span_seconds_;
+    summary.filled_ratio =
+        parent_spec_.quantity > 0
+            ? static_cast<double>(parent_filled_quantity_) / static_cast<double>(parent_spec_.quantity)
+            : 0.0;
+    // Basis points of the decision notional, with a positive number meaning money paid away.
+    const double per_bp = parent_decision_usd_ > 0.0 ? 10000.0 / parent_decision_usd_ : 0.0;
+    summary.is_filled_bps = parent_filled_usd_ * per_bp;
+    summary.is_fees_bps = parent_fees_usd_ * per_bp;
+    summary.is_opportunity_bps = parent_opportunity_usd_ * per_bp;
+    summary.is_total_bps = summary.is_filled_bps + summary.is_fees_bps + summary.is_opportunity_bps;
+    return summary;
+}
+
 PnlSummary RunAccounting::pnl_summary(const Portfolio& portfolio, double maker_notional_usd,
                                       uint64_t trade_reports)
 {

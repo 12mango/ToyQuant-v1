@@ -55,6 +55,10 @@ void Pipeline::handle_report(const ExecutionReport& report)
                                   .quote_cycle = quote_cycle_};
         fill_accounting_.apply(report, context);
         record_taker_measurement(report);
+        // Every fill while the parent is being worked is the parent's, because an execution run has no other
+        // reason to trade. The measurement closes at the horizon and ignores what arrives after it.
+        accounting_.note_parent_fill(report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
+                                      report.price, report.executed_quantity(), report.fee);
     }
     strategy_.on_order_update(report);
     // The strategy keeps its own position from the same reports. A divergence is silent drift
@@ -300,6 +304,7 @@ RunSummary Pipeline::summary() const
             .short_round_trips =
                 RunAccounting::side_round_trip_summary(portfolio_.closed_trades(), exchange::Side::Sell),
             .taker = accounting_.taker_summary(),
+            .execution_algo = accounting_.parent_summary(),
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
             .funding_requested = accounting_.funding_requested(),
@@ -425,6 +430,7 @@ void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* q
     if (quote != nullptr) record_quote_observation(order, *quote);
     ledger_.write_order(ts, order);
     strategy_.on_order_submitted(order);
+    accounting_.note_parent_child();
     ledger_.open_order(order.order_id, quote_cycle_, execution_quality_);
     ledger_.trace_submit(order, ts, engine_);
     const uint64_t rejected_before = engine_.rejected_orders();
@@ -506,6 +512,15 @@ void Pipeline::advance_mid(const std::string& symbol, uint64_t ts, double mid)
     // unrealized in the middle of an event, and a sample that moved either would make that a race with
     // the measurement.
     if (metrics_requested_) accounting_.note_equity(ts, portfolio_.equity_at({{symbol, mid}}));
+    // The parent's clock: it opens at the first midpoint the run sees and closes at its deadline, which is
+    // when the quantity it never got is charged at the market of that moment.
+    if (accounting_.parent_requested())
+    {
+        if (!accounting_.parent_started())
+            accounting_.start_parent(ts, mid, unit_notional_usd_, multiplier_, quantity_scale_);
+        else if (accounting_.parent_horizon_reached(ts))
+            accounting_.finish_parent(ts, mid);
+    }
     // The report callback pushes a markout for every fill, but only this drain closes them, so on the
     // L2 path adverse selection used to stay at zero however many fills there were. Both paths use the
     // same five-cycle horizon.

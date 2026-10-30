@@ -222,6 +222,56 @@ class RunAccounting
     // The aggregated [TAKER] figures.
     TakerSummary taker_summary() const;
 
+    // ---- The execution line's parent order --------------------------------------------------------------
+    // The pipeline records the parent rather than reading it from the strategy, because a measurement that
+    // trusted the thing it measures could report a schedule the strategy did not run. The parent is pure
+    // configuration: a side, a quantity and a deadline, in market time.
+    struct ParentSpec
+    {
+        Side side{Side::Unknown};
+        uint64_t quantity{0};
+        uint64_t horizon_us{0};
+    };
+
+    void set_parent_order(const ParentSpec& spec);
+
+    bool parent_requested() const
+    {
+        return parent_requested_;
+    }
+
+    // Opens the measurement at the first midpoint the run sees, which is the parent's decision price, and
+    // stores the instrument terms that turn a price difference into dollars.
+    void start_parent(uint64_t ts, double decision_mid, double unit_notional_usd, double multiplier,
+                      uint64_t quantity_scale);
+
+    bool parent_started() const
+    {
+        return parent_started_;
+    }
+
+    bool parent_finished() const
+    {
+        return parent_finished_;
+    }
+
+    // One child order sent while the parent is being worked, and one fill of any child. The fill's USD cost is
+    // computed here from the stored decision price, so every child is measured against the same benchmark.
+    void note_parent_child();
+    void note_parent_fill(Side side, double price, uint64_t quantity, double fee);
+
+    // True once the parent's deadline has passed in market time, which is when the measurement closes.
+    bool parent_horizon_reached(uint64_t ts) const
+    {
+        return parent_started_ && !parent_finished_ && ts >= parent_start_ts_ + parent_spec_.horizon_us;
+    }
+
+    // Closes the measurement at the horizon: what the parent never got is charged at the midpoint then, which
+    // is the opportunity cost a fill-only account would omit.
+    void finish_parent(uint64_t ts, double horizon_mid);
+
+    ExecutionAlgoSummary parent_summary() const;
+
     // The account's result, split into what completed and what is still open, and into what it was before
     // the venue was paid. The formula lives here rather than in the coordinator's summary literal so that
     // the fields and their definitions are read together: `closed_pnl_usd` is the portfolio's realized
@@ -310,4 +360,24 @@ class RunAccounting
     double shortfall_opportunity_usd_{0.0};
     double shortfall_decision_usd_{0.0};
     uint64_t markout_horizon_cycles_{5};
+
+    // The parent order, and the running measurement of working it. `decision_usd` is the notional the basis
+    // point figures divide by, fixed at the decision price so a moving market cannot flatter the ratio.
+    ParentSpec parent_spec_{};
+    bool parent_requested_{false};
+    bool parent_started_{false};
+    bool parent_finished_{false};
+    uint64_t parent_start_ts_{0};
+    double parent_decision_mid_{0.0};
+    double parent_decision_usd_{0.0};
+    double parent_unit_notional_usd_{0.0};
+    double parent_multiplier_{1.0};
+    uint64_t parent_quantity_scale_{1};
+    uint64_t parent_filled_quantity_{0};
+    uint64_t parent_children_{0};
+    double parent_filled_usd_{0.0};
+    double parent_fees_usd_{0.0};
+    double parent_horizon_mid_{0.0};
+    double parent_opportunity_usd_{0.0};
+    double parent_span_seconds_{0.0};
 };

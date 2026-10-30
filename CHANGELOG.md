@@ -158,6 +158,13 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   that single win at -0.022 USD a trade, and seven shorts with none at -0.010. The account-level notional and
   turnover stay on the aggregate line, because a fill belongs to the account rather than to the side of the
   position it closed.
+- **An execution line with no view on direction.** `execution_l2` works one parent order from
+  `--parent=SIDE:QUANTITY:SECONDS` with `--algo=market|twap:N|pov:X`, and the pipeline measures the parent
+  itself rather than reading the strategy back: `[EXECUTION_ALGO]` reports what filled and the three terms of
+  implementation shortfall in basis points of the arrival notional. The first measurement is a negative result
+  about the *schedule*: on two non-adjacent windows no schedule beat a single crossing by 2 bps, and `twap`'s
+  signed slippage flipped from +11.7 to -9.8 bps while the fee stayed at 4.6 to 5.0. The fee is the only term
+  with a stable sign, which is what the maker-entry question would move and the schedule does not.
 - **What the crossing side cost.** `--metrics` records the midpoint each order decided at and reports
   `[TAKER]`: the arrival slippage of every aggressive fill in ticks, basis points and dollars, the drift from
   the fill to the midpoint 5, 20 and 60 quote cycles later — positive when the move covered the spread, the

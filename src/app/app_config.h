@@ -187,6 +187,18 @@ struct AppConfig
     // survives 20 or 60 cycles names it. It changes no decision unless a gate reads the estimate, which is
     // exactly the run that asked for it.
     uint64_t markout_horizon = 5;
+    // The execution line's parent order, from --parent=SIDE:QUANTITY:SECONDS. `has_parent` is what makes the
+    // run an execution run: the strategy schedules the order and the pipeline measures its shortfall.
+    bool has_parent = false;
+    Side parent_side = Side::Unknown;
+    uint64_t parent_quantity = 0;
+    uint64_t parent_horizon_us = 0;
+    // The schedule's name and its one parameter: the slice count for twap, the participation fraction for pov,
+    // and nothing for market. Kept as text here so the configuration does not depend on the strategy header;
+    // application.cpp maps it to the strategy's enum.
+    std::string algo = "market";
+    uint64_t algo_slices = 10;
+    double algo_participation = 0.10;
     // Inventory discipline: above this many quantity units the L2 decision layer reduces the position with a
     // taker order at the touch instead of carrying it. 0, the default, leaves the position carried into the
     // final mark, which is what every run before this flag did.

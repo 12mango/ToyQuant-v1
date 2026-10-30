@@ -176,6 +176,14 @@ class Pipeline
         accounting_.set_markout_horizon(cycles);
     }
 
+    // The parent order an execution run works, from --parent. The pipeline measures the parent itself rather
+    // than asking the strategy: a measurement that trusted what it measures could report the schedule the
+    // strategy meant to run instead of the one it ran. [EXECUTION_ALGO] is printed only when this is set.
+    void set_parent_order(Side side, uint64_t quantity, uint64_t horizon_us)
+    {
+        accounting_.set_parent_order({.side = side, .quantity = quantity, .horizon_us = horizon_us});
+    }
+
     // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a
     // total into a sequence: the strategy's intent, the queue the order joined behind, every change in
     // that queue, and the fill or the cancel that ended it. It is the only view this project offers of a

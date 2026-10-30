@@ -368,4 +368,30 @@ int main()
         assert(std::abs(summary.shortfall_usd - 14.6) < 1e-12);
         assert(std::abs(summary.shortfall_bps - 146.0) < 1e-12);
     }
+
+    // The parent order behind [EXECUTION_ALGO]: ten units decided at 100, six filled at 101 with 0.6 of fees,
+    // and the four never filled charged at the deadline's 102. Against a thousand dollar decision notional the
+    // three terms are 60, 6 and 80 basis points, and they add up to the total rather than being three stories.
+    {
+        RunAccounting parent;
+        parent.set_parent_order({.side = Side::Buy, .quantity = 10, .horizon_us = 60'000'000});
+        parent.start_parent(1'000, 100.0, 0.0, 1.0, 1);
+        parent.note_parent_child();
+        parent.note_parent_child();
+        parent.note_parent_fill(Side::Buy, 101.0, 6, 0.6);
+        parent.finish_parent(60'001, 102.0);
+        const auto parent_summary = parent.parent_summary();
+        assert(parent_summary.requested && parent_summary.complete && parent_summary.buy);
+        assert(parent_summary.quantity == 10);
+        assert(parent_summary.filled_quantity == 6);
+        assert(parent_summary.child_orders == 2);
+        assert(std::abs(parent_summary.filled_ratio - 0.6) < 1e-12);
+        assert(std::abs(parent_summary.is_filled_bps - 60.0) < 1e-12);
+        assert(std::abs(parent_summary.is_fees_bps - 6.0) < 1e-12);
+        assert(std::abs(parent_summary.is_opportunity_bps - 80.0) < 1e-12);
+        assert(std::abs(parent_summary.is_total_bps - 146.0) < 1e-12);
+        // A fill after the deadline belongs to nothing: the measurement closed with the horizon's charge.
+        parent.note_parent_fill(Side::Buy, 102.0, 4, 0.4);
+        assert(parent.parent_summary().filled_quantity == 6);
+    }
 }

@@ -23,7 +23,7 @@ namespace
 // searches it, so a name cannot be accepted without being documented: the two were written out
 // separately, and four names (`l2_baseline`, `l2_depth`, `l2_micro`, `l2_flow`) were accepted while the
 // usage text stopped short of them. The order is the order the usage text prints, grouped by family.
-constexpr std::array<std::string_view, 18> kStrategyNames = {
+constexpr std::array<std::string_view, 19> kStrategyNames = {
     // The touch-only baselines. Neither implements the L2 entry point, so neither sees depth.
     "optimized", "naive",
     // The frozen L1 line, kept so recorded results stay reproducible rather than re-measured.
@@ -34,6 +34,8 @@ constexpr std::array<std::string_view, 18> kStrategyNames = {
     "inventory_aware_l2", "active_l2", "adaptive_l2",
     // The non-market-making line: a signal sets a target position instead of a quote.
     "trend_l2",
+    // The execution line: a parent order from the configuration and a schedule, with no direction of its own.
+    "execution_l2",
 };
 constexpr std::string_view kDefaultStrategyName = "optimized";
 
@@ -87,6 +89,8 @@ constexpr std::string_view kFeeSchedulePrefix = "--fee-schedule=";
 constexpr std::string_view kMarkoutCoverFlag = "--markout-cover";
 constexpr std::string_view kMetricsFlag = "--metrics";
 constexpr std::string_view kMarkoutHorizonPrefix = "--markout-horizon=";
+constexpr std::string_view kParentPrefix = "--parent=";
+constexpr std::string_view kAlgoPrefix = "--algo=";
 constexpr std::string_view kFlattenBandPrefix = "--flatten-band=";
 }  // namespace
 
@@ -217,6 +221,9 @@ void print_usage(const char* executable)
                      "Calmar\n";
         std::cerr << "   horizon: --markout-horizon=N resolves the fill markouts and the implementation "
                      "shortfall at N quote cycles instead of the default 5\n";
+        std::cerr << "   execution: --parent=SIDE:QUANTITY:SECONDS (l2_replay, execution_l2) works one parent "
+                     "order instead of quoting; --algo=market|twap:N|pov:X picks the schedule, and the run "
+                     "reports [EXECUTION_ALGO]\n";
         std::cerr << "   band: --flatten-band=N (l2_replay) reduces a position above N units with a taker "
                      "order at the touch instead of carrying it into the final mark\n";
         std::cerr << "   record: --record=PREFIX (l2_replay) writes PREFIX_trades.csv and "
@@ -422,6 +429,82 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.markout_horizon = cycles;
+            }
+            else if (flag.compare(0, kParentPrefix.size(), kParentPrefix) == 0)
+            {
+                // SIDE:QUANTITY:SECONDS in one token, because the three numbers are one decision: a side
+                // without a size or a size without a deadline is not a parent order.
+                const std::string value = flag.substr(kParentPrefix.size());
+                const std::size_t first = value.find(':');
+                const std::size_t second =
+                    first == std::string::npos ? std::string::npos : value.find(':', first + 1);
+                const std::string side_text =
+                    first == std::string::npos ? value : value.substr(0, first);
+                const std::string quantity_text = second == std::string::npos
+                                                      ? std::string()
+                                                      : value.substr(first + 1, second - first - 1);
+                const std::string seconds_text =
+                    second == std::string::npos ? std::string() : value.substr(second + 1);
+                uint64_t quantity = 0;
+                uint64_t seconds = 0;
+                Side side = Side::Unknown;
+                if (side_text == "buy")
+                    side = Side::Buy;
+                else if (side_text == "sell")
+                    side = Side::Sell;
+                if (side == Side::Unknown || !parse_unsigned(quantity_text, quantity) || quantity == 0 ||
+                    !parse_unsigned(seconds_text, seconds) || seconds == 0)
+                {
+                    error = "--parent wants SIDE:QUANTITY:SECONDS, with a side of buy or sell and two positive "
+                            "integers";
+                    return false;
+                }
+                cfg.has_parent = true;
+                cfg.parent_side = side;
+                cfg.parent_quantity = quantity;
+                cfg.parent_horizon_us = seconds * 1'000'000;
+            }
+            else if (flag.compare(0, kAlgoPrefix.size(), kAlgoPrefix) == 0)
+            {
+                // The schedule and its one parameter arrive in the same token, so a run cannot name a schedule
+                // without the number it needs or pass a number to a schedule that has no use for it.
+                const std::string value = flag.substr(kAlgoPrefix.size());
+                const std::size_t colon = value.find(':');
+                const std::string name = colon == std::string::npos ? value : value.substr(0, colon);
+                const std::string param =
+                    colon == std::string::npos ? std::string() : value.substr(colon + 1);
+                if (name == "market")
+                {
+                    cfg.algo = "market";
+                }
+                else if (name == "twap")
+                {
+                    uint64_t slices = 0;
+                    if (!parse_unsigned(param, slices) || slices == 0)
+                    {
+                        error = "--algo=twap wants a positive slice count, for example --algo=twap:10";
+                        return false;
+                    }
+                    cfg.algo = "twap";
+                    cfg.algo_slices = slices;
+                }
+                else if (name == "pov")
+                {
+                    double participation = 0.0;
+                    std::istringstream stream(param);
+                    if (!(stream >> participation) || participation <= 0.0 || participation > 1.0)
+                    {
+                        error = "--algo=pov wants a share of traded volume in (0, 1], for example --algo=pov:0.1";
+                        return false;
+                    }
+                    cfg.algo = "pov";
+                    cfg.algo_participation = participation;
+                }
+                else
+                {
+                    error = "--algo must be market, twap:N or pov:X";
+                    return false;
+                }
             }
             else if (flag.compare(0, kFlattenBandPrefix.size(), kFlattenBandPrefix) == 0)
             {
@@ -980,8 +1063,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
                         "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
                         "--fee-schedule=KEY=VALUE[,KEY=VALUE], "
-                        "--markout-cover, --metrics, --markout-horizon=N, --flatten-band=N, or --paper-broker "
-                        "with one of its faults";
+                        "--markout-cover, --metrics, --markout-horizon=N, --parent=SIDE:QUANTITY:SECONDS, "
+                        "--algo=MARKET|TWAP:N|POV:X, --flatten-band=N, or --paper-broker with one of its faults";
                 return false;
             }
         }
@@ -1005,6 +1088,21 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (cfg.markout_cover && !is_l2_family)
         {
             error = "--markout-cover is only supported by l2_replay or ws";
+            return false;
+        }
+        if (cfg.has_parent && !is_l2_family)
+        {
+            error = "--parent is only supported by l2_replay or ws, whose decision layer sees the book";
+            return false;
+        }
+        if (cfg.has_parent && cfg.strategy_name != "execution_l2")
+        {
+            error = "--parent needs the execution_l2 strategy: the schedule is what works the order";
+            return false;
+        }
+        if (!cfg.has_parent && cfg.strategy_name == "execution_l2")
+        {
+            error = "execution_l2 needs --parent=SIDE:QUANTITY:SECONDS: there is nothing to execute";
             return false;
         }
         if (cfg.flatten_band > 0 && !is_l2_family)

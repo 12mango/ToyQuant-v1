@@ -2729,6 +2729,62 @@ for cell in 200,1200 500,3000 2000,6000 5000,15000; do
 done
 ```
 
+## The execution line: does a schedule beat one crossing?
+
+The two closed lines both end at a cost, so this one stops asking for a direction and works an order instead.
+`execution_l2` takes a parent -- side, quantity, deadline -- and sends crossing children, and the pipeline
+measures the parent against the midpoint it arrived at, which is the benchmark a desk reports against when it
+has no view. The question was stated before the runs: **at five basis points a side, does spreading a parent
+over its deadline lower implementation shortfall against a single crossing, on two non-adjacent windows?**
+
+The parent is 1,000 contracts (10,000 USD of face value) over 600 seconds of market time. Three schedules:
+`market` (one child, the control), `twap:10` (ten equal children) and `pov:0.1` (children sized to a tenth of
+the volume printing). Each window trades and reads the book of its own day.
+
+| window | schedule | children | filled | ratio | is_filled | is_fees | is_opportunity | is_total |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 2020-04-01 | market | 1 | 1,000 | 1.00 | 0.39 | 5.00 | 0.00 | 5.39 |
+| 2020-04-01 | twap:10 | 10 | 910 | 0.91 | 11.74 | 4.55 | 0.98 | 17.27 |
+| 2020-04-01 | pov:0.1 | 5 | 1,000 | 1.00 | 1.89 | 5.00 | 0.00 | 6.89 |
+| 2020-06-01 | market | 1 | 1,000 | 1.00 | 0.26 | 5.00 | 0.00 | 5.26 |
+| 2020-06-01 | twap:10 | 10 | 920 | 0.92 | -9.82 | 4.60 | 1.57 | -3.66 |
+| 2020-06-01 | pov:0.1 | 5 | 1,000 | 1.00 | -0.76 | 5.00 | 0.00 | 4.24 |
+
+Every figure is a basis point of the notional at the arrival midpoint, positive meaning money paid away.
+
+**The schedule is not the lever, and the two windows disagree by more than the schedules differ.** `twap` beat
+the single crossing by 8.92 bps on 1 June and lost 11.88 on 1 April; `pov` moved 1.02 and -1.50. The
+pre-registered rule -- two basis points better on both windows with the same sign, opportunity under a quarter
+of the total -- is met by neither. What is stable is the fee: 4.6 to 5.0 bps in every cell, three to thirteen
+times the differences between schedules.
+
+The reason is in the filled term. A single crossing fills completely on both days, because 1,000 contracts is
+small against the displayed depth, so its cost is the half spread (0.26 to 0.39 bps) plus the fee. `twap`
+holds the same order open for ten minutes, which is long enough for the price to drift: the same schedule paid
+11.74 bps on the first day and was *paid* 9.82 on the second. At this size scheduling adds variance without
+lowering the mean. A parent large enough that one crossing cannot take it would have to be spread, and that is
+a different question with its own pre-registration; it is recorded as the open increment rather than run here.
+
+The opportunity term behaved as designed: 0.98 and 1.57 bps on the two `twap` cells that ended with nine
+percent of the parent unfilled, and zero where the parent completed. It is small here only because the parent
+was almost filled, and a schedule that trades less is charged proportionally, which is what keeps "work
+nothing" from looking cheap.
+
+**What this leaves.** The only term with a stable sign is the fee, and this venue charges 5 bps to cross
+against 2 bps to rest. That is three basis points on the whole notional, larger than any difference these six
+runs produced, so the next question is the maker-entry one -- enter passively, cross only to leave -- and the
+execution line now has what that measurement needs: the parent's benchmark, the three shortfall terms and the
+child-level slippage.
+
+```bash
+for algo in market twap:10 pov:0.1; do
+  out/build/linux-debug/toy_quant l2_replay \
+    data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv \
+    BTC-PERPETUAL 0 execution_l2 1 conservative --fast-validation \
+    --parent=buy:1000:600 --algo=$algo --metrics
+done
+```
+
 ## The pre-trade controls: what the backoff changed
 
 `tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band

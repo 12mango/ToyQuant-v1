@@ -33,6 +33,15 @@
 
 namespace
 {
+// The schedule name app_config accepted, as the strategy's own enum. app_config is the one that validates the
+// three names, so an unrecognised string cannot reach here.
+ExecutionAlgo execution_algo_of(const std::string& name)
+{
+    if (name == "twap") return ExecutionAlgo::Twap;
+    if (name == "pov") return ExecutionAlgo::Pov;
+    return ExecutionAlgo::Market;
+}
+
 std::string application_log_path(bool discard_output)
 {
     if (!discard_output) return to_abs_path("logs/toy_quant.log");
@@ -411,7 +420,14 @@ void Application::run_l2_session_mode() const
                                       .markout_cover = cfg_.markout_cover,
                                       .flatten_band_units = cfg_.flatten_band,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks,
-                                      .trend = cfg_.trend});
+                                      .trend = cfg_.trend,
+                                      .execution = StrategyFactoryConfig::ExecutionParams{
+                                          .side = cfg_.parent_side,
+                                          .quantity = cfg_.parent_quantity,
+                                          .horizon_us = cfg_.parent_horizon_us,
+                                          .algo = execution_algo_of(cfg_.algo),
+                                          .slices = cfg_.algo_slices,
+                                          .participation = cfg_.algo_participation}});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
     // The paper broker wraps the venue rather than replacing it: the strategy, the book and the
@@ -467,6 +483,10 @@ void Application::run_l2_session_mode() const
     // Where the round trip between a quote and its cost is measured, for the runs that asked for a horizon
     // other than the default.
     pipeline.set_markout_horizon(cfg_.markout_horizon);
+    // The parent order is measured by the pipeline, not read back from the strategy: the [EXECUTION_ALGO]
+    // line has to describe the order the run was given, whatever the schedule did with it.
+    if (cfg_.has_parent)
+        pipeline.set_parent_order(cfg_.parent_side, cfg_.parent_quantity, cfg_.parent_horizon_us);
     // The funding history of the instrument being replayed, applied as the event clock passes each
     // settlement. Optional, and owned here because the pipeline only borrows it.
     FundingRateSeries funding_series;

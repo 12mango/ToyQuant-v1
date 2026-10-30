@@ -6,6 +6,7 @@
 #include "common/types.h"
 #include "lines/legacy/l1_market_maker.h"
 #include "strategy/active_l2_market_maker.h"
+#include "strategy/execution_l2.h"
 #include "strategy/inventory_aware_l2_market_maker.h"
 #include "strategy/l2_market_maker_base.h"
 #include "strategy/trend_l2.h"
@@ -136,6 +137,20 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.markout_cover = config.markout_cover;
         base_config.flatten_band_units = config.flatten_band_units;
         return std::make_unique<ActiveL2MarketMaker>(make_active_l2_config(base_config));
+    }
+    if (strategy_name == "execution_l2")
+    {
+        // The execution line: a parent order and a schedule, with no direction of its own. The parent arrives
+        // from the run's configuration because on a desk it arrives from a client; nothing here decides to
+        // trade, which is what makes the cost it reports a fact about the venue rather than about a signal.
+        return std::make_unique<ExecutionL2Strategy>(
+            ExecutionL2Config{.side = config.execution.side,
+                              .quantity = config.execution.quantity,
+                              .horizon_us = config.execution.horizon_us,
+                              .algo = config.execution.algo,
+                              .slices = config.execution.slices,
+                              .participation = config.execution.participation,
+                              .tick_size = tick_size});
     }
     if (strategy_name == "trend_l2")
     {

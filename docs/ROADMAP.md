@@ -37,6 +37,7 @@ existing design, architecture and user documents are the whole plan.
 | matching, partial fills, self-trade prevention, IOC/FOK | done | optional cancel/replace semantics | P2 |
 | strategy framework and market making | done | none | done |
 | non-market-making line | `trend_l2`, its 27-cell grid, and the two-window scale test that closes the taker variant by non-replication | nothing while the closure stands; a new signal is a new row | closed |
+| execution algorithms | `execution_l2` with three schedules and parent-level shortfall; the first measurement says a schedule does not beat one crossing at this size | a parent larger than the displayed depth, as a new question | P2 |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
 | order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
 | portfolio and PnL | single instrument | multi-instrument and portfolio | P2 |
@@ -98,6 +99,12 @@ Stop when the P1 items that buy a new technical point are done. The current iter
 
 **Not accepted during the freeze:** a new strategy, venue, risk control, performance experiment or document.
 Accepted: a bug fix, a test or explanation of existing behaviour, or a demo script.
+
+**Lifted on 2026-10-30, for one requested item.** The freeze was there to stop the market-making line from
+expanding without bound; both it and the signal line are now closed by measurement, so the boundary moves rather
+than disappears. The request was an execution scheduler: `execution_l2` works one parent order and takes no view
+on direction, so it is a new strategy name without being a new claim about the market. Everything else stays
+frozen, and a next item needs the same kind of request and a row here.
 
 ### Change log
 

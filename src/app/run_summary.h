@@ -242,6 +242,29 @@ struct TakerSummary
     double shortfall_bps{0.0};
 };
 
+// What a parent order cost while it was worked, for the execution line. Every figure is basis points of the
+// notional the parent decided at, with a positive number meaning money paid away, so the three terms add up and
+// a schedule that simply refuses to trade cannot look cheap: what it did not fill is charged at the horizon.
+struct ExecutionAlgoSummary
+{
+    bool requested{false};
+    bool complete{false};
+    bool buy{true};
+    uint64_t quantity{0};
+    uint64_t filled_quantity{0};
+    uint64_t child_orders{0};
+    double filled_ratio{0.0};
+    // The benchmark price and the market at the deadline, so the opportunity term can be checked by hand.
+    double decision_mid{0.0};
+    double horizon_mid{0.0};
+    // The three terms of implementation shortfall and their sum.
+    double is_filled_bps{0.0};
+    double is_fees_bps{0.0};
+    double is_opportunity_bps{0.0};
+    double is_total_bps{0.0};
+    double span_seconds{0.0};
+};
+
 // What the decision layer measured and refused, for a run that asked for the adverse-selection gate or the
 // flatten band. Printed only then, because a run that does not ask must produce exactly the output it produced
 // before either existed.
@@ -333,6 +356,9 @@ struct RunSummary
     // What the aggressive side cost: arrival slippage, the drift after a crossing fill, and the shortfall
     // of the IOC/FOK orders. Its own line for the same reason as the round trips.
     TakerSummary taker;
+    // Printed only when --parent named an order: the execution line's shortfall, its own line, for the same
+    // reason the other three measurements have one.
+    ExecutionAlgoSummary execution_algo;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
     // Printed only when --funding-rates supplied a series: a [FUNDING] line in a run that has no funding
@@ -517,6 +543,20 @@ struct RunSummary
                    << " shortfall_opportunity_usd=" << taker.shortfall_opportunity_usd
                    << " shortfall_usd=" << taker.shortfall_usd
                    << " shortfall_bps=" << taker.shortfall_bps;
+        if (execution_algo.requested)
+            stream << "\n[EXECUTION_ALGO] side=" << (execution_algo.buy ? "buy" : "sell")
+                   << " quantity=" << execution_algo.quantity
+                   << " filled_quantity=" << execution_algo.filled_quantity
+                   << " filled_ratio=" << execution_algo.filled_ratio
+                   << " child_orders=" << execution_algo.child_orders
+                   << " span_seconds=" << execution_algo.span_seconds
+                   << " complete=" << (execution_algo.complete ? 1 : 0)
+                   << " decision_mid=" << execution_algo.decision_mid
+                   << " horizon_mid=" << execution_algo.horizon_mid
+                   << " is_filled_bps=" << execution_algo.is_filled_bps
+                   << " is_fees_bps=" << execution_algo.is_fees_bps
+                   << " is_opportunity_bps=" << execution_algo.is_opportunity_bps
+                   << " is_total_bps=" << execution_algo.is_total_bps;
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
         if (funding_requested)
             stream << "\n[FUNDING] funding_points=" << funding.points

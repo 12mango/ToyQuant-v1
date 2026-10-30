@@ -6,6 +6,7 @@
 #include "app/trend_params.h"
 #include "common/instrument_spec.h"
 #include "lines/legacy/l1_market_maker_config.h"
+#include "strategy/execution_l2.h"
 #include "strategy/strategy.h"
 
 // Everything only the frozen L1 line reads. Five flat fields became one member so that the live
@@ -52,6 +53,17 @@ struct StrategyFactoryConfig
     double min_spread_ticks_override = 0.0;
     // The non-market-making signal, from --trend-params. `set` false leaves the strategy's own defaults.
     TrendParams trend{};
+    // The execution line's parent order, from --parent and --algo. A side of Unknown means no parent, which is
+    // what every strategy name except execution_l2 expects.
+    struct ExecutionParams
+    {
+        Side side{Side::Unknown};
+        uint64_t quantity{0};
+        uint64_t horizon_us{0};
+        ExecutionAlgo algo{ExecutionAlgo::Market};
+        uint64_t slices{10};
+        double participation{0.10};
+    } execution{};
 };
 
 std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
