@@ -190,6 +190,16 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   and the drift never recovered it: -1.41, -1.55 and -1.44 ticks at 5, 20 and 60 cycles. `--markout-horizon=N`
   makes the cycle count behind the passive markout and the opportunity term a parameter; the default stays 5,
   so every recorded run reads the same.
+- **The floor on a third instrument, from the other end of the tick range.** The crossing floor is the fee plus
+  half a tick, so a second instrument with a coarser tick moved it up 1.5 bps; a market with a finer one should
+  move it down, and `BTCUSDT` on the futures venue does: ten cents against a price near 69,533 is 0.014 bps of tick
+  against the perpetual's 0.78, and the measured floor is 4.007 bps, of which 4.00 is the fee and 0.007 the half
+  spread. Three instruments now sit on one formula with a fee that moves by one basis point and a tick that moves
+  by a factor of 260. That run takes the `replay` mode, so `--parent` learned to accept it -- and with it the two
+  things that path gets wrong for an execution run: its readers keep the venue's millisecond event time where the
+  book path carries microseconds, so the deadline and the reported `span_seconds` are converted at the call site,
+  and its touch callback carries no timestamp at all, so a time-sliced `--algo` is refused there rather than
+  silently emitting a single child.
 
 ## The measured line
 

@@ -265,7 +265,18 @@ void Application::run_replay_mode() const
                                           cfg_.refresh_price_ticks_override,
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks,
-                                      .trend = cfg_.trend});
+                                      .trend = cfg_.trend,
+                                      .execution = StrategyFactoryConfig::ExecutionParams{
+                                          .side = cfg_.parent_side,
+                                          .quantity = cfg_.parent_quantity,
+                                          // This path's clock is milliseconds, so the deadline and the post
+                                          // timeout are converted here rather than in the strategy.
+                                          .horizon_us = cfg_.parent_horizon_us / 1'000,
+                                          .algo = execution_algo_of(cfg_.algo),
+                                          .slices = cfg_.algo_slices,
+                                          .participation = cfg_.algo_participation,
+                                          .post_first = cfg_.algo_entry == "post",
+                                          .post_timeout_us = cfg_.algo_post_timeout_seconds * 1'000}});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
@@ -278,6 +289,14 @@ void Application::run_replay_mode() const
                             instrument.multiplier);
     pipeline.set_metrics(cfg_.metrics);
     pipeline.set_markout_horizon(cfg_.markout_horizon);
+    // An execution run also works on this path: the touch is all a crossing child needs, and the parent's
+    // clock lives in the one place both paths advance the midpoint. The L1 readers keep the venue's
+    // millisecond event time while the L2 path carries microseconds, so both the strategy's deadline and the
+    // measurement's are converted into this path's own clock here, and `ticks_per_second` tells the report
+    // which unit it got.
+    if (cfg_.has_parent)
+        pipeline.set_parent_order(cfg_.parent_side, cfg_.parent_quantity,
+                                  cfg_.parent_horizon_us / 1'000, 1'000);
     apply_pipeline_limits(pipeline);
     // The funding series is optional and owned here, because the pipeline only borrows it. A file that names
     // no settlement for this instrument is an error rather than an empty input, since a wrong symbol would

@@ -1131,9 +1131,10 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             error = "--markout-cover is only supported by l2_replay or ws";
             return false;
         }
-        if (cfg.has_parent && !is_l2_family)
+        if (cfg.has_parent && !is_l2_family && cfg.mode != AppMode::Replay)
         {
-            error = "--parent is only supported by l2_replay or ws, whose decision layer sees the book";
+            error = "--parent is supported by replay, l2_replay and ws: each has a touch to cross and an event "
+                    "clock to measure against";
             return false;
         }
         if (cfg.has_parent && cfg.strategy_name != "execution_l2")
@@ -1144,6 +1145,14 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (!cfg.has_parent && cfg.strategy_name == "execution_l2")
         {
             error = "execution_l2 needs --parent=SIDE:QUANTITY:SECONDS: there is nothing to execute";
+            return false;
+        }
+        if (cfg.has_parent && cfg.mode == AppMode::Replay && cfg.algo != "market")
+        {
+            // The L1 touch callback carries no timestamp, so a schedule that spaces slices by market time has
+            // no clock to space them on and would silently emit one child. Refused rather than half-run.
+            error = "a time-sliced --algo needs the L2 path: the replay mode's touch callback carries no clock, "
+                    "so only --algo=market can run there";
             return false;
         }
         if (!cfg.has_parent && cfg.algo_entry != "cross")

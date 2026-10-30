@@ -408,8 +408,10 @@ void RunAccounting::finish_parent(uint64_t ts, double horizon_mid)
     }
     parent_finished_ = true;
     parent_horizon_mid_ = horizon_mid;
-    parent_span_seconds_ =
-        ts > parent_start_ts_ ? static_cast<double>(ts - parent_start_ts_) / 1'000'000.0 : 0.0;
+    parent_span_seconds_ = ts > parent_start_ts_
+                               ? static_cast<double>(ts - parent_start_ts_) /
+                                     static_cast<double>(std::max<uint64_t>(1, parent_spec_.ticks_per_second))
+                               : 0.0;
 
     const uint64_t unfilled = parent_spec_.quantity > parent_filled_quantity_
                                   ? parent_spec_.quantity - parent_filled_quantity_

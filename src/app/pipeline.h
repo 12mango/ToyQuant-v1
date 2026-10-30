@@ -179,9 +179,17 @@ class Pipeline
     // The parent order an execution run works, from --parent. The pipeline measures the parent itself rather
     // than asking the strategy: a measurement that trusted what it measures could report the schedule the
     // strategy meant to run instead of the one it ran. [EXECUTION_ALGO] is printed only when this is set.
-    void set_parent_order(Side side, uint64_t quantity, uint64_t horizon_us)
+    //
+    // `horizon_ticks` is in the caller's event clock and `ticks_per_second` says which one that is: the L2 path
+    // carries microseconds and the L1 readers keep the venue's milliseconds, so the deadline is not assumed to
+    // be in one unit everywhere.
+    void set_parent_order(Side side, uint64_t quantity, uint64_t horizon_ticks,
+                          uint64_t ticks_per_second = 1'000'000)
     {
-        accounting_.set_parent_order({.side = side, .quantity = quantity, .horizon_us = horizon_us});
+        accounting_.set_parent_order({.side = side,
+                                      .quantity = quantity,
+                                      .horizon_us = horizon_ticks,
+                                      .ticks_per_second = ticks_per_second});
     }
 
     // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a

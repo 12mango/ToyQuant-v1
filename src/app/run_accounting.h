@@ -225,12 +225,15 @@ class RunAccounting
     // ---- The execution line's parent order --------------------------------------------------------------
     // The pipeline records the parent rather than reading it from the strategy, because a measurement that
     // trusted the thing it measures could report a schedule the strategy did not run. The parent is pure
-    // configuration: a side, a quantity and a deadline, in market time.
+    // configuration: a side, a quantity and a deadline in the path's own clock ticks. The L2 path counts
+    // microseconds and the L1 path counts milliseconds, so `ticks_per_second` is what turns the deadline back
+    // into seconds for the report.
     struct ParentSpec
     {
         Side side{Side::Unknown};
         uint64_t quantity{0};
         uint64_t horizon_us{0};
+        uint64_t ticks_per_second{1'000'000};
     };
 
     void set_parent_order(const ParentSpec& spec);
