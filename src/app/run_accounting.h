@@ -141,11 +141,6 @@ class RunAccounting
     // closed.
     void note_equity(uint64_t ts, double equity);
 
-    const std::vector<EquityPoint>& equity_curve() const
-    {
-        return equity_curve_;
-    }
-
     // The [PERFORMANCE] figures: the drawdown, its duration, the two annualized deviations and the three
     // ratios, all derived from the curve above. Zero for a window with fewer than two samples, because
     // one point has no return and a return series with no interval has no dispersion.
@@ -155,8 +150,9 @@ class RunAccounting
     // fills traded. Static because the two inputs belong to the account and the fill accounting rather than
     // to a measurement queue: this is arithmetic over what they already hold, not state of its own.
     //
-    // A trade is a win when its net PnL is above zero, and every mean is net of the fee apportioned to the
-    // closing quantity. Turnover divides the traded notional by the collateral the run started with.
+    // A trade is a win when its net PnL is above zero, and every mean is net of the fee the round trip cost:
+    // the exit fill's share plus the entry fees the position was carrying. Turnover divides the traded
+    // notional by the collateral the run started with.
     static RoundTripSummary round_trip_summary(const std::vector<ClosedTrade>& trades,
                                                double taker_notional_usd,
                                                double total_notional_usd,
@@ -204,11 +200,6 @@ class RunAccounting
     void set_markout_horizon(uint64_t cycles)
     {
         markout_horizon_cycles_ = cycles == 0 ? 5 : cycles;
-    }
-
-    uint64_t markout_horizon() const
-    {
-        return markout_horizon_cycles_;
     }
 
     void note_taker_fill(const TakerFillMeasurement& fill);

@@ -44,7 +44,7 @@ existing design, architecture and user documents are the whole plan.
 | persistence and recovery | missing | out of the demo; would need a venue-like query | P3 |
 | live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
 | market impact and realistic taker fills | partial: capacity cap only; there is still no price-impact model | none inside the current boundary | done |
-| out-of-sample, Sharpe and capacity | not a demo goal | out of the demo | out |
+| out-of-sample, Sharpe and capacity | the Sharpe, volatility, drawdown and Calmar figures are measured on demand behind `--metrics`; the out-of-sample and capacity studies are still not a demo goal | the studies, not the measurement, are out of the demo | out |
 | documents and the maintained plan | done: one plan, no new documents | keep it current; no interview material required | done |
 
 ### Ordered backlog

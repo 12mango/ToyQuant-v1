@@ -575,14 +575,15 @@ records and the PnL formula. It is now the coordinator plus three owners, and th
 | Owner | Files | What it holds | The question it answers |
 |---|---|---|---|
 | `OrderLedger` | `src/app/order_ledger.*` | the two CSV writers, the trace of one named order, the per-order audit entry, the queue profile | what happened to *this order* |
-| `RunAccounting` | `src/app/run_accounting.*` | the funding series and its settlements, the two markout queues and the horizon they drain on, the PnL formula | what the *run* measured |
+| `RunAccounting` | `src/app/run_accounting.*` | the funding series and its settlements, the fill and market-print markout queues with the horizon they drain on, the marked-equity series, the round-trip and taker measurements behind `[ROUND_TRIPS]` and `[TAKER]`, the PnL formula | what the *run* measured |
 | `RunSummary` | `src/app/run_summary.h` | `ExecutionQualityMetrics`, `PnlSummary`, and the lines that print them | what the run *reports* |
 
 The counters, the risk gates and the account stay with the coordinator and the `Portfolio`, because they
 are the run rather than a measurement of it. The two owners that were extracted are the ones whose state
 is *not resolved when it is written*: an order's audit entry is opened at submission and closed by the
-report that ends the order, and a markout is queued at the fill and resolved five quote cycles later.
-Those two queues of unresolved things sat beside twenty-one counters, which is what made the class hard to
+report that ends the order, and a markout is queued at the fill and resolved a horizon later -- five quote
+cycles unless `--markout-horizon` says otherwise. Those two queues of unresolved things sat beside
+twenty-one counters, which is what made the class hard to
 read, and it is why the split is by ownership rather than by size.
 
 The split is not a behaviour change, and the gate is what says so: tier 1 asserts the batch counts, the
@@ -1428,7 +1429,11 @@ but is not read.
 **Files:** `src/backtest/performance.*`, `tests/performance_test.cpp`
 
 The reusable `metrics` module keeps formulas independent from the live pipeline and `BacktestDriver`.
-The live pipeline uses execution metrics; the backtest uses maximum drawdown.
+`BacktestDriver` computes `max_drawdown` from the tick path's equity curve; the pipeline samples the marked
+equity once per 60-second bucket behind `--metrics` and derives the same drawdown plus its duration, the
+annualized volatility and the Sharpe, Sortino and Calmar ratios from it, so the two paths are one
+implementation rather than two. The same flag turns on the round-trip distribution and the taker
+measurements, each on its own line, and none of those lines exists in a run that did not ask for it.
 
 The pre-trade controls are no longer branches inside `submit_strategy_actions`. `src/app/risk_pipeline.*` holds
 them as an ordered list -- kill switch, fat-finger band, token bucket, exposure cap, position gate -- and returns
@@ -1448,7 +1453,7 @@ addition to the cancelled report that removes the order from every strategy's op
 | `fill_rate` | Filled quantity divided by submitted quantity | `Pipeline` execution summary |
 | `cancel_rate` | Cancel requests divided by submitted orders | `Pipeline` execution summary |
 | `inventory_exposure` | Absolute value of net position | `RunSummary` portfolio metrics |
-| `max_drawdown` | Largest decline from an equity peak | `BacktestDriver` |
+| `max_drawdown` | Largest decline from an equity peak | `BacktestDriver` on the tick path, and `[PERFORMANCE]` on the marked equity curve |
 | `fees_paid` | Fees charged on recorded MarketMaker fills | Runtime and offline summaries |
 | `adverse_selection` | Delayed fill markout accumulated after a quote horizon | L1 runtime summary |
 | `average_abs_inventory` | Average absolute effective inventory at quote decisions | L1 runtime summary |
@@ -1465,8 +1470,20 @@ addition to the cancelled report that removes the order from every strategy's op
 | `kill_switch_loss_usd`, `kill_switch_triggered`, `kill_switch_ts`, `kill_switch_rejected_orders` | The loss the switch was set at, whether it tripped, the timestamp, and the orders the strategy asked for after it did and did not get. It is a latch, checked once a cycle by `RiskPipeline::begin_cycle`, which `submit_strategy_actions` calls before anything is submitted, so a strategy cannot reason its way past it; it stops quoting rather than flattening, because a control that loses money on the way out is a worse one than a control that stops, and the strategy's own cancels still run so that resting quotes come back on the next cycle | Runtime summary |
 | `fat_finger_rejections`, `rate_limited_orders` | The two controls the non-market-making line added, printed in a `[RISK]` line only when either was named: an order priced too far from the current midpoint, and the token bucket refusing a submission. Neither consumes a token or a pending reservation; the first is checked before the bucket and both before the exposure and position gates | Runtime summary |
 | `total_order_lifetime_cycles` | Sum of quote-cycle lifetimes for audited orders | Runtime summary |
+| `span_seconds`, `samples`, `periods_per_year`, `max_drawdown_duration_seconds` | The equity series behind `[PERFORMANCE]`: the marked account sampled once per 60-second bucket, the window it covers, the sample count, the annualization factor the rates were scaled by, and the longest time from a peak until the curve won it back -- a deep-but-short decline and a shallow-but-permanent one are not the same risk. Printed only under `--metrics` | Runtime `[PERFORMANCE]` |
+| `sharpe`, `sortino`, `calmar`, `ann_vol` | `mean(r)/std(r)·sqrt(N)`, the same with the downside deviation taken about zero, annualized return over the maximum drawdown, and `std(r)·sqrt(N)`, with `r_t = E_t/E_{t-1} - 1`. `N` is the number of 60-second buckets a 24/7 year holds and is printed on the line, because a ten-minute window's ten buckets are not its annualization. A constant series, a series with no loss and a run with no drawdown report zero rather than a division by zero | Runtime `[PERFORMANCE]` |
+| `win_rate`, `profit_factor`, `expectancy_usd`, `average_win_usd`, `average_loss_usd`, `average_holding_seconds` | The distribution of the round trips the account completed, net of both fee halves: a winning round trip is one whose net PnL is above zero, the factor is the winning sum over the absolute losing one, and the holding time runs from the fill that opened the position. The sum of the trips plus the entry fees still carried by an open position is the run's realized PnL, which is what makes the distribution a decomposition rather than a second opinion | Runtime `[ROUND_TRIPS]` |
+| `taker_notional_usd`, `total_notional_usd`, `turnover` | What the aggressive and the quoted fills traded, and their sum over the collateral the run started with. The maker half is what the breakeven maker rate divides by, and the total is the capacity question a participation limit answers | Runtime `[ROUND_TRIPS]` |
+| `arrival_slippage_ticks`, `arrival_slippage_bps`, `arrival_slippage_usd` | The price a crossing fill paid against the midpoint its order decided at, quantity weighted and signed as a cost, so a buy above the decision price and a sell below it are both money paid away | Runtime `[TAKER]` |
+| `taker_edge_5_ticks`, `taker_edge_20_ticks`, `taker_edge_60_ticks` | The drift from a crossing fill to the midpoint 5, 20 and 60 quote cycles later, positive when the move covered the spread. The sign is the fill's own, the opposite of `adverse_selection`, and it is deliberately not called `captured_edge`: a taker's spread payment is a cost rather than a capture, and the three buckets are the C++ side of the two the Python benchmark measures | Runtime `[TAKER]` |
+| `shortfall_filled_usd`, `shortfall_fees_usd`, `shortfall_opportunity_usd`, `shortfall_usd`, `shortfall_bps` | Implementation shortfall of the IOC/FOK orders: the filled quantity against the decision price, the fees, and what the unfilled remainder would have earned by the horizon -- the term an IOC run is most likely to lose and the breakout line's main cost. The basis-point figure divides by the decision notional, so an order that never filled still contributes its denominator. A quote the run cancelled itself is not measured: cancelling declines a fill rather than missing one | Runtime `[TAKER]` |
 
-The metric tests cover zero denominators, positive and negative inventory, empty equity curves, and a known peak-to-trough drawdown. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating formulas in `main.cpp`.
+The metric tests cover zero denominators, positive and negative inventory, empty and single-point equity
+curves, a known peak-to-trough drawdown, the compounding annualization of a two-point series, a constant
+series whose ratios are zero, a drawdown's duration with and without a recovery, the two half-fees a round
+trip carries, the win/loss split of a three-trade distribution, and the three terms of an implementation
+shortfall. This separation lets future metrics be added without expanding `backtest_driver.h` or duplicating
+formulas in `main.cpp`.
 
 **Files:** `src/accounting/portfolio.*`, `tests/portfolio_test.cpp`
 
