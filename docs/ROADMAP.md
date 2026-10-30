@@ -117,6 +117,7 @@ Accepted: a bug fix, a test or explanation of existing behaviour, or a demo scri
 | 2026-10-30 | Metrics batch 1: the equity series sampled once per 60-second bucket behind `--metrics`, and a `[PERFORMANCE]` line with drawdown, its duration, volatility, Sharpe, Sortino and Calmar; default output unchanged | `f0a7b9d` |
 | 2026-10-30 | Metrics batch 2: every closing fill booked as a round trip (side, entry and exit price and time, PnL, both halves of the fee), with `[ROUND_TRIPS]` reporting win rate, profit factor, expectancy, average win and loss, holding time, taker and total notional, and turnover | `8b259fb` |
 | 2026-10-30 | Metrics batch 3: the decision midpoint kept per order, `[TAKER]` reporting arrival slippage, the drift after a crossing fill at 5/20/60 cycles, and the implementation shortfall of the IOC/FOK orders; `--markout-horizon=N` parameterises the hardcoded five cycles | `66b0484` |
+| 2026-10-30 | Metrics line closed: the architecture table documents `[PERFORMANCE]`, `[ROUND_TRIPS]` and `[TAKER]` with their definitions, the coverage table states what is measured and what is still out of scope, and two accessors nothing read are gone | `934ee97` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
