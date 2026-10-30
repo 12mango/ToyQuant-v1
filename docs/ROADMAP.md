@@ -36,7 +36,7 @@ existing design, architecture and user documents are the whole plan.
 | L2 book, queue models, fees, latency | done; participation cap added | price impact remains out of scope | done |
 | matching, partial fills, self-trade prevention, IOC/FOK | done | optional cancel/replace semantics | P2 |
 | strategy framework and market making | done | none | done |
-| non-market-making line | `trend_l2` plus a measured negative result | another signal only if it teaches a new point | P2 |
+| non-market-making line | `trend_l2`, its 27-cell grid, and the two-window scale test that closes the taker variant by non-replication | nothing while the closure stands; a new signal is a new row | closed |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
 | order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
 | portfolio and PnL | single instrument | multi-instrument and portfolio | P2 |

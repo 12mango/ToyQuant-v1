@@ -2665,6 +2665,70 @@ cross can pay, not another sweep of the same three bands.
 FAST_SLOW="5:30 10:60 20:120" ENTRIES="1 2 3" STOPS="4 6 8" bash tools/trend_sweep.sh
 ```
 
+## The non-market-making signal at the scale it trades
+
+The 27-cell grid above measured `trend_l2` at 5/30, 10/60 and 20/120 views. The 200k slice delivers 117,288
+views over 838.5 seconds, so one view is 7.2 milliseconds and those averages are 36 milliseconds to about a
+second: the grid was measuring a rule that could not hold a trend, because at its own horizon there was none to
+hold. That does not make the grid wrong, but it makes it an answer about milliseconds. This section asks the
+question the grid left, stated before the runs: **does the same signal, held for seconds rather than
+milliseconds, earn enough before fees to clear the venue's taker fee, on two non-adjacent windows?** The
+measurement is the gross per fill the run already reports, turned into the taker rate it would take to break
+even.
+
+Only the two averages, the time stop and the cooldown move; the entry band, the exit band, the stop, the sizing
+and the queue model stay at the grid's best cell (`entry 3 ticks, exit 0.5, stop 4, cooldown 60 views,
+--order-size=10 --inventory-limit=100`, conservative, holding `2 x slow`). `--metrics` supplies what the older
+summary could not: `gross_pnl_usd` against `fees_paid`, the round-trip distribution, and the taker edge at 5, 20
+and 60 cycles. Each window trades and reads the book of its own day, so the second is not one day's trades
+against another day's depth.
+
+| window | fast / slow | fills | gross USD | net USD | fees USD | gross / fill | fee / fill | break-even taker | win | mean hold | taker edge @60 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2020-04-01 | 200 / 1200 | 452 | +9.07 | -13.53 | 22.60 | 0.0201 | 0.0500 | 2.01 bps | 18.1 % | 7.4 s | -0.67 |
+| 2020-04-01 | 500 / 3000 | 330 | +8.27 | -8.23 | 16.50 | 0.0251 | 0.0500 | 2.51 bps | 18.8 % | 25.8 s | -0.25 |
+| 2020-04-01 | 2000 / 6000 | 150 | +3.79 | -3.71 | 7.50 | 0.0253 | 0.0500 | 2.53 bps | 28.6 % | 33.2 s | -0.31 |
+| 2020-04-01 | 5000 / 15000 | 90 | +6.04 | **+1.54** | 4.50 | 0.0672 | 0.0500 | 6.72 bps | 25.0 % | 63.8 s | -0.43 |
+| 2020-06-01 | 200 / 1200 | 840 | +6.23 | -35.77 | 42.00 | 0.0074 | 0.0500 | 0.74 bps | 2.4 % | 18.8 s | -0.29 |
+| 2020-06-01 | 500 / 3000 | 760 | +7.13 | -30.87 | 38.00 | 0.0094 | 0.0500 | 0.94 bps | 10.5 % | 55.0 s | -0.29 |
+| 2020-06-01 | 2000 / 6000 | 670 | +0.90 | -32.60 | 33.50 | 0.0013 | 0.0500 | 0.13 bps | 9.1 % | 59.8 s | -0.17 |
+| 2020-06-01 | 5000 / 15000 | 510 | -0.62 | -26.12 | 25.50 | -0.0012 | 0.0500 | -0.12 bps | 4.0 % | 89.7 s | -0.43 |
+
+`break-even taker` is the rate at which the gross would be exactly consumed: gross over the notional the fills
+traded, in basis points. The venue charges 5 bps a side, which is the `fee / fill` column stated against a 100
+USD fill, so a cell needs to be above that line to have a question rather than a cost.
+
+**The answer is no, and the fee is not what decides it.** On 1 April the gross does scale with the horizon:
+2.01 bps of break-even at a 7-second hold, 2.53 at 33 seconds, and 6.72 at 64, where the run is the only one of
+the eight whose net is positive (+1.54 USD over 90 fills). On 1 June the same cells give 0.74, 0.94, 0.13 and
+-0.12 bps; the long cell's gross turns negative and the shortest cell's win rate falls from 18.1 % to 2.4 %.
+Two non-adjacent windows disagreeing is the continuity check this project's own bar asks for, and it fails. The
+grid's twelve sub-second cells were hopeless because they paid two fees per thirty-six milliseconds; these are
+hopeless because the edge that existed on one day did not exist on the other.
+
+The taker edge at sixty cycles (about 0.43 s) is negative in all eight runs, from -0.17 to -0.67 ticks. That is
+not a contradiction with the April long cell: the drift it earned arrived over a minute, two orders of
+magnitude beyond the markout horizon. The two measurements answer two questions, and reading them together is
+the point of having both -- the short horizon prices the crossing, and the round trip prices the signal.
+
+**The taker variant of this line is closed by non-replication.** A maker entry would remove roughly 0.8 bps of
+half spread and replace the 5 bps taker rate, which cannot turn a negative gross positive: on 1 June the gross
+is already below zero at the long end and near it everywhere else. A next attempt needs a signal whose gross
+survives more than one window, which is a different measurement with its own bar.
+
+```bash
+# one cell on one window; the second window is the same command with the 2020-06-01 files
+# depth slices: head -n 200001 of the incremental file, zcat | head -n 200001 of the 06-01 snapshot
+for cell in 200,1200 500,3000 2000,6000 5000,15000; do
+  fast=${cell%%,*}; slow=${cell##*,}
+  out/build/linux-debug/toy_quant l2_replay \
+    data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv \
+    BTC-PERPETUAL 0 trend_l2 1 conservative --fast-validation --paper-broker \
+    --order-size=10 --inventory-limit=100 \
+    --trend-params=$fast,$slow,3,0.5,4,60,$((slow * 2)) --metrics
+done
+```
+
 ## The pre-trade controls: what the backoff changed
 
 `tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band
