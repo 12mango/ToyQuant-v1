@@ -2906,6 +2906,48 @@ for size in 1000 5000 10000 20000 50000 100000; do
 done
 ```
 
+## The pair trade, checked before building it
+
+The next structural direction was a second instrument. The data question turned out to be trivial: Tardis
+publishes free samples of the first day of every month without a key, ETH-PERPETUAL included, at
+`datasets.tardis.dev/v1/deribit/<type>/<year>/<month>/<day>/<symbol>.csv.gz` -- 22 MB of depth and 181 KB of
+trades for one day, in exactly the schema the L2 parser already reads. So before writing a multi-symbol
+pipeline, the cheap question is whether the ratio is worth its cost.
+
+The rule was fixed before the run: a rolling z-score of the ETH/BTC ratio over the window, enter at |z| > 2,
+exit at |z| < 0.5 or after five windows, both legs taken with crossing orders, and the round trip charged at
+28 bps -- 5 bps of taker fee and about 2 bps of half spread on each leg, in and out.
+
+| window | entry | trades (1 Apr / 1 Jun) | median net (1 Apr / 1 Jun) | gross captured | win rate |
+|---|---|---:|---|---:|---|
+| 60 s | z > 2 | 1,089 / 1,058 | -25.79 / -26.45 bps | +2.2 | 0.1 / 0.3 % |
+| 300 s | z > 2 | 415 / 321 | -22.53 / -23.78 | +5.5 | 1.2 / 2.2 % |
+| 900 s | z > 2 | 194 / 119 | -20.08 / -21.25 | +7.9 | 1.5 / 0.8 % |
+| 900 s | z > 3 | 74 / 62 | -17.60 / -21.18 | +10.4 | 5.4 / 3.2 % |
+
+**The gross capture grows with the window and stops near ten basis points, against a cost of twenty-eight.**
+The fastest setting is thirteen times short; the slowest and most selective one is 2.7 times short. That gap
+is the whole answer, and it is not the answer the amplitude suggested: the ratio moves 16 bps at the median
+over a minute and 83 over ten, which looked like room, but a simple rule collects about a fifth of that
+amplitude and pays for a crossing on both legs twice.
+
+The maker version is the only variant left, and the earlier posting measurement is the reason not to be
+hopeful about it: resting at the touch gave up twenty to forty percent of the fills and the opportunity cost
+of what it missed exceeded the fee it saved. A pair that needs both legs to fill passively is that problem
+squared.
+
+**So the multi-instrument line stays closed, and now it is closed by a measurement rather than by missing
+data** -- the data costs 22 MB and ten minutes to obtain, and the trade is three times short of its own fee.
+What would reopen it: a venue where a pair round trip costs under ten basis points with fills this venue does
+not offer, or a spread whose reversion is an order of magnitude larger than this one's.
+
+```bash
+# the two trade files are the whole measurement; no build, no pipeline
+curl -sS -O 'https://datasets.tardis.dev/v1/deribit/trades/2020/04/01/ETH-PERPETUAL.csv.gz'
+python3 tq_pair_rule.py 900 3.0 data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  ETH-PERPETUAL.csv.gz data/v2/crypto/deribit_trades_2020-06-01_BTC-PERPETUAL.csv.gz ETH_0601.csv.gz
+```
+
 ## The pre-trade controls: what the backoff changed
 
 `tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band
