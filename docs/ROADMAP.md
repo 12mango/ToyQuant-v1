@@ -130,6 +130,7 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-30 | Boundary lifted for one requested item: the freeze no longer covers an execution scheduler that takes no view on direction, and everything else stays frozen | `69eaa83` |
 | 2026-10-30 | Execution line: `execution_l2` works one parent order with `market`, `twap:N` or `pov:X` children, and `[EXECUTION_ALGO]` reports the shortfall in basis points. First measurement: no schedule beats one crossing by 2 bps on two windows, so the schedule is not the lever and the fee is | `69eaa83` |
 | 2026-10-30 | Execution benchmark: the parent is also measured against the time-weighted midpoint of its own window. `twap` lands within 3.2 bps of it in every cell while a single crossing sits at −11.92 and +7.79, so the crossing is a drift bet and the schedule pays a stable half point | `bbbe087` |
+| 2026-10-30 | Execution entry: `--algo-entry=post:N` rests each slice and crosses the remainder on timeout. Four timeouts on two windows: the fee falls with patience (5.00 → 1.80 bps) but fills fall with it (100 % → 60 %) and the opportunity cost rises faster (0.00 → 10.85 bps), so crossing stays the entry | `509e811` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
