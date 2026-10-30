@@ -40,7 +40,7 @@ existing design, architecture and user documents are the whole plan.
 | execution algorithms | `execution_l2` with three schedules, two entry modes and parent-level shortfall against both the arrival price and the window's TWAP; the schedule wins at most half a basis point, posting loses the fills it saves, and size moves the number of crossings but not the cost | nothing while the closure stands; a venue with a materially different fee would be a new row | closed |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
 | order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
-| portfolio and PnL | single instrument; a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows (`PERFORMANCE_HISTORY.md`) | nothing while the pair stays closed; the data is 22 MB a day and needs no key | closed |
+| portfolio and PnL | single instrument per run; a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows (`PERFORMANCE_HISTORY.md`), and the two instruments' maker break-even rates are 6.9 bps apart | a controlled two-instrument maker study, since both are now registered | P2 |
 | broker and gateway simulation | paper broker plus gateway faults and timeout queries | client-order-id recovery remains P2 | done |
 | persistence and recovery | missing | out of the demo; would need a venue-like query | P3 |
 | live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |

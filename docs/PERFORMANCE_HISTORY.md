@@ -2967,6 +2967,21 @@ schedule sits 0.3 from it. So the execution line's findings are not an artefact 
 the arithmetic of the fee plus the tick, and the second instrument is registered, so any of the earlier runs can
 be repeated on it.
 
+The same pair of runs says what the tick does to the **maker** side, which is the line that was closed by cost.
+On the same 2M-row window with the same strategy, `[PNL]` already reports the maker rate that would have made
+each run exactly flat:
+
+| instrument | maker fills | gross | fees | break-even maker rate |
+|---|---:|---:|---:|---:|
+| BTC-PERPETUAL | 25 | -5.65 bps | 2.00 | **-5.65 bps**, a rebate |
+| ETH-PERPETUAL | 86 | +1.26 bps | 2.00 | **+1.26 bps** |
+
+The venue charges 2 bps to rest, so both are outside what it offers -- but they are 6.9 bps apart on one fee
+schedule, and the whole difference is the tick: a passive fill that captures a tick earns 0.78 bps on the BTC
+contract and 3.76 on the ETH one for the same 2 bps of fee. This is one window each, with 25 and 86 fills, so it
+is a hint and not a result -- but it is now a cheap one to turn into a result, because both instruments are
+registered and the same command runs on either.
+
 ## The pre-trade controls: what the backoff changed
 
 `tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band
