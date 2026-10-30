@@ -127,6 +127,8 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-30 | Metrics line closed: the architecture table documents `[PERFORMANCE]`, `[ROUND_TRIPS]` and `[TAKER]` with their definitions, the coverage table states what is measured and what is still out of scope, and two accessors nothing read are gone | `934ee97` |
 | 2026-10-30 | Non-market-making line closed by non-replication: the EWMA cross re-measured at four horizons of 1–64 seconds on two non-adjacent windows, break-even taker rate 0.74–6.72 bps against the venue's 5, one net-positive cell in April and none in June | `9582550` |
 | 2026-10-30 | Metrics batch 4: the round-trip distribution split by the side the position was opened on, one `[ROUND_TRIPS_SIDE]` line per side, sharing the aggregate's arithmetic | `110f8aa` |
+| 2026-10-30 | Boundary lifted for one requested item: the freeze no longer covers an execution scheduler that takes no view on direction, and everything else stays frozen | `69eaa83` |
+| 2026-10-30 | Execution line: `execution_l2` works one parent order with `market`, `twap:N` or `pov:X` children, and `[EXECUTION_ALGO]` reports the shortfall in basis points. First measurement: no schedule beats one crossing by 2 bps on two windows, so the schedule is not the lever and the fee is | `69eaa83` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
