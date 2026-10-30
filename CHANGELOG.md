@@ -175,6 +175,11 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   cost rises faster (0.00 → 10.85 bps against the benchmark), so no timeout beats crossing. The taker fee is a
   floor on this venue rather than a parameter, and the remaining lever is a venue whose maker and taker rates
   differ by less than the fill risk costs.
+- **Capacity, measured and flat.** A ladder from 1,000 to 100,000 contracts on both windows: the shortfall in
+  basis points does not move at all, because every term is proportional to quantity, and what size changes is
+  how many crossings the order needs (one on the deep day, six on the thin one, thirty-four to ninety-seven for
+  the time-sliced schedule). No size flips the ranking, so "a parent larger than the display" stops being an
+  open question rather than becoming a favourable one.
 - **What the crossing side cost.** `--metrics` records the midpoint each order decided at and reports
   `[TAKER]`: the arrival slippage of every aggressive fill in ticks, basis points and dollars, the drift from
   the fill to the midpoint 5, 20 and 60 quote cycles later — positive when the move covered the spread, the

@@ -2798,10 +2798,9 @@ children is most of the way to "trade now" -- so it inherits most of the same be
 
 So the choice is not "which schedule is cheaper". It is **whether to take a ten basis point bet on where the
 window goes, or to pay a stable cost of about four and a half basis points**, of which 4.55 to 5.00 is the fee
-and roughly half a basis point is the spread the children cross. The same holds at 100,000 contracts, where one
-crossing fills 19 % and a schedule fills 76 %: `twap` stays within three points of the benchmark, and the
-quarter it did not fill appears as 5.57 bps of opportunity cost against that benchmark rather than as a silent
-gap.
+and roughly half a basis point is the spread the children cross. The same holds at 100,000 contracts, where a
+single crossing is not enough to absorb the order on the thinner day: `twap` stays within three points of the
+benchmark there too, and the next subsection shows what size does change and what it does not.
 
 **What this leaves.** The only term with a stable sign is still the fee: this venue charges 5 bps to cross
 against 2 bps to rest. With the schedule's own price cost now measured at about half a basis point, the
@@ -2862,6 +2861,48 @@ for entry in cross post:5 post:30 post:60; do
     data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv \
     BTC-PERPETUAL 0 execution_l2 1 conservative --fast-validation \
     --parent=buy:1000:600 --algo=twap:10 --algo-entry=$entry --metrics
+done
+```
+
+### Capacity: what size changes and what it does not
+
+The open question after the two measurements above was whether a parent larger than the displayed depth flips
+the answer, because that is where a single crossing stops being available. The ladder below is the same parent
+and the same window at six sizes, in the conservative queue model, with the number of children each schedule
+needed to complete it.
+
+| window | size | `market` children | `market` vs TWAP | `twap:10` children | `twap:10` vs TWAP |
+|---|---:|---:|---:|---:|---:|
+| 2020-04-01 | 1,000 | 1 | -6.92 | 19 | +5.29 |
+| 2020-04-01 | 5,000 | 1 | -6.92 | 25 | +5.29 |
+| 2020-04-01 | 10,000 | 1 | -6.92 | 25 | +5.29 |
+| 2020-04-01 | 20,000 | 2 | -6.92 | 26 | +5.29 |
+| 2020-04-01 | 50,000 | 3 | -6.92 | 29 | +5.29 |
+| 2020-04-01 | 100,000 | 6 | -6.92 | 34 | +5.29 |
+| 2020-06-01 | 1,000 | 1 | +12.79 | 14 | +3.74 |
+| 2020-06-01 | 50,000 | 1 | +12.79 | 94 | +3.88 |
+| 2020-06-01 | 100,000 | 1 | +12.79 | 97 | +3.89 |
+
+**Size does not change the cost in basis points, and the reason is dimensional.** Every term of the shortfall
+is proportional to the quantity: the fee is a rate, the spread is a price per unit, and the drift is a price per
+unit. Doubling the parent doubles every term and the basis point figure does not move -- the two columns are
+flat to the last digit across two orders of magnitude. What size does change is the number of crossings a
+schedule needs: one on the deep day, six on the thin one, and thirty-four to ninety-seven for the time-sliced
+schedule, because its slices fill in pieces and are worked again.
+
+So there is no size at which the schedule starts winning, and the earlier question is answered: a parent larger
+than the displayed depth does not flip the comparison, it simply requires more crossings, each of which the
+five basis point fee already prices. The one number that looked like a capacity limit -- a single crossing
+filling nineteen percent of a hundred thousand lot parent -- was a run with an older scheduler that made exactly
+one attempt; the current one keeps working the order and completes at every size in the table, which is what a
+desk would do and what makes the comparison meaningful.
+
+```bash
+for size in 1000 5000 10000 20000 50000 100000; do
+  out/build/linux-debug/toy_quant l2_replay \
+    data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv \
+    BTC-PERPETUAL 0 execution_l2 1 conservative --fast-validation \
+    --parent=buy:$size:600 --algo=twap:10 --metrics
 done
 ```
 
