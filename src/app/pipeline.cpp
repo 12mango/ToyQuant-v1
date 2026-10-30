@@ -520,6 +520,8 @@ void Pipeline::advance_mid(const std::string& symbol, uint64_t ts, double mid)
             accounting_.start_parent(ts, mid, unit_notional_usd_, multiplier_, quantity_scale_);
         else if (accounting_.parent_horizon_reached(ts))
             accounting_.finish_parent(ts, mid);
+        else
+            accounting_.observe_parent_mid(ts, mid);
     }
     // The report callback pushes a markout for every fill, but only this drain closes them, so on the
     // L2 path adverse selection used to stay at zero however many fills there were. Both paths use the

@@ -379,7 +379,11 @@ int main()
         parent.note_parent_child();
         parent.note_parent_child();
         parent.note_parent_fill(Side::Buy, 101.0, 6, 0.6);
-        parent.finish_parent(60'001, 102.0);
+        // Two midpoints inside the window make the time-weighted benchmark 101: thirty seconds at 100 and
+        // thirty at 102 give the same average, which is the point of the column -- a schedule is judged
+        // against the average price the market traded at, not against where it happened to start.
+        parent.observe_parent_mid(31'000, 101.0);
+        parent.finish_parent(61'000, 102.0);
         const auto parent_summary = parent.parent_summary();
         assert(parent_summary.requested && parent_summary.complete && parent_summary.buy);
         assert(parent_summary.quantity == 10);
@@ -390,6 +394,12 @@ int main()
         assert(std::abs(parent_summary.is_fees_bps - 6.0) < 1e-12);
         assert(std::abs(parent_summary.is_opportunity_bps - 80.0) < 1e-12);
         assert(std::abs(parent_summary.is_total_bps - 146.0) < 1e-12);
+        // The benchmark: 30 s at 100 and 30 s at 102 give 101, so the six units filled at 101 pay nothing
+        // against it. The four it never got cost 4 USD, and the fee 0.6, against the 1,010 USD notional.
+        assert(std::abs(parent_summary.twap_mid - 101.0) < 1e-12);
+        assert(std::abs(parent_summary.filled_vs_twap_bps) < 1e-12);
+        assert(std::abs(parent_summary.opportunity_vs_twap_bps - 39.603960396039604) < 1e-9);
+        assert(std::abs(parent_summary.is_vs_twap_bps - 45.544554455445545) < 1e-9);
         // A fill after the deadline belongs to nothing: the measurement closed with the horizon's charge.
         parent.note_parent_fill(Side::Buy, 102.0, 4, 0.4);
         assert(parent.parent_summary().filled_quantity == 6);

@@ -165,6 +165,10 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   about the *schedule*: on two non-adjacent windows no schedule beat a single crossing by 2 bps, and `twap`'s
   signed slippage flipped from +11.7 to -9.8 bps while the fee stayed at 4.6 to 5.0. The fee is the only term
   with a stable sign, which is what the maker-entry question would move and the schedule does not.
+  `[EXECUTION_ALGO]` also reports the window's time-weighted midpoint, and against that benchmark `twap` lands
+  within three basis points on both days while the single crossing's distance from it is the drift itself --
+  which is what turns "the two windows disagree" into "the single crossing is a ten basis point bet, and the
+  schedule pays a stable half point".
 - **What the crossing side cost.** `--metrics` records the midpoint each order decided at and reports
   `[TAKER]`: the arrival slippage of every aggressive fill in ticks, basis points and dollars, the drift from
   the fill to the midpoint 5, 20 and 60 quote cycles later — positive when the move covered the spread, the

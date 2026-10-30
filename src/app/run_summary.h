@@ -262,6 +262,13 @@ struct ExecutionAlgoSummary
     double is_fees_bps{0.0};
     double is_opportunity_bps{0.0};
     double is_total_bps{0.0};
+    // The same trade measured against the time-weighted midpoint of the window rather than against the arrival
+    // price, which is the comparison that separates a schedule from the market's drift. `twap_mid` is the
+    // benchmark itself; the three terms add up the same way they do against the arrival price.
+    double twap_mid{0.0};
+    double filled_vs_twap_bps{0.0};
+    double opportunity_vs_twap_bps{0.0};
+    double is_vs_twap_bps{0.0};
     double span_seconds{0.0};
 };
 
@@ -556,7 +563,11 @@ struct RunSummary
                    << " is_filled_bps=" << execution_algo.is_filled_bps
                    << " is_fees_bps=" << execution_algo.is_fees_bps
                    << " is_opportunity_bps=" << execution_algo.is_opportunity_bps
-                   << " is_total_bps=" << execution_algo.is_total_bps;
+                   << " is_total_bps=" << execution_algo.is_total_bps
+                   << " twap_mid=" << execution_algo.twap_mid
+                   << " filled_vs_twap_bps=" << execution_algo.filled_vs_twap_bps
+                   << " opportunity_vs_twap_bps=" << execution_algo.opportunity_vs_twap_bps
+                   << " is_vs_twap_bps=" << execution_algo.is_vs_twap_bps;
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
         if (funding_requested)
             stream << "\n[FUNDING] funding_points=" << funding.points

@@ -2756,7 +2756,8 @@ Every figure is a basis point of the notional at the arrival midpoint, positive 
 the single crossing by 8.92 bps on 1 June and lost 11.88 on 1 April; `pov` moved 1.02 and -1.50. The
 pre-registered rule -- two basis points better on both windows with the same sign, opportunity under a quarter
 of the total -- is met by neither. What is stable is the fee: 4.6 to 5.0 bps in every cell, three to thirteen
-times the differences between schedules.
+times the differences between schedules. The next subsection shows why the two windows disagree, and it is not
+the schedule.
 
 The reason is in the filled term. A single crossing fills completely on both days, because 1,000 contracts is
 small against the displayed depth, so its cost is the half spread (0.26 to 0.39 bps) plus the fee. `twap`
@@ -2770,11 +2771,42 @@ percent of the parent unfilled, and zero where the parent completed. It is small
 was almost filled, and a schedule that trades less is charged proportionally, which is what keeps "work
 nothing" from looking cheap.
 
-**What this leaves.** The only term with a stable sign is the fee, and this venue charges 5 bps to cross
-against 2 bps to rest. That is three basis points on the whole notional, larger than any difference these six
-runs produced, so the next question is the maker-entry one -- enter passively, cross only to leave -- and the
-execution line now has what that measurement needs: the parent's benchmark, the three shortfall terms and the
-child-level slippage.
+### The same runs against the TWAP benchmark
+
+The arrival price answers "what did this order pay relative to the moment it was decided", which is the right
+question for one decision and the wrong one for comparing schedules: a parent that buys into a rising midpoint
+pays more the longer it waits, whatever the schedule is. `[EXECUTION_ALGO]` therefore also reports the
+time-weighted midpoint of the parent's own window, and the same three terms against it.
+
+| window | schedule | filled | price vs TWAP | opportunity vs TWAP | fees | total vs TWAP |
+|---|---|---:|---:|---:|---:|---:|
+| 2020-04-01 | market | 1,000 | -11.92 | 0.00 | 5.00 | -6.92 |
+| 2020-04-01 | twap:10 | 910 | +0.52 | -0.13 | 4.55 | +4.94 |
+| 2020-04-01 | pov:0.1 | 1,000 | -10.43 | 0.00 | 5.00 | -5.43 |
+| 2020-06-01 | market | 1,000 | +7.79 | 0.00 | 5.00 | +12.79 |
+| 2020-06-01 | twap:10 | 920 | -2.90 | +2.17 | 4.60 | +3.86 |
+| 2020-06-01 | pov:0.1 | 1,000 | +6.77 | 0.00 | 5.00 | +11.77 |
+| 2020-04-01 | twap:10, 100k parent | 76,360 | +0.01 | -0.34 | 3.82 | +3.49 |
+| 2020-06-01 | twap:10, 100k parent | 79,460 | -3.17 | +5.57 | 3.97 | +6.37 |
+
+**The benchmark check passes, and it changes what the table above means.** `twap` lands within 3.2 basis points
+of the average it is measured against in all four of its cells, which is the half spread it paid and nothing
+else: the schedule does what it says it does. The single crossing does not. Its price against the benchmark is
+-11.92 bps on one day and +7.79 on the other, and those are the window's own drift with the sign flipped,
+because it trades at the arrival while the benchmark keeps moving. `pov` behaves like a fast `twap` -- five
+children is most of the way to "trade now" -- so it inherits most of the same bet.
+
+So the choice is not "which schedule is cheaper". It is **whether to take a ten basis point bet on where the
+window goes, or to pay a stable cost of about four and a half basis points**, of which 4.55 to 5.00 is the fee
+and roughly half a basis point is the spread the children cross. The same holds at 100,000 contracts, where one
+crossing fills 19 % and a schedule fills 76 %: `twap` stays within three points of the benchmark, and the
+quarter it did not fill appears as 5.57 bps of opportunity cost against that benchmark rather than as a silent
+gap.
+
+**What this leaves.** The only term with a stable sign is still the fee: this venue charges 5 bps to cross
+against 2 bps to rest. With the schedule's own price cost now measured at about half a basis point, the
+maker-entry question is worth roughly 3.5 bps -- 3 of fee and half a spread -- against the half point a
+schedule can win, which is why it is the next step and scheduling is not.
 
 ```bash
 for algo in market twap:10 pov:0.1; do

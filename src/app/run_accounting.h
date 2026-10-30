@@ -260,6 +260,11 @@ class RunAccounting
     void note_parent_child();
     void note_parent_fill(Side side, double price, uint64_t quantity, double fee);
 
+    // One midpoint while the parent is being worked, for the time-weighted benchmark: a schedule that finishes
+    // early and one that spreads to the deadline are compared against the average the market actually traded
+    // at over the same window, which is the benchmark that separates the schedule from the drift.
+    void observe_parent_mid(uint64_t ts, double mid);
+
     // True once the parent's deadline has passed in market time, which is when the measurement closes.
     bool parent_horizon_reached(uint64_t ts) const
     {
@@ -380,4 +385,13 @@ class RunAccounting
     double parent_horizon_mid_{0.0};
     double parent_opportunity_usd_{0.0};
     double parent_span_seconds_{0.0};
+    // The time-weighted benchmark: the midpoint integral over the parent's window, the time it covers, and the
+    // last observation each new one is measured from. The filled side keeps the quantity and the
+    // quantity-times-price sums, so the benchmark comparison needs no second pass over the fills.
+    double parent_twap_area_{0.0};
+    uint64_t parent_twap_time_us_{0};
+    uint64_t parent_last_mid_ts_{0};
+    double parent_last_mid_{0.0};
+    double parent_filled_units_{0.0};
+    double parent_filled_units_price_{0.0};
 };

@@ -351,6 +351,25 @@ void RunAccounting::start_parent(uint64_t ts, double decision_mid, double unit_n
         static_cast<double>(parent_spec_.quantity) / static_cast<double>(parent_quantity_scale_);
     parent_decision_usd_ =
         units * unit_notional_at(parent_unit_notional_usd_, parent_multiplier_, parent_decision_mid_);
+    // The benchmark integral starts at the decision, so the first observation is the baseline rather than a
+    // segment of zero length.
+    parent_last_mid_ts_ = ts;
+    parent_last_mid_ = decision_mid;
+}
+
+void RunAccounting::observe_parent_mid(uint64_t ts, double mid)
+{
+    if (!parent_started_ || parent_finished_ || mid <= 0.0) return;
+    if (ts > parent_last_mid_ts_)
+    {
+        // A step function of the midpoint: each observation holds until the next one, which is what the window
+        // actually looked like between two events.
+        parent_twap_area_ +=
+            parent_last_mid_ * static_cast<double>(ts - parent_last_mid_ts_);
+        parent_twap_time_us_ += ts - parent_last_mid_ts_;
+    }
+    parent_last_mid_ts_ = ts;
+    parent_last_mid_ = mid;
 }
 
 void RunAccounting::note_parent_child()
@@ -365,6 +384,8 @@ void RunAccounting::note_parent_fill(Side side, double price, uint64_t quantity,
     parent_filled_quantity_ += quantity;
     parent_fees_usd_ += fee;
     const double units = static_cast<double>(quantity) / static_cast<double>(parent_quantity_scale_);
+    parent_filled_units_ += units;
+    parent_filled_units_price_ += units * price;
     // Signed as a cost, the same form the child arrival slippage uses: a buy above the decision price and a
     // sell below it are both money paid away.
     const double signed_move =
@@ -377,6 +398,14 @@ void RunAccounting::note_parent_fill(Side side, double price, uint64_t quantity,
 void RunAccounting::finish_parent(uint64_t ts, double horizon_mid)
 {
     if (!parent_started_ || parent_finished_) return;
+    // The last segment of the benchmark integral, from the last observation to the deadline. The right
+    // endpoint is used because the horizon price is the one that closed the window.
+    if (ts > parent_last_mid_ts_)
+    {
+        const double end_mid = horizon_mid > 0.0 ? horizon_mid : parent_last_mid_;
+        parent_twap_area_ += end_mid * static_cast<double>(ts - parent_last_mid_ts_);
+        parent_twap_time_us_ += ts - parent_last_mid_ts_;
+    }
     parent_finished_ = true;
     parent_horizon_mid_ = horizon_mid;
     parent_span_seconds_ =
@@ -418,6 +447,41 @@ ExecutionAlgoSummary RunAccounting::parent_summary() const
     summary.is_fees_bps = parent_fees_usd_ * per_bp;
     summary.is_opportunity_bps = parent_opportunity_usd_ * per_bp;
     summary.is_total_bps = summary.is_filled_bps + summary.is_fees_bps + summary.is_opportunity_bps;
+
+    // The time-weighted benchmark over the same window, and the same three terms against it. This is the column
+    // that separates a schedule from the market's drift: a parent that buys into a rising midpoint looks
+    // expensive against its arrival price however it is worked, and only the average price it actually traded
+    // at says whether the schedule helped.
+    const double twap_mid = parent_twap_time_us_ > 0
+                                ? parent_twap_area_ / static_cast<double>(parent_twap_time_us_)
+                                : parent_decision_mid_;
+    summary.twap_mid = twap_mid;
+    if (parent_requested_ && twap_mid > 0.0)
+    {
+        const double sign = parent_spec_.side == Side::Buy ? 1.0 : -1.0;
+        const double total_units =
+            static_cast<double>(parent_spec_.quantity) / static_cast<double>(parent_quantity_scale_);
+        const double unit_value =
+            unit_notional_at(parent_unit_notional_usd_, parent_multiplier_, twap_mid);
+        const double denominator = total_units * unit_value;
+        if (denominator > 0.0)
+        {
+            // The parent's notional is the denominator for all three terms, so they stay additive with each
+            // other and comparable with the arrival-price column.
+            const double filled_usd = unit_value *
+                                      sign * (parent_filled_units_price_ - twap_mid * parent_filled_units_) /
+                                      twap_mid;
+            summary.filled_vs_twap_bps = filled_usd / denominator * 10000.0;
+
+            const double unfilled_units = total_units - parent_filled_units_;
+            const double opportunity_usd = unfilled_units * unit_value * sign *
+                                           (parent_horizon_mid_ - twap_mid) / twap_mid;
+            summary.opportunity_vs_twap_bps = opportunity_usd / denominator * 10000.0;
+
+            summary.is_vs_twap_bps = summary.filled_vs_twap_bps + summary.opportunity_vs_twap_bps +
+                                     parent_fees_usd_ / denominator * 10000.0;
+        }
+    }
     return summary;
 }
 
