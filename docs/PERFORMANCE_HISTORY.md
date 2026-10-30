@@ -2948,6 +2948,25 @@ python3 tq_pair_rule.py 900 3.0 data/v2/crypto/deribit_trades_2020-04-01_BTC-PER
   ETH-PERPETUAL.csv.gz data/v2/crypto/deribit_trades_2020-06-01_BTC-PERPETUAL.csv.gz ETH_0601.csv.gz
 ```
 
+### The same venue, a coarser tick
+
+Registering a second instrument answers a question the BTC numbers cannot: how much of the floor is the fee and
+how much is the spread. `ETH-PERPETUAL` trades on the same venue under the same 5 bps taker rate, but its tick is
+five cents against a price near 132 rather than half a dollar against 6421, so a crossing pays 1.88 bps of half
+spread instead of 0.39.
+
+| instrument | tick, in bps | `is_filled` | `is_fees` | floor |
+|---|---|---:|---:|---:|
+| BTC-PERPETUAL | 0.78 | 0.39 | 5.00 | 5.39 |
+| ETH-PERPETUAL | 3.76 | 1.88 | 5.00 | 6.88 |
+
+The fee term is identical, as it must be; the spread term scales with the tick, and the floor moves by 1.5 bps
+for the same venue, the same schedule and the same parent notional. The drift and the benchmark behave the same
+way as they do on BTC: the single crossing sits 29 bps away from the window's average and the time-sliced
+schedule sits 0.3 from it. So the execution line's findings are not an artefact of one instrument -- they are
+the arithmetic of the fee plus the tick, and the second instrument is registered, so any of the earlier runs can
+be repeated on it.
+
 ## The pre-trade controls: what the backoff changed
 
 `tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band

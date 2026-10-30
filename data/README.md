@@ -107,6 +107,27 @@ and save them here as:
 - `deribit_book_snapshot_25_YYYY-MM-DD_BTC-PERPETUAL.csv.gz`
 - `deribit_trades_YYYY-MM-DD_BTC-PERPETUAL.csv.gz`
 
+The same samples are reachable without a key at
+`https://datasets.tardis.dev/v1/deribit/<type>/<year>/<month>/<day>/<symbol>.csv.gz` for the first day of any
+month, which is how a second symbol is fetched:
+
+```bash
+curl -sS -o eth_l2.csv.gz \
+  'https://datasets.tardis.dev/v1/deribit/incremental_book_L2/2020/04/01/ETH-PERPETUAL.csv.gz'
+curl -sS -o eth_trades.csv.gz \
+  'https://datasets.tardis.dev/v1/deribit/trades/2020/04/01/ETH-PERPETUAL.csv.gz'
+# the raw sample's trade id carries a symbol prefix ("ETH-14819232"); the reader wants the number alone
+zcat eth_trades.csv.gz | awk -F, 'BEGIN{OFS=","} NR==1{print; next} {sub(/^[A-Z]+-/, "", $5); print}' \
+  | gzip > eth_trades_numeric.csv.gz
+zcat eth_l2.csv.gz | head -n 200001 > /tmp/eth_depth_200k.csv
+```
+
+`ETH-PERPETUAL` is a registered instrument (`deribit_eth_perpetual_spec`), so a replay needs nothing beyond the
+normalised trade file: 22 MB of depth and 181 KB of trades cover a day, against 1.5 GB for the BTC incremental
+book. Its tick is five cents on a price near 132 where the BTC contract's is half a dollar on 6421, so a crossing
+pays 1.9 bps of spread instead of 0.4, under the same 5 bps taker rate; `docs/PERFORMANCE_HISTORY.md` measures
+the pair of floors.
+
 Then one command prints a row per day in the table's column order, together with the recorded block that
 `tools/check_docs.py` re-derives:
 

@@ -141,4 +141,22 @@ int main()
         assert(elapsed >= 20);
         assert(real.pacing_summary().events == 8);
     }
+
+    // The registry: a symbol the replay path can take is a claim that its numbers are re-derivable, and the
+    // second Deribit perpetual differs from the first in exactly the two fields a cost measurement depends on
+    // -- the tick it is quoted in and the face value one contract carries.
+    {
+        InstrumentSpec btc;
+        InstrumentSpec eth;
+        assert(instrument_spec_of("BTC-PERPETUAL", btc));
+        assert(instrument_spec_of("ETH-PERPETUAL", eth));
+        assert(std::abs(btc.tick_size - 0.5) < 1e-12);
+        assert(std::abs(btc.unit_notional_usd - 10.0) < 1e-12);
+        assert(std::abs(eth.tick_size - 0.05) < 1e-12);
+        assert(std::abs(eth.unit_notional_usd - 1.0) < 1e-12);
+        assert(std::abs(eth.taker_fee_rate - btc.taker_fee_rate) < 1e-12);
+        // A symbol nobody registered stays unknown rather than taking a default.
+        InstrumentSpec unknown;
+        assert(!instrument_spec_of("ETH-NOT-REGISTERED", unknown));
+    }
 }

@@ -162,6 +162,25 @@ inline InstrumentSpec deribit_btc_perpetual_spec()
                           .taker_fee_rate = 0.0005};
 }
 
+// The same venue's other perpetual, and a different cost structure under the same fee schedule: one contract is
+// a dollar of face value rather than ten, and the minimum increment is five cents against a price near 132,
+// which is 3.8 basis points a tick where the BTC contract's half dollar against 6421 is 0.8. A crossing
+// therefore pays five times the spread for exactly the same taker rate, which is what makes this the second
+// instrument worth registering rather than a second copy of the first. The face value is the venue's published
+// contract value and is the one number here that the data cannot re-derive.
+inline InstrumentSpec deribit_eth_perpetual_spec()
+{
+    return InstrumentSpec{.exchange = "deribit",
+                          .symbol = "ETH-PERPETUAL",
+                          .tick_size = 0.05,
+                          .quantity_scale = 1,
+                          .unit_notional_usd = 1.0,
+                          .lot_size = 1,
+                          .min_order_quantity = 1,
+                          .maker_fee_rate = 0.0002,
+                          .taker_fee_rate = 0.0005};
+}
+
 // A linear swap, so the unit value is the traded price times the base amount the contract carries, which is
 // what the zero in unit_notional_usd means. The derived order size that strategy_factory computes from
 // quantity_scale is a thousandth of a base unit here and therefore below the venue's one contract minimum,
@@ -236,6 +255,11 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "BTC-PERPETUAL")
     {
         out = deribit_btc_perpetual_spec();
+        return true;
+    }
+    if (symbol == "ETH-PERPETUAL")
+    {
+        out = deribit_eth_perpetual_spec();
         return true;
     }
     if (symbol == "BTC-USDT-SWAP")
