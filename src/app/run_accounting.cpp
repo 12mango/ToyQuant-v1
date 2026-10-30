@@ -47,7 +47,8 @@ void RunAccounting::drain_mature_markouts(uint64_t quote_cycle, double last_mid,
     // The observations are queued in cycle order, so the front is the oldest and the loop stops at the
     // first one whose horizon has not closed yet. Same five cycles on every path, and the arithmetic is
     // kept in the order it had when this was written twice, because the stdout hash is exact.
-    while (!pending_markouts_.empty() && quote_cycle >= pending_markouts_.front().start_cycle + 5)
+    while (!pending_markouts_.empty() &&
+           quote_cycle >= pending_markouts_.front().start_cycle + markout_horizon_cycles_)
     {
         const auto observation = pending_markouts_.front();
         pending_markouts_.pop_front();
@@ -74,7 +75,8 @@ void RunAccounting::drain_mature_markouts(uint64_t quote_cycle, double last_mid,
 void RunAccounting::drain_mature_prints(uint64_t quote_cycle, double last_mid, double tick_size)
 {
     // The market's own prints, resolved by the same five cycle horizon as our fills.
-    while (!pending_prints_.empty() && quote_cycle >= pending_prints_.front().start_cycle + 5)
+    while (!pending_prints_.empty() &&
+           quote_cycle >= pending_prints_.front().start_cycle + markout_horizon_cycles_)
     {
         const PassivePrint print = pending_prints_.front();
         pending_prints_.pop_front();
@@ -202,6 +204,108 @@ RoundTripSummary RunAccounting::round_trip_summary(const std::vector<ClosedTrade
     summary.average_win_usd = wins > 0 ? win_sum / static_cast<double>(wins) : 0.0;
     summary.average_loss_usd = losses > 0 ? loss_sum / static_cast<double>(losses) : 0.0;
     summary.average_holding_seconds = holding_seconds / count;
+    return summary;
+}
+
+void RunAccounting::note_taker_fill(const TakerFillMeasurement& fill)
+{
+    ++taker_fills_;
+    const double quantity = static_cast<double>(fill.quantity);
+    taker_quantity_ += quantity;
+    taker_slippage_ticks_quantity_ += fill.slippage_ticks * quantity;
+    taker_slippage_bps_quantity_ += fill.slippage_bps * quantity;
+    taker_slippage_usd_ += fill.slippage_usd;
+    // One entry per horizon, in the fill's order, so each queue drains oldest first at its own horizon.
+    for (auto& queue : pending_taker_edges_)
+        queue.push_back({fill.side, fill.price, fill.quantity, fill.quote_cycle});
+}
+
+void RunAccounting::note_aggressive_order(const AggressiveOrder& order)
+{
+    ++aggressive_orders_;
+    shortfall_filled_usd_ += order.filled_usd;
+    shortfall_fees_usd_ += order.fees_usd;
+    shortfall_decision_usd_ += order.decision_usd;
+    const uint64_t unfilled = order.ordered_quantity > order.filled_quantity
+                                  ? order.ordered_quantity - order.filled_quantity
+                                  : 0;
+    // Only the opportunity term has to wait: the other two are known when the order ends, and holding them
+    // in the queue until the horizon would report them a few cycles late for no reason.
+    pending_shortfalls_.push_back({.side = order.side,
+                                   .decision_mid = order.decision_mid,
+                                   .unfilled_quantity = unfilled,
+                                   .start_cycle = order.start_cycle});
+}
+
+void RunAccounting::drain_taker_measurements(uint64_t quote_cycle, double last_mid, double tick_size,
+                                             double unit_notional_usd, double multiplier,
+                                             uint64_t quantity_scale)
+{
+    // The drift after each crossing fill, at each of the fixed horizons. The sign is the fill's own: a buy
+    // that the market moved above has a positive edge, which is the opposite of the passive measurement's
+    // "what came back after we were hit".
+    for (std::size_t index = 0; index < pending_taker_edges_.size(); ++index)
+    {
+        auto& queue = pending_taker_edges_[index];
+        const uint64_t horizon = kTakerEdgeHorizons[index];
+        while (!queue.empty() && quote_cycle >= queue.front().start_cycle + horizon)
+        {
+            const TakerObservation observation = queue.front();
+            queue.pop_front();
+            const double edge = observation.side == Side::Buy ? last_mid - observation.price
+                                                              : observation.price - last_mid;
+            const double quantity = static_cast<double>(observation.quantity);
+            taker_edge_ticks_quantity_[index] +=
+                edge / std::max(tick_size, PRICE_TICK_SIZE) * quantity;
+            taker_edge_quantity_[index] += quantity;
+        }
+    }
+
+    // The unfilled remainder of each aggressive order: what the quantity it never got would have earned by
+    // the horizon had it filled at the price the order decided at. Positive is a cost. An IOC that missed
+    // the move is the case this exists for, and it is invisible in the filled quantities.
+    while (!pending_shortfalls_.empty() &&
+           quote_cycle >= pending_shortfalls_.front().start_cycle + markout_horizon_cycles_)
+    {
+        const PendingShortfall shortfall = pending_shortfalls_.front();
+        pending_shortfalls_.pop_front();
+        if (shortfall.unfilled_quantity == 0 || shortfall.decision_mid <= 0.0 || last_mid <= 0.0) continue;
+        const double units = static_cast<double>(shortfall.unfilled_quantity) /
+                             static_cast<double>(std::max<uint64_t>(1, quantity_scale));
+        const double signed_move = shortfall.side == Side::Buy ? last_mid - shortfall.decision_mid
+                                                               : shortfall.decision_mid - last_mid;
+        const double unit_value = unit_notional_at(unit_notional_usd, multiplier, shortfall.decision_mid);
+        shortfall_opportunity_usd_ += units * unit_value * signed_move / shortfall.decision_mid;
+    }
+}
+
+TakerSummary RunAccounting::taker_summary() const
+{
+    TakerSummary summary;
+    summary.fills = taker_fills_;
+    summary.arrival_slippage_ticks =
+        taker_quantity_ > 0.0 ? taker_slippage_ticks_quantity_ / taker_quantity_ : 0.0;
+    summary.arrival_slippage_bps =
+        taker_quantity_ > 0.0 ? taker_slippage_bps_quantity_ / taker_quantity_ : 0.0;
+    summary.arrival_slippage_usd = taker_slippage_usd_;
+
+    const auto edge_average = [this](std::size_t index) {
+        return taker_edge_quantity_[index] > 0.0
+                   ? taker_edge_ticks_quantity_[index] / taker_edge_quantity_[index]
+                   : 0.0;
+    };
+    summary.edge_5_ticks = edge_average(0);
+    summary.edge_20_ticks = edge_average(1);
+    summary.edge_60_ticks = edge_average(2);
+
+    summary.aggressive_orders = aggressive_orders_;
+    summary.shortfall_filled_usd = shortfall_filled_usd_;
+    summary.shortfall_fees_usd = shortfall_fees_usd_;
+    summary.shortfall_opportunity_usd = shortfall_opportunity_usd_;
+    summary.shortfall_usd =
+        shortfall_filled_usd_ + shortfall_fees_usd_ + shortfall_opportunity_usd_;
+    summary.shortfall_bps =
+        shortfall_decision_usd_ > 0.0 ? summary.shortfall_usd / shortfall_decision_usd_ * 10000.0 : 0.0;
     return summary;
 }
 

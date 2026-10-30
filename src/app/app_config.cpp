@@ -86,6 +86,7 @@ constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
 constexpr std::string_view kFeeSchedulePrefix = "--fee-schedule=";
 constexpr std::string_view kMarkoutCoverFlag = "--markout-cover";
 constexpr std::string_view kMetricsFlag = "--metrics";
+constexpr std::string_view kMarkoutHorizonPrefix = "--markout-horizon=";
 constexpr std::string_view kFlattenBandPrefix = "--flatten-band=";
 }  // namespace
 
@@ -214,6 +215,8 @@ void print_usage(const char* executable)
         std::cerr << "   metrics: --metrics samples the marked equity once per 60-second bucket and reports "
                      "[PERFORMANCE]: drawdown, its duration, annualized volatility, Sharpe, Sortino and "
                      "Calmar\n";
+        std::cerr << "   horizon: --markout-horizon=N resolves the fill markouts and the implementation "
+                     "shortfall at N quote cycles instead of the default 5\n";
         std::cerr << "   band: --flatten-band=N (l2_replay) reduces a position above N units with a taker "
                      "order at the touch instead of carrying it into the final mark\n";
         std::cerr << "   record: --record=PREFIX (l2_replay) writes PREFIX_trades.csv and "
@@ -410,6 +413,16 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.markout_cover = true;
             else if (flag == kMetricsFlag)
                 cfg.metrics = true;
+            else if (flag.compare(0, kMarkoutHorizonPrefix.size(), kMarkoutHorizonPrefix) == 0)
+            {
+                uint64_t cycles = 0;
+                if (!parse_unsigned(flag.substr(kMarkoutHorizonPrefix.size()), cycles) || cycles == 0)
+                {
+                    error = "--markout-horizon must be a positive integer";
+                    return false;
+                }
+                cfg.markout_horizon = cycles;
+            }
             else if (flag.compare(0, kFlattenBandPrefix.size(), kFlattenBandPrefix) == 0)
             {
                 uint64_t band = 0;
@@ -967,7 +980,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--queue-chunks=N, --queue-seed=N, --arrival-share=X, --order-latency-us=N, "
                         "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
                         "--fee-schedule=KEY=VALUE[,KEY=VALUE], "
-                        "--markout-cover, --metrics, --flatten-band=N, or --paper-broker with one of its faults";
+                        "--markout-cover, --metrics, --markout-horizon=N, --flatten-band=N, or --paper-broker "
+                        "with one of its faults";
                 return false;
             }
         }

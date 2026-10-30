@@ -168,6 +168,14 @@ class Pipeline
         portfolio_.record_closed_trades(enabled);
     }
 
+    // The quote-cycle horizon the passive markouts and the shortfall's opportunity term resolve at. 5 is the
+    // default and the count this project has always used; naming it makes a comparison at 20 or 60 cycles a
+    // flag rather than a rebuild. It carries no other effect: the taker edge reports its own three horizons.
+    void set_markout_horizon(uint64_t cycles)
+    {
+        accounting_.set_markout_horizon(cycles);
+    }
+
     // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a
     // total into a sequence: the strategy's intent, the queue the order joined behind, every change in
     // that queue, and the fill or the cancel that ended it. It is the only view this project offers of a
@@ -273,6 +281,31 @@ class Pipeline
     bool gate_diagnostics_{false};
     // Whether the equity series behind [PERFORMANCE] is being sampled, off unless --metrics asked for it.
     bool metrics_requested_{false};
+
+    // What the taker measurements need about one order while it is alive: the price it decided at, what it
+    // was sent to trade, and what it has filled so far. It is filled only while --metrics is on, so an
+    // ordinary run allocates nothing and the map stays empty.
+    struct MetricsOrder
+    {
+        Side side{Side::Unknown};
+        double arrival_mid{0.0};
+        double decision_usd{0.0};
+        uint64_t ordered_quantity{0};
+        uint64_t filled_quantity{0};
+        double filled_usd{0.0};
+        double fees_usd{0.0};
+        uint64_t start_cycle{0};
+        bool aggressive{false};
+    };
+    std::unordered_map<uint64_t, MetricsOrder> metrics_orders_;
+
+    // One fill's taker measurements: the arrival slippage against the price its order decided at, and the
+    // drift the [TAKER] horizons are resolved from. Both are no-ops unless --metrics asked for them.
+    void record_taker_measurement(const ExecutionReport& report);
+    // Hands an aggressive order's totals to the shortfall when its last report arrives, and forgets the order
+    // either way. A quote we cancelled ourselves is not aggressive, because the flag comes from the time in
+    // force the order was sent with: cancelling is declining a fill, not missing one.
+    void close_metrics_order(const ExecutionReport& report);
 
     // Unwinds the pipeline's own bookkeeping for an order the engine refused. Nothing rests, so no report
     // will ever arrive for it, and the strategy is told what a venue would tell it rather than left quoting

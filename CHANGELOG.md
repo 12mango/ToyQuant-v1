@@ -152,6 +152,16 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   and total notional against the starting collateral as turnover. A fill that closes part of a position and
   opens the rest splits its fee by quantity, so the sum of the trips plus the carried entry fees of the
   position still open is the run's realized PnL rather than a second opinion about it.
+- **What the crossing side cost.** `--metrics` records the midpoint each order decided at and reports
+  `[TAKER]`: the arrival slippage of every aggressive fill in ticks, basis points and dollars, the drift from
+  the fill to the midpoint 5, 20 and 60 quote cycles later — positive when the move covered the spread, the
+  opposite sign of the passive `adverse_selection` — and the implementation shortfall of the IOC/FOK orders
+  split into the filled part, the fees, and the opportunity cost of the quantity they never got. A passive
+  quote we cancel is deliberately not one of those orders: cancelling declines a fill rather than missing
+  one. On the 200k-row slice with `trend_l2` under IOC, 55 crossing fills paid 1.53 ticks of arrival slippage
+  and the drift never recovered it: -1.41, -1.55 and -1.44 ticks at 5, 20 and 60 cycles. `--markout-horizon=N`
+  makes the cycle count behind the passive markout and the opportunity term a parameter; the default stays 5,
+  so every recorded run reads the same.
 
 ## The measured line
 

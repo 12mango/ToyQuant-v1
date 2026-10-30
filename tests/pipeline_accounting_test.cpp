@@ -299,4 +299,55 @@ int main()
         assert(empty.win_rate == 0.0);
         assert(empty.turnover == 0.0);
     }
+
+    // The taker measurements: the arrival slippage against the decision price, the drift at the three fixed
+    // horizons, and the shortfall of an aggressive order whose remainder never filled.
+    {
+        RunAccounting taker;
+        taker.note_taker_fill({.side = Side::Buy,
+                               .price = 101.0,
+                               .quantity = 10,
+                               .slippage_ticks = 1.0,
+                               .slippage_bps = 99.0,
+                               .slippage_usd = 0.01,
+                               .quote_cycle = 100});
+        // Only the five-cycle horizon has closed at 105; the other two are still queued.
+        taker.drain_taker_measurements(105, 103.0, 1.0, 0.0, 1.0, 1);
+        assert(std::abs(taker.taker_summary().edge_5_ticks - 2.0) < 1e-12);
+        assert(taker.taker_summary().edge_20_ticks == 0.0);
+        taker.drain_taker_measurements(120, 104.0, 1.0, 0.0, 1.0, 1);
+        assert(std::abs(taker.taker_summary().edge_20_ticks - 3.0) < 1e-12);
+        // By the sixtieth cycle the mid is back below the fill price, which is a negative edge: the drift
+        // did not cover what the crossing paid.
+        taker.drain_taker_measurements(160, 100.0, 1.0, 0.0, 1.0, 1);
+        const auto summary = taker.taker_summary();
+        assert(std::abs(summary.edge_60_ticks + 1.0) < 1e-12);
+        assert(summary.fills == 1);
+        assert(std::abs(summary.arrival_slippage_ticks - 1.0) < 1e-12);
+        assert(std::abs(summary.arrival_slippage_bps - 99.0) < 1e-12);
+        assert(std::abs(summary.arrival_slippage_usd - 0.01) < 1e-12);
+    }
+
+    // An aggressive buy of ten units that filled six a tick above its decision midpoint and never got the
+    // other four: the filled part costs 6 USD, the fee 0.6, and the missed four would have earned 8 USD by
+    // the horizon, so the shortfall is 14.6 USD against a thousand dollar decision notional.
+    {
+        RunAccounting shortfall;
+        shortfall.note_aggressive_order({.side = Side::Buy,
+                                         .decision_mid = 100.0,
+                                         .ordered_quantity = 10,
+                                         .filled_quantity = 6,
+                                         .filled_usd = 6.0,
+                                         .fees_usd = 0.6,
+                                         .decision_usd = 1000.0,
+                                         .start_cycle = 100});
+        shortfall.drain_taker_measurements(105, 102.0, 1.0, 0.0, 1.0, 1);
+        const auto summary = shortfall.taker_summary();
+        assert(summary.aggressive_orders == 1);
+        assert(std::abs(summary.shortfall_filled_usd - 6.0) < 1e-12);
+        assert(std::abs(summary.shortfall_fees_usd - 0.6) < 1e-12);
+        assert(std::abs(summary.shortfall_opportunity_usd - 8.0) < 1e-12);
+        assert(std::abs(summary.shortfall_usd - 14.6) < 1e-12);
+        assert(std::abs(summary.shortfall_bps - 146.0) < 1e-12);
+    }
 }

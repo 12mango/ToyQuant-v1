@@ -207,6 +207,41 @@ struct RoundTripSummary
     double turnover{0.0};
 };
 
+// What the aggressive side of a run cost, for the runs that asked with --metrics: the price its fills paid
+// against the midpoint the order decided at, whether the drift afterwards covered that price, and the
+// implementation shortfall of the orders sent with a time in force that makes them aggressive.
+//
+// The markout here has the opposite sign to the passive measurement in [EXECUTION]. `adverse_selection` asks
+// what a resting fill lost after it was hit; `taker_edge` asks what a crossing fill gained after it paid the
+// spread, so it is negative by construction at a zero horizon and only turns positive when the move
+// continued far enough to cover the spread and the fee. It is deliberately a different name and a different
+// line: reusing `captured_edge` would report a taker's spread payment as if it were a capture.
+struct TakerSummary
+{
+    uint64_t fills{0};
+    // Quantity-weighted, against the midpoint at submission: positive means the fill paid more than the
+    // price the order decided at, which is the cost side of the same number. Ticks and basis points are
+    // the two units a quote can be read in; the USD figure is what the cost was in money.
+    double arrival_slippage_ticks{0.0};
+    double arrival_slippage_bps{0.0};
+    double arrival_slippage_usd{0.0};
+    // Quantity-weighted drift from the fill price to the midpoint 5, 20 and 60 quote cycles later, in ticks,
+    // positive when the market moved in the fill's favour.
+    double edge_5_ticks{0.0};
+    double edge_20_ticks{0.0};
+    double edge_60_ticks{0.0};
+    // Implementation shortfall of the aggressive orders, in USD: the filled part against the decision price,
+    // the fees, and what the unfilled remainder would have earned by the horizon. The last term is the one
+    // an IOC run is most likely to lose, and it is the breakout line's main cost. `shortfall_bps` states the
+    // total against the notional the orders decided on.
+    uint64_t aggressive_orders{0};
+    double shortfall_filled_usd{0.0};
+    double shortfall_fees_usd{0.0};
+    double shortfall_opportunity_usd{0.0};
+    double shortfall_usd{0.0};
+    double shortfall_bps{0.0};
+};
+
 // What the decision layer measured and refused, for a run that asked for the adverse-selection gate or the
 // flatten band. Printed only then, because a run that does not ask must produce exactly the output it produced
 // before either existed.
@@ -289,6 +324,9 @@ struct RunSummary
     // The per-trade distribution behind the aggregate PnL, printed as its own [ROUND_TRIPS] line under the
     // same switch: a run that does not ask keeps every line it had.
     RoundTripSummary round_trips;
+    // What the aggressive side cost: arrival slippage, the drift after a crossing fill, and the shortfall
+    // of the IOC/FOK orders. Its own line for the same reason as the round trips.
+    TakerSummary taker;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
     // Printed only when --funding-rates supplied a series: a [FUNDING] line in a run that has no funding
@@ -443,6 +481,20 @@ struct RunSummary
                    << " taker_notional_usd=" << round_trips.taker_notional_usd
                    << " total_notional_usd=" << round_trips.total_notional_usd
                    << " turnover=" << round_trips.turnover;
+        if (metrics_requested)
+            stream << "\n[TAKER] fills=" << taker.fills
+                   << " arrival_slippage_ticks=" << taker.arrival_slippage_ticks
+                   << " arrival_slippage_bps=" << taker.arrival_slippage_bps
+                   << " arrival_slippage_usd=" << taker.arrival_slippage_usd
+                   << " taker_edge_5_ticks=" << taker.edge_5_ticks
+                   << " taker_edge_20_ticks=" << taker.edge_20_ticks
+                   << " taker_edge_60_ticks=" << taker.edge_60_ticks
+                   << " aggressive_orders=" << taker.aggressive_orders
+                   << " shortfall_filled_usd=" << taker.shortfall_filled_usd
+                   << " shortfall_fees_usd=" << taker.shortfall_fees_usd
+                   << " shortfall_opportunity_usd=" << taker.shortfall_opportunity_usd
+                   << " shortfall_usd=" << taker.shortfall_usd
+                   << " shortfall_bps=" << taker.shortfall_bps;
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
         if (funding_requested)
             stream << "\n[FUNDING] funding_points=" << funding.points

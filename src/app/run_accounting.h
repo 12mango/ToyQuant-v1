@@ -162,6 +162,68 @@ class RunAccounting
                                                double total_notional_usd,
                                                double starting_cash_usd);
 
+    // The horizons the taker markout is reported at, in quote cycles, fixed because the comparison between
+    // them is the point: 5 is the horizon the passive markout has always used and the first bucket the
+    // Python benchmark measures, 20 is its second, and 60 is the long end where a breakout's drift either
+    // arrives or does not.
+    static constexpr std::array<uint64_t, 3> kTakerEdgeHorizons{5, 20, 60};
+
+    // One aggressive fill, measured against the midpoint its order decided at. The three slippage figures are
+    // computed by the caller because it is the only place that has both prices; this class accumulates and
+    // queues the drift.
+    struct TakerFillMeasurement
+    {
+        Side side{Side::Unknown};
+        double price{0.0};
+        uint64_t quantity{0};
+        // Signed as a cost: positive means the fill paid more than the decision price.
+        double slippage_ticks{0.0};
+        double slippage_bps{0.0};
+        double slippage_usd{0.0};
+        uint64_t quote_cycle{0};
+    };
+
+    // One aggressive order's totals, taken when it ends. `filled_usd` is the filled part against the decision
+    // price and `decision_usd` the notional the basis-point figure is measured against; both are in dollars so
+    // the opportunity term, which is only known at the horizon, can be added to them.
+    struct AggressiveOrder
+    {
+        Side side{Side::Unknown};
+        double decision_mid{0.0};
+        uint64_t ordered_quantity{0};
+        uint64_t filled_quantity{0};
+        double filled_usd{0.0};
+        double fees_usd{0.0};
+        double decision_usd{0.0};
+        uint64_t start_cycle{0};
+    };
+
+    // The horizon the passive markouts and the shortfall's opportunity term are resolved at. 5 is the cycle
+    // count this project has always used; naming it makes the round trip between a quote and its cost a
+    // parameter rather than a constant, which is what a comparison at 20 or 60 cycles needs.
+    void set_markout_horizon(uint64_t cycles)
+    {
+        markout_horizon_cycles_ = cycles == 0 ? 5 : cycles;
+    }
+
+    uint64_t markout_horizon() const
+    {
+        return markout_horizon_cycles_;
+    }
+
+    void note_taker_fill(const TakerFillMeasurement& fill);
+
+    void note_aggressive_order(const AggressiveOrder& order);
+
+    // Resolves the taker measurements whose horizon has closed: the drift after each crossing fill at the
+    // three fixed horizons, and the opportunity cost of each aggressive order's unfilled remainder. Called
+    // from the one place every path advances the quote cycle.
+    void drain_taker_measurements(uint64_t quote_cycle, double last_mid, double tick_size,
+                                  double unit_notional_usd, double multiplier, uint64_t quantity_scale);
+
+    // The aggregated [TAKER] figures.
+    TakerSummary taker_summary() const;
+
     // The account's result, split into what completed and what is still open, and into what it was before
     // the venue was paid. The formula lives here rather than in the coordinator's summary literal so that
     // the fields and their definitions are read together: `closed_pnl_usd` is the portfolio's realized
@@ -209,4 +271,39 @@ class RunAccounting
     bool measure_market_markouts_{false};
     // The marked account, one point per 60-second bucket, empty unless --metrics asked for it.
     std::vector<EquityPoint> equity_curve_;
+
+    struct TakerObservation
+    {
+        Side side{Side::Unknown};
+        double price{0.0};
+        uint64_t quantity{0};
+        uint64_t start_cycle{0};
+    };
+
+    struct PendingShortfall
+    {
+        Side side{Side::Unknown};
+        double decision_mid{0.0};
+        uint64_t unfilled_quantity{0};
+        uint64_t start_cycle{0};
+    };
+
+    // One queue per horizon rather than one queue with a horizon field, because a fill that is five cycles
+    // old and one that is twenty are not in the same order once several fills are in flight, and each queue
+    // stays in the order it was filled.
+    std::array<std::deque<TakerObservation>, kTakerEdgeHorizons.size()> pending_taker_edges_;
+    std::deque<PendingShortfall> pending_shortfalls_;
+    double taker_quantity_{0.0};
+    double taker_slippage_ticks_quantity_{0.0};
+    double taker_slippage_bps_quantity_{0.0};
+    double taker_slippage_usd_{0.0};
+    uint64_t taker_fills_{0};
+    std::array<double, kTakerEdgeHorizons.size()> taker_edge_ticks_quantity_{};
+    std::array<double, kTakerEdgeHorizons.size()> taker_edge_quantity_{};
+    uint64_t aggressive_orders_{0};
+    double shortfall_filled_usd_{0.0};
+    double shortfall_fees_usd_{0.0};
+    double shortfall_opportunity_usd_{0.0};
+    double shortfall_decision_usd_{0.0};
+    uint64_t markout_horizon_cycles_{5};
 };

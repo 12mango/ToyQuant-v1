@@ -268,6 +268,7 @@ void Application::run_replay_mode() const
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
     pipeline.set_metrics(cfg_.metrics);
+    pipeline.set_markout_horizon(cfg_.markout_horizon);
     apply_pipeline_limits(pipeline);
     // The funding series is optional and owned here, because the pipeline only borrows it. A file that names
     // no settlement for this instrument is an error rather than an empty input, since a wrong symbol would
@@ -463,6 +464,9 @@ void Application::run_l2_session_mode() const
     // The equity series behind [PERFORMANCE], sampled where every path already advances the midpoint.
     // Off unless --metrics named it, so a run that does not ask prints the summary it always printed.
     pipeline.set_metrics(cfg_.metrics);
+    // Where the round trip between a quote and its cost is measured, for the runs that asked for a horizon
+    // other than the default.
+    pipeline.set_markout_horizon(cfg_.markout_horizon);
     // The funding history of the instrument being replayed, applied as the event clock passes each
     // settlement. Optional, and owned here because the pipeline only borrows it.
     FundingRateSeries funding_series;

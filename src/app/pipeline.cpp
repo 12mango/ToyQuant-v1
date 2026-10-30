@@ -54,6 +54,7 @@ void Pipeline::handle_report(const ExecutionReport& report)
                                   .starting_cash_usd = starting_cash_usd_,
                                   .quote_cycle = quote_cycle_};
         fill_accounting_.apply(report, context);
+        record_taker_measurement(report);
     }
     strategy_.on_order_update(report);
     // The strategy keeps its own position from the same reports. A divergence is silent drift
@@ -65,6 +66,7 @@ void Pipeline::handle_report(const ExecutionReport& report)
             report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
             report.remaining_quantity(), true);
     settle_order(report);
+    close_metrics_order(report);
     ledger_.write_trade(report);
 }
 
@@ -88,6 +90,8 @@ void Pipeline::handle_rejected_order(const exchange::Order& exchange_order,
     ledger_.trace_report(rejected, current_ts_, engine_);
     strategy_.on_order_update(rejected);
     settle_order(rejected);
+    // A refusal ends the order as surely as a fill does, so the metrics record is closed here too.
+    close_metrics_order(rejected);
 }
 
 void Pipeline::process_event(const MarketEvent& event)
@@ -291,6 +295,7 @@ RunSummary Pipeline::summary() const
             .round_trips = RunAccounting::round_trip_summary(
                 portfolio_.closed_trades(), fill_accounting_.taker_notional_usd(),
                 fill_accounting_.traded_notional_usd(), starting_cash_usd_),
+            .taker = accounting_.taker_summary(),
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
             .funding_requested = accounting_.funding_requested(),
@@ -386,6 +391,30 @@ void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* q
         fill_accounting_.reserve(order.side, order.quantity);
     order.order_id = next_order_id_++;
     if (time_in_force_override_) order.time_in_force = time_in_force_;
+    // The price the order decided at, which is the midpoint of the quote in hand, or the last one the run
+    // saw when the strategy submitted without a fresh quote. It is recorded here because the fill's own
+    // arrival is the only other moment this number exists, and by then the decision has been made.
+    const double decision_mid =
+        quote != nullptr ? (quote->bid_price + quote->ask_price) / 2.0 : last_mid_;
+    if (metrics_requested_ && decision_mid > 0.0)
+    {
+        const double units = static_cast<double>(order.quantity) /
+                             static_cast<double>(std::max<uint64_t>(1, quantity_scale_));
+        metrics_orders_.insert_or_assign(
+            order.order_id,
+            MetricsOrder{.side = order.side,
+                         .arrival_mid = decision_mid,
+                         .decision_usd =
+                             units * unit_notional_at(unit_notional_usd_, multiplier_, decision_mid),
+                         .ordered_quantity = order.quantity,
+                         .start_cycle = quote_cycle_,
+                         // Only the orders whose time in force makes them aggressive are measured for
+                         // implementation shortfall: a resting quote we cancel did not miss a fill, it
+                         // declined one, and counting its unfilled quantity would drown the IOC cost this
+                         // line exists to show.
+                         .aggressive = order.time_in_force == TimeInForce::Ioc ||
+                                       order.time_in_force == TimeInForce::Fok});
+    }
     auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
     ++submitted_orders_;
     submitted_quantity_ += order.quantity;
@@ -410,6 +439,54 @@ void Pipeline::settle_order(const ExecutionReport& report)
     if (owed > 0.0) portfolio_.charge_fee(owed);
 }
 
+void Pipeline::record_taker_measurement(const ExecutionReport& report)
+{
+    const auto metrics_it = metrics_orders_.find(report.order_id);
+    if (metrics_it == metrics_orders_.end()) return;
+    MetricsOrder& order = metrics_it->second;
+    order.filled_quantity += report.executed_quantity();
+    order.fees_usd += report.fee;
+    if (order.arrival_mid <= 0.0 || report.price <= 0.0) return;
+
+    const double units = static_cast<double>(report.executed_quantity()) /
+                         static_cast<double>(std::max<uint64_t>(1, quantity_scale_));
+    const double unit_value = unit_notional_at(unit_notional_usd_, multiplier_, order.arrival_mid);
+    // Signed as a cost: a buy above the decision price and a sell below it are both money paid away, so the
+    // filled part of an implementation shortfall and the arrival slippage are the same quantity.
+    const double signed_move = report.side == exchange::Side::Buy
+                                   ? report.price - order.arrival_mid
+                                   : order.arrival_mid - report.price;
+    const double slippage_usd = units * unit_value * signed_move / order.arrival_mid;
+    order.filled_usd += slippage_usd;
+
+    if (report.liquidity_role != LiquidityRole::Taker) return;
+    accounting_.note_taker_fill(
+        {.side = report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
+         .price = report.price,
+         .quantity = report.executed_quantity(),
+         .slippage_ticks = signed_move / std::max(tick_size_, PRICE_TICK_SIZE),
+         .slippage_bps = signed_move / order.arrival_mid * 10000.0,
+         .slippage_usd = slippage_usd,
+         .quote_cycle = quote_cycle_});
+}
+
+void Pipeline::close_metrics_order(const ExecutionReport& report)
+{
+    const auto metrics_it = metrics_orders_.find(report.order_id);
+    if (metrics_it == metrics_orders_.end() || !is_terminal(report.exec_type)) return;
+    const MetricsOrder order = metrics_it->second;
+    metrics_orders_.erase(metrics_it);
+    if (!order.aggressive) return;
+    accounting_.note_aggressive_order({.side = order.side,
+                                       .decision_mid = order.arrival_mid,
+                                       .ordered_quantity = order.ordered_quantity,
+                                       .filled_quantity = order.filled_quantity,
+                                       .filled_usd = order.filled_usd,
+                                       .fees_usd = order.fees_usd,
+                                       .decision_usd = order.decision_usd,
+                                       .start_cycle = order.start_cycle});
+}
+
 void Pipeline::begin_event(uint64_t ts)
 {
     accounting_.apply_due_funding(ts, portfolio_, last_mid_);
@@ -430,6 +507,10 @@ void Pipeline::advance_mid(const std::string& symbol, uint64_t ts, double mid)
     // same five-cycle horizon.
     accounting_.drain_mature_markouts(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_,
                                       multiplier_, quantity_scale_, execution_quality_);
+    // The taker drift and the shortfall's opportunity term resolve on the same event, at their own horizons.
+    if (metrics_requested_)
+        accounting_.drain_taker_measurements(quote_cycle_, last_mid_, tick_size_, unit_notional_usd_,
+                                             multiplier_, quantity_scale_);
 }
 
 void Pipeline::record_inventory_sample()

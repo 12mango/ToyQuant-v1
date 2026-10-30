@@ -182,6 +182,11 @@ struct AppConfig
     // and its longest duration. Off, the default, because the sampling marks the book on every event and
     // every recorded run has to keep the summary it already prints.
     bool metrics = false;
+    // The quote-cycle horizon the passive markouts and the implementation shortfall's opportunity term are
+    // resolved at. 5 is the count this project has always used; a run that wants to ask whether the edge
+    // survives 20 or 60 cycles names it. It changes no decision unless a gate reads the estimate, which is
+    // exactly the run that asked for it.
+    uint64_t markout_horizon = 5;
     // Inventory discipline: above this many quantity units the L2 decision layer reduces the position with a
     // taker order at the touch instead of carrying it. 0, the default, leaves the position carried into the
     // final mark, which is what every run before this flag did.
