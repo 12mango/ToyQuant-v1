@@ -13,13 +13,17 @@ FillAccounting::FillAccounting(ExecutionQualityMetrics& quality, RunAccounting& 
 
 void FillAccounting::apply(const ExecutionReport& report, const FillContext& context)
 {
-    // The notional a maker fill traded, which is what its fee was charged on. The breakeven fee rate
-    // needs it, and it cannot be recovered from the fee itself once the rate is zero, which is
-    // exactly the case that has to be measured.
+    // The notional a fill traded, which is what its fee was charged on. The breakeven fee rate needs the
+    // maker half, and it cannot be recovered from the fee itself once the rate is zero, which is exactly
+    // the case that has to be measured. The two halves are kept apart because they are different
+    // businesses: one is quoted and one is crossed, and only their sum is turnover.
+    const double fill_notional =
+        fill_notional_usd(context.unit_notional_usd, context.multiplier, report.price,
+                          report.executed_quantity(), context.quantity_scale);
     if (report.liquidity_role == LiquidityRole::Maker)
-        maker_notional_usd_ +=
-            fill_notional_usd(context.unit_notional_usd, context.multiplier, report.price,
-                              report.executed_quantity(), context.quantity_scale);
+        maker_notional_usd_ += fill_notional;
+    else if (report.liquidity_role == LiquidityRole::Taker)
+        taker_notional_usd_ += fill_notional;
 
     const int64_t previous_position = position_;
     position_ += report.side == exchange::Side::Buy

@@ -157,6 +157,54 @@ PerformanceSummary RunAccounting::performance_summary() const
     return summary;
 }
 
+RoundTripSummary RunAccounting::round_trip_summary(const std::vector<ClosedTrade>& trades,
+                                                  double taker_notional_usd,
+                                                  double total_notional_usd,
+                                                  double starting_cash_usd)
+{
+    RoundTripSummary summary;
+    summary.trades = static_cast<uint64_t>(trades.size());
+    summary.taker_notional_usd = taker_notional_usd;
+    summary.total_notional_usd = total_notional_usd;
+    summary.turnover = starting_cash_usd > 0.0 ? total_notional_usd / starting_cash_usd : 0.0;
+    if (trades.empty()) return summary;
+
+    double net_total = 0.0;
+    double win_sum = 0.0;
+    double loss_sum = 0.0;
+    double holding_seconds = 0.0;
+    uint64_t wins = 0;
+    uint64_t losses = 0;
+    for (const auto& trade : trades)
+    {
+        // The fee belongs to the fill, and the slice of it that closed this quantity was apportioned when
+        // the trade was booked, so the net here is what the round trip contributed to realized PnL.
+        const double net = trade.pnl - trade.fee;
+        net_total += net;
+        if (net > 0.0)
+        {
+            ++wins;
+            win_sum += net;
+        }
+        else if (net < 0.0)
+        {
+            ++losses;
+            loss_sum += net;
+        }
+        if (trade.exit_ts > trade.entry_ts)
+            holding_seconds += static_cast<double>(trade.exit_ts - trade.entry_ts) / 1'000'000.0;
+    }
+
+    const double count = static_cast<double>(summary.trades);
+    summary.win_rate = static_cast<double>(wins) / count;
+    summary.profit_factor = loss_sum < 0.0 ? -win_sum / loss_sum : 0.0;
+    summary.expectancy_usd = net_total / count;
+    summary.average_win_usd = wins > 0 ? win_sum / static_cast<double>(wins) : 0.0;
+    summary.average_loss_usd = losses > 0 ? loss_sum / static_cast<double>(losses) : 0.0;
+    summary.average_holding_seconds = holding_seconds / count;
+    return summary;
+}
+
 PnlSummary RunAccounting::pnl_summary(const Portfolio& portfolio, double maker_notional_usd,
                                       uint64_t trade_reports)
 {

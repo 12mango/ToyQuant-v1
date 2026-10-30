@@ -145,6 +145,13 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   Sortino and Calmar ratios, scaled by the 525,600 buckets a 24/7 year holds. `Portfolio::equity_at` is the
   read-only valuation `mark_to_market` now shares, so a sample cannot move the unrealized PnL the kill switch
   reads in the middle of an event. Off by default, so every recorded line is byte for byte what it was.
+- **The distribution behind the PnL.** `--metrics` also books every closing fill as a round trip: the side
+  the position was opened on, its entry and exit price and time, the closing PnL, and what the trip cost —
+  the exit fill's fee plus the share of the entry fees the position was carrying. `[ROUND_TRIPS]` reports the
+  win rate, profit factor, expectancy, the average win and loss, the average holding time, and the aggressive
+  and total notional against the starting collateral as turnover. A fill that closes part of a position and
+  opens the rest splits its fee by quantity, so the sum of the trips plus the carried entry fees of the
+  position still open is the run's realized PnL rather than a second opinion about it.
 
 ## The measured line
 

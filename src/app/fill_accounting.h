@@ -58,6 +58,19 @@ class FillAccounting
         return maker_notional_usd_;
     }
 
+    // What the aggressive fills traded, and the two together. The maker figure is what the fee is charged
+    // on and what the breakeven rate divides by; the sum is turnover, which says how much business the
+    // account did for the collateral it holds.
+    double taker_notional_usd() const
+    {
+        return taker_notional_usd_;
+    }
+
+    double traded_notional_usd() const
+    {
+        return maker_notional_usd_ + taker_notional_usd_;
+    }
+
     uint64_t trade_reports() const
     {
         return trade_reports_;
@@ -85,6 +98,7 @@ class FillAccounting
     int64_t pending_buy_quantity_{0};
     int64_t pending_sell_quantity_{0};
     double maker_notional_usd_{0.0};
+    double taker_notional_usd_{0.0};
     uint64_t trade_reports_{0};
     uint64_t trade_report_quantity_{0};
     double max_abs_exposure_usd_{0.0};

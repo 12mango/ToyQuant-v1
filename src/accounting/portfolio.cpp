@@ -6,6 +6,7 @@
 void Portfolio::reset()
 {
     positions_.clear();
+    closed_trades_.clear();
     cash_ = initial_cash_;
     realized_pnl_ = 0.0;
     unrealized_pnl_ = 0.0;
@@ -49,23 +50,51 @@ void Portfolio::apply(const ExecutionReport& report)
     // valued from the position's entry price and the opening portion at the trade price, so the
     // two are settled separately. For a spot style instrument the closing value reduces to
     // quantity * trade price, which is the previous behaviour.
+    const double executed = static_cast<double>(report.executed_quantity());
     const auto settle_close = [&](int64_t close_quantity)
     {
         const double closed = units(static_cast<uint64_t>(close_quantity));
         const double value_now = value_of(closed, position.average_price, report.price);
         const double value_at_entry = unit_value(position.average_price) * closed;
+        double pnl = 0.0;
         if (report.side == exchange::Side::Buy)
         {
             // Buying back a short: pay the current value and realise entry minus current.
             cash_ -= value_now;
-            realized_pnl_ += value_at_entry - value_now;
+            pnl = value_at_entry - value_now;
+            realized_pnl_ += pnl;
         }
         else
         {
             // Selling a long: receive the current value.
             cash_ += value_now;
-            realized_pnl_ += value_now - value_at_entry;
+            pnl = value_now - value_at_entry;
+            realized_pnl_ += pnl;
         }
+
+        // The fee this fill paid for the quantity it closed, plus the share of the entry fees the position
+        // has been carrying for that quantity. A round trip costs both halves, and a maker's edge is the
+        // same order of size as the fee, so counting only the exit half would report the entry half as
+        // profit. The share is taken in proportion to quantity, and a close of the whole position takes
+        // all of it.
+        const double closing_fee = report.fee * static_cast<double>(close_quantity) / executed;
+        const double held = units(static_cast<uint64_t>(std::llabs(position.quantity)));
+        const double entry_fee_share = held > 0.0 ? position.entry_fees * (closed / held) : 0.0;
+        position.entry_fees -= entry_fee_share;
+
+        if (!record_closed_trades_) return;
+        // The position was opened on the other side of the fill that closes it, which is what makes a
+        // round trip a long or a short rather than a buy or a sell.
+        closed_trades_.push_back(
+            {.symbol = report.symbol,
+             .side = report.side == exchange::Side::Buy ? exchange::Side::Sell : exchange::Side::Buy,
+             .entry_price = position.average_price,
+             .exit_price = report.price,
+             .quantity = closed,
+             .pnl = pnl,
+             .fee = closing_fee + entry_fee_share,
+             .entry_ts = position.entry_ts,
+             .exit_ts = report.ts});
     };
 
     int64_t remaining_quantity = static_cast<int64_t>(report.executed_quantity());
@@ -85,6 +114,16 @@ void Portfolio::apply(const ExecutionReport& report)
             const double existing =
                 units(static_cast<uint64_t>(std::max<int64_t>(0, position.quantity)));
             const double total = existing + open;
+            // A position opened from flat starts its clock and its fee carry here; adding to one already
+            // held keeps both.
+            if (position.quantity == 0)
+            {
+                position.entry_ts = report.ts;
+                position.entry_fees = 0.0;
+            }
+            // The part of this fill's fee that paid for the new quantity rides with the position until a
+            // close claims its share.
+            position.entry_fees += report.fee * static_cast<double>(remaining_quantity) / executed;
             position.average_price =
                 total > 0.0 ? (existing * position.average_price + open * report.price) / total
                             : 0.0;
@@ -108,6 +147,12 @@ void Portfolio::apply(const ExecutionReport& report)
             const double existing =
                 units(static_cast<uint64_t>(std::max<int64_t>(0, -position.quantity)));
             const double total = existing + open;
+            if (position.quantity == 0)
+            {
+                position.entry_ts = report.ts;
+                position.entry_fees = 0.0;
+            }
+            position.entry_fees += report.fee * static_cast<double>(remaining_quantity) / executed;
             position.average_price =
                 total > 0.0 ? (existing * position.average_price + open * report.price) / total
                             : 0.0;

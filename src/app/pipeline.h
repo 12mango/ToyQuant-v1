@@ -158,9 +158,14 @@ class Pipeline
     // Turn on the equity series the [PERFORMANCE] line is derived from. Off by default: it marks the whole
     // book on every event whose midpoint advances, which is a per-event cost, and a run that does not ask
     // must behave and print exactly as it did before the flag existed.
+    //
+    // The same switch turns on the round-trip recording behind [ROUND_TRIPS]. Both are measurements of the
+    // account rather than of an order, and both are off unless a run asks for them, so the flag names one
+    // decision: measure this run's account, not only its orders.
     void set_metrics(bool enabled)
     {
         metrics_requested_ = enabled;
+        portfolio_.record_closed_trades(enabled);
     }
 
     // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a

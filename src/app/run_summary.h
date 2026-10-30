@@ -176,6 +176,37 @@ struct PerformanceSummary
     double max_drawdown_duration_seconds{0.0};
 };
 
+// The distribution of the round trips the account actually completed, for the runs that asked with
+// --metrics. A run-level PnL is one number about an aggregate of decisions; these are the per-trade facts
+// behind it, and they answer questions the aggregate cannot: whether the edge comes from a high hit rate or
+// from a few large winners, and whether the account is making money on trades it holds for a second or only
+// on the ones it holds for an hour.
+//
+// Every figure is net of the fee apportioned to the closing quantity, because a maker's edge is the same
+// order of size as the fee and a win rate on gross PnL would count nearly every passive fill as a win.
+struct RoundTripSummary
+{
+    uint64_t trades{0};
+    // Wins over trades, where a win is a round trip whose net PnL is above zero.
+    double win_rate{0.0};
+    // Sum of the winning trades over the absolute sum of the losing ones. A run with no losing trade has no
+    // ratio to report and says zero, the same convention the ratios above use for an undefined denominator.
+    double profit_factor{0.0};
+    // Mean net PnL per round trip, and the two means the sign split is made of. `average_loss_usd` is
+    // negative, so it reads as the size of a loss rather than as a subtraction.
+    double expectancy_usd{0.0};
+    double average_win_usd{0.0};
+    double average_loss_usd{0.0};
+    // Mean time from the position's opening fill to the closing one, over every round trip.
+    double average_holding_seconds{0.0};
+    // What the aggressive and the quoted fills traded, and their sum over the collateral the run started
+    // with. A turnover below one says the account never did its own size in business, which is the capacity
+    // question behind a participation limit.
+    double taker_notional_usd{0.0};
+    double total_notional_usd{0.0};
+    double turnover{0.0};
+};
+
 // What the decision layer measured and refused, for a run that asked for the adverse-selection gate or the
 // flatten band. Printed only then, because a run that does not ask must produce exactly the output it produced
 // before either existed.
@@ -255,6 +286,9 @@ struct RunSummary
     // the summary it had.
     bool metrics_requested{false};
     PerformanceSummary performance;
+    // The per-trade distribution behind the aggregate PnL, printed as its own [ROUND_TRIPS] line under the
+    // same switch: a run that does not ask keeps every line it had.
+    RoundTripSummary round_trips;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
     // Printed only when --funding-rates supplied a series: a [FUNDING] line in a run that has no funding
@@ -398,6 +432,17 @@ struct RunSummary
                    << " max_drawdown=" << performance.max_drawdown
                    << " max_drawdown_duration_seconds="
                    << performance.max_drawdown_duration_seconds;
+        if (metrics_requested)
+            stream << "\n[ROUND_TRIPS] trades=" << round_trips.trades
+                   << " win_rate=" << round_trips.win_rate
+                   << " profit_factor=" << round_trips.profit_factor
+                   << " expectancy_usd=" << round_trips.expectancy_usd
+                   << " average_win_usd=" << round_trips.average_win_usd
+                   << " average_loss_usd=" << round_trips.average_loss_usd
+                   << " average_holding_seconds=" << round_trips.average_holding_seconds
+                   << " taker_notional_usd=" << round_trips.taker_notional_usd
+                   << " total_notional_usd=" << round_trips.total_notional_usd
+                   << " turnover=" << round_trips.turnover;
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
         if (funding_requested)
             stream << "\n[FUNDING] funding_points=" << funding.points

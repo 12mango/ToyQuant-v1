@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "common/instrument_spec.h"
 #include "exchange/execution_report.h"
@@ -12,11 +13,43 @@ struct PortfolioPosition
 {
     int64_t quantity{0};
     double average_price{0.0};
+    // When this position was opened, in the report clock's microseconds. Adding to a position keeps the
+    // original moment, because the question a holding time answers is how long the exposure was carried,
+    // and a position that grew was carried from the first fill. It resets when the position goes flat and
+    // a later fill opens a new one, including the opening half of a flip.
+    uint64_t entry_ts{0};
+    // The fees paid to build the quantity still held. A round trip's cost is what it cost to get in plus
+    // what it cost to get out, and both halves are charged to the account when the fill happens, so the
+    // entry half is carried here until a close claims its share.
+    double entry_fees{0.0};
     // Quantity traded in this symbol, both directions counted, which is not recoverable from the position:
     // a buy and a sell of the same size leave `quantity` where it was. It exists for reconciliation,
     // where a lost fill that happened to net out is still a lost fill, and it is a plain count of what
     // was applied rather than a second opinion about the position.
     uint64_t traded_quantity{0};
+};
+
+// One closing fill, as the account books it: the side the position was opened on, the price it was opened
+// at, and the price this fill closed it at. A run-level PnL says nothing about the distribution of the
+// trades behind it, and the distribution is what a maker's sizing, its win rate and its holding time are
+// read from.
+//
+// `quantity` is in the unit the position is held in (raw quantity over quantity_scale), `pnl` is the
+// closing portion before fees, and `fee` is what the round trip cost: this fill's fee apportioned to the
+// quantity it closed plus the share of the entry fees the position was carrying, so `pnl - fee` is the
+// trade's own contribution to realized PnL. `entry_ts` is the position's opening moment, so a position
+// built from several fills and closed in slices reports the same entry time for each slice.
+struct ClosedTrade
+{
+    std::string symbol;
+    exchange::Side side{exchange::Side::Buy};
+    double entry_price{0.0};
+    double exit_price{0.0};
+    double quantity{0.0};
+    double pnl{0.0};
+    double fee{0.0};
+    uint64_t entry_ts{0};
+    uint64_t exit_ts{0};
 };
 
 struct PortfolioMetrics
@@ -116,6 +149,19 @@ class Portfolio
         return positions_;
     }
 
+    // Round-trip recording is off by default: it stores one entry per closing fill, and a run that does
+    // not ask for the distribution should not pay for it. `--metrics` turns it on, and because the switch
+    // is read inside the settlement it cannot change any number the account already reports.
+    void record_closed_trades(bool enabled)
+    {
+        record_closed_trades_ = enabled;
+    }
+
+    const std::vector<ClosedTrade>& closed_trades() const
+    {
+        return closed_trades_;
+    }
+
     PortfolioMetrics metrics() const
     {
         return {cash_,       realized_pnl_, unrealized_pnl_,    equity_,           fees_paid_,
@@ -161,5 +207,7 @@ class Portfolio
     double taker_fees_{0.0};
     uint64_t maker_trade_count_{0};
     uint64_t taker_trade_count_{0};
+    bool record_closed_trades_{false};
+    std::vector<ClosedTrade> closed_trades_;
     std::unordered_map<std::string, PortfolioPosition> positions_;
 };

@@ -288,6 +288,9 @@ RunSummary Pipeline::summary() const
             .pnl = pnl,
             .metrics_requested = metrics_requested_,
             .performance = accounting_.performance_summary(),
+            .round_trips = RunAccounting::round_trip_summary(
+                portfolio_.closed_trades(), fill_accounting_.taker_notional_usd(),
+                fill_accounting_.traded_notional_usd(), starting_cash_usd_),
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
             .funding_requested = accounting_.funding_requested(),

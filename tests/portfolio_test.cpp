@@ -47,6 +47,69 @@ int main()
     assert(std::abs(portfolio.equity_at({{"TEST", 13.0}}) - 1001.985) < 1e-12);
     assert(std::abs(portfolio.metrics().equity - 1001.485) < 1e-12);
     assert(std::abs(portfolio.metrics().unrealized_pnl - 1.0) < 1e-12);
+    // Round-trip recording is off unless it is asked for, and this account never asked.
+    assert(portfolio.closed_trades().empty());
+
+    // A closing fill becomes one round trip when recording is on: the side the position was opened on,
+    // the position's own entry price and time, the closing portion of the PnL, and the share of the
+    // fill's fee that belongs to the quantity it closed.
+    {
+        Portfolio book(100, 1000.0);
+        book.record_closed_trades(true);
+        book.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "TEST",
+                                   .price = 10.0,
+                                   .quantity = 100,
+                                   .ts = 1'000'000,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Taker,
+                                   .fee = 0.02});
+        // Opening a position is not a round trip.
+        assert(book.closed_trades().empty());
+        book.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "TEST",
+                                   .price = 11.0,
+                                   .quantity = 40,
+                                   .ts = 4'000'000,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Taker,
+                                   .fee = 0.008});
+        assert(book.closed_trades().size() == 1);
+        const ClosedTrade& trip = book.closed_trades().front();
+        assert(trip.symbol == "TEST");
+        assert(trip.side == exchange::Side::Buy);
+        assert(std::abs(trip.entry_price - 10.0) < 1e-12);
+        assert(std::abs(trip.exit_price - 11.0) < 1e-12);
+        assert(std::abs(trip.quantity - 0.4) < 1e-12);
+        assert(std::abs(trip.pnl - 0.4) < 1e-12);
+        // The exit half is the sell's own fee (0.008) and the entry half is 40% of the 0.02 the open
+        // paid, so the round trip is charged both: what it cost to get in and what it cost to get out.
+        assert(std::abs(trip.fee - 0.016) < 1e-12);
+        assert(trip.entry_ts == 1'000'000);
+        assert(trip.exit_ts == 4'000'000);
+        // The close claimed its share of the entry fees and the rest stays with the quantity still held.
+        const auto* remaining = book.find_position("TEST");
+        assert(remaining != nullptr);
+        assert(std::abs(remaining->entry_fees - 0.012) < 1e-12);
+
+        // Adding to a position that is still open keeps its opening moment, which is what a holding time
+        // is measured from; only a position that went flat starts a new clock.
+        book.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "TEST",
+                                   .price = 11.0,
+                                   .quantity = 60,
+                                   .ts = 5'000'000,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Taker,
+                                   .fee = 0.012});
+        const auto* held = book.find_position("TEST");
+        assert(held != nullptr);
+        assert(held->quantity == 120);
+        assert(held->entry_ts == 1'000'000);
+    }
 
     // A contract with a fixed USD face value holds that USD amount of the base asset, bought at
     // the entry price. One Deribit BTC-PERPETUAL contract is 10 USD, so a 10% price move on one

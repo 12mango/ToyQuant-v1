@@ -151,6 +151,17 @@ class RunAccounting
     // one point has no return and a return series with no interval has no dispersion.
     PerformanceSummary performance_summary() const;
 
+    // The [ROUND_TRIPS] figures, aggregated from the round trips the portfolio booked and the notional the
+    // fills traded. Static because the two inputs belong to the account and the fill accounting rather than
+    // to a measurement queue: this is arithmetic over what they already hold, not state of its own.
+    //
+    // A trade is a win when its net PnL is above zero, and every mean is net of the fee apportioned to the
+    // closing quantity. Turnover divides the traded notional by the collateral the run started with.
+    static RoundTripSummary round_trip_summary(const std::vector<ClosedTrade>& trades,
+                                               double taker_notional_usd,
+                                               double total_notional_usd,
+                                               double starting_cash_usd);
+
     // The account's result, split into what completed and what is still open, and into what it was before
     // the venue was paid. The formula lives here rather than in the coordinator's summary literal so that
     // the fields and their definitions are read together: `closed_pnl_usd` is the portfolio's realized

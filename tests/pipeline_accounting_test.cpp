@@ -243,4 +243,60 @@ int main()
         assert(printed.gate.market_samples == 1);
         assert(printed.gate.market_buy_near_ticks > 0.0);
     }
+
+    // The round-trip distribution: a win is a round trip whose net PnL is above zero, the profit factor is
+    // the winning sum over the absolute losing one, and the holding time runs from the position's opening
+    // fill. The third trade below is gross-positive and net-negative, which is the case the fee-inclusive
+    // definition exists for.
+    {
+        const std::vector<ClosedTrade> trades = {
+            {.symbol = "X",
+             .side = exchange::Side::Buy,
+             .entry_price = 100.0,
+             .exit_price = 101.0,
+             .quantity = 1.0,
+             .pnl = 1.0,
+             .fee = 0.2,
+             .entry_ts = 0,
+             .exit_ts = 2'000'000},
+            {.symbol = "X",
+             .side = exchange::Side::Sell,
+             .entry_price = 101.0,
+             .exit_price = 102.0,
+             .quantity = 1.0,
+             .pnl = -1.0,
+             .fee = 0.2,
+             .entry_ts = 3'000'000,
+             .exit_ts = 4'000'000},
+            {.symbol = "X",
+             .side = exchange::Side::Buy,
+             .entry_price = 100.0,
+             .exit_price = 100.1,
+             .quantity = 1.0,
+             .pnl = 0.1,
+             .fee = 0.2,
+             .entry_ts = 5'000'000,
+             .exit_ts = 5'500'000},
+        };
+        const auto round_trips = RunAccounting::round_trip_summary(trades, 20.0, 30.0, 10.0);
+        assert(round_trips.trades == 3);
+        assert(std::abs(round_trips.win_rate - 1.0 / 3.0) < 1e-12);
+        // The one win is 0.8 net and the two losses are -1.2 and -0.1, so the factor is 0.8 / 1.3.
+        assert(std::abs(round_trips.profit_factor - 0.8 / 1.3) < 1e-12);
+        assert(std::abs(round_trips.expectancy_usd + 0.5 / 3.0) < 1e-12);
+        assert(std::abs(round_trips.average_win_usd - 0.8) < 1e-12);
+        assert(std::abs(round_trips.average_loss_usd + 0.65) < 1e-12);
+        // Two seconds, one second and half a second over three round trips.
+        assert(std::abs(round_trips.average_holding_seconds - 3.5 / 3.0) < 1e-12);
+        assert(std::abs(round_trips.taker_notional_usd - 20.0) < 1e-12);
+        assert(std::abs(round_trips.total_notional_usd - 30.0) < 1e-12);
+        assert(std::abs(round_trips.turnover - 3.0) < 1e-12);
+
+        // A run that never closed a position reports no distribution and still reports its turnover; a run
+        // with no collateral has no turnover to state.
+        const auto empty = RunAccounting::round_trip_summary({}, 0.0, 0.0, 0.0);
+        assert(empty.trades == 0);
+        assert(empty.win_rate == 0.0);
+        assert(empty.turnover == 0.0);
+    }
 }
