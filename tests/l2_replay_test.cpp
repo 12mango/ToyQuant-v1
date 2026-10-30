@@ -183,4 +183,20 @@ int main()
         assert(std::abs(xrp.unit_notional_usd) < 1e-12);
         assert(std::abs(doge.unit_notional_usd) < 1e-12);
     }
+
+    // The venue's own BTC/ETH pair, which the maker comparison needs on the same fee schedule: the contracts carry
+    // different amounts and the ticks differ, and those two facts are what makes one of them cheaper to quote.
+    {
+        InstrumentSpec btc_swap;
+        InstrumentSpec eth_swap;
+        assert(instrument_spec_of("BTC-USDT-SWAP", btc_swap));
+        assert(instrument_spec_of("ETH-USDT-SWAP", eth_swap));
+        assert(std::abs(btc_swap.contract_size - 0.01) < 1e-12);
+        assert(std::abs(eth_swap.contract_size - 0.1) < 1e-12);
+        assert(std::abs(btc_swap.tick_size - 0.1) < 1e-12);
+        assert(std::abs(eth_swap.tick_size - 0.01) < 1e-12);
+        assert(std::abs(eth_swap.maker_fee_rate - btc_swap.maker_fee_rate) < 1e-12);
+        assert(std::abs(eth_swap.taker_fee_rate - btc_swap.taker_fee_rate) < 1e-12);
+        assert(eth_swap.exchange == btc_swap.exchange);
+    }
 }

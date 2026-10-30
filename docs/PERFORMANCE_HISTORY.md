@@ -3019,11 +3019,52 @@ The venue charges 2 bps to rest, so both are outside what it offers -- but they 
 schedule, and the whole difference is the tick: a passive fill that captures a tick earns 0.78 bps on the BTC
 contract and 3.76 on the ETH one for the same 2 bps of fee.
 
-That gap is recorded as a hint and not as a result, because the sample cannot settle it: the maker line produces
+That gap was recorded as a hint and not as a result, because the sample could not settle it: the maker line produces
 1 to 86 fills on a 200k-row window and 25 to 86 on a 2M-row one, so a four-day study would compare a few dozen
-trades per cell, and a 200k-row snapshot slice is 1.3 GB once the twenty-five levels are written out. Resolving
-it needs a larger fill count -- more history than the free first-of-month days give, or a looser quote than the
-two-tick spread these runs use -- and that is data, not code.
+trades per cell. It is settled below, on a venue whose order book archive is free and daily from March 2023.
+
+### The tick effect, measured where the tick is negligible
+
+The venue that settles the hint also removes the tick from the comparison. `BTC-USDT-SWAP` quotes a tenth of a
+dollar against 66,272, which is 0.015 bps of tick, and `ETH-USDT-SWAP` a cent against 3,072, which is 0.033: the two
+symbols differ by a factor of 2.2, and both ticks are a rounding error beside the venue's 2 bps maker fee. So the
+same BTC/ETH pair, the same strategy and one parameter set on both venues, two days and two 200k-record windows per
+cell, gives the tick hypothesis a control it never had:
+
+| venue | symbol | windows | fills per window | break-even maker rate |
+|---|---|---:|---:|---|
+| Deribit | BTC-PERPETUAL | 2 | 7, 12 | **+5.35 bps** |
+| Deribit | ETH-PERPETUAL | 2 | 27, 22 | **-2.09 bps** |
+| OKX | BTC-USDT-SWAP | 4 | 115 to 138 | **-1.14 bps** |
+| OKX | ETH-USDT-SWAP | 4 | 171 to 246 | **-1.24 bps** |
+
+Deribit's gap is **+7.44 bps** and both of its days agree (+8.14, +6.74) -- and it is the gap the earlier hint
+reported, 6.9 bps, even though that run's absolute levels sat on the other side of zero. The gap is the stable
+quantity and the level is not. The venue where both ticks are negligible has a gap of **+0.10 bps** over eight
+windows, and its two daily means fall on opposite sides of zero (+0.49 and -0.29), which is what a difference with
+no cause behind it looks like.
+
+So the 7.4 bps is the tick and nothing else: where the two ticks differ by a factor of 4.8 and are worth 0.78 and
+3.76 bps of price, the coarser contract earns 7.4 bps more for the same schedule; where they differ by 2.2 and are
+worth a hundredth of a basis point, the two symbols are indistinguishable.
+
+The better sample also answers what the hint could not: on the venue where the tick is negligible the gross is
+**negative in all eight windows**, -0.50 to -1.87 bps, so the passive quote loses money *before* the 2 bps maker fee
+is charged. The maker line's closing therefore survives the larger sample -- at 2 bps to rest against a hundredth of
+a basis point of tick, a two-tick quote does not pay -- and what would pay is a coarser tick against the same fee or
+a fee below the capture, neither of which that venue offers.
+
+Two caveats belong with the numbers. Round trips close in 0.03 to 0.14 seconds, so this measures a quote that is run
+over and re-flattened rather than one that rests, and the gross includes the inventory's mark to market, which is why
+the level moves with the day's drift and only the gap is stable. Both are visible in the lines the runs print
+(`average_holding_seconds`, `gross_pnl_usd`), so a reader can weigh them rather than take the summary.
+
+The data is the venue's own archive: the order book is one `tar.gz` per symbol and day from the download portal, cut
+on **UTC** midnight and re-sending a full snapshot about once a minute, while the trades come from the same venue's
+public endpoint as one daily `allswap-trades-<day>.zip` cut on **UTC+8** midnight. Pairing them means taking the
+window from the book and filtering the trades to it, which is what the slices here do; the ETH book file also begins
+mid-stream, so a window has to start at a snapshot rather than at a line number.
+
 
 ## The pre-trade controls: what the backoff changed
 

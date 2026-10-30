@@ -226,7 +226,23 @@ inline InstrumentSpec okx_btc_swap_spec(uint64_t quantity_scale = 1000000)
                           .taker_fee_rate = 0.0005};
 }
 
-// A US equity or ETF as IEX publishes it: prices in whole cents, sizes in shares. This is the first instrument
+// The same venue's ETH swap: one contract carries 0.1 ETH against BTC's 0.01, the tick is a cent instead of a tenth
+// of a dollar, and the fee is the venue's schedule unchanged. Registering it makes the venue's own BTC/ETH pair
+// measurable with one command, which is the comparison the maker line needs: on this venue the two symbols quote
+// almost the same fraction of a basis point per tick, so a difference between them cannot be the tick.
+inline InstrumentSpec okx_eth_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return InstrumentSpec{.exchange = "okx",
+                          .symbol = "ETH-USDT-SWAP",
+                          .tick_size = 0.01,
+                          .quantity_scale = quantity_scale,
+                          .lot_size = 1,
+                          .min_order_quantity = 10000,
+                          // One contract is 0.1 ETH, so with this scale the minimum order is 10000 units.
+                          .contract_size = 0.1,
+                          .maker_fee_rate = 0.0002,
+                          .taker_fee_rate = 0.0005};
+}
 // in this repository where the fee is not a multiple of a tick — one tick on a hundred dollar share is one
 // basis point, and a retail commission of a few tenths of a cent a share is a fraction of it, where the
 // perpetuals this repository traded before paid tens of ticks or more. The commission is per share and the rate
@@ -302,6 +318,11 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "BTC-USDT-SWAP")
     {
         out = okx_btc_swap_spec();
+        return true;
+    }
+    if (symbol == "ETH-USDT-SWAP")
+    {
+        out = okx_eth_swap_spec();
         return true;
     }
     if (symbol == "SPY")

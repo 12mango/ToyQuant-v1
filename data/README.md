@@ -354,6 +354,9 @@ it over as a `.data` member inside a `tar.gz`, and every line is a JSON object:
   detected from the file itself, and a batch is stamped with the exchange timestamp in both stamp fields.
 * A long file re-sends a full snapshot periodically — five of them in the first three hundred thousand records —
   so the snapshot's ordering token is its timestamp, which is the only monotone key the archive carries.
+* Not every file starts with one. The `ETH-USDT-SWAP` archive for 2024-05-20 opens with an `update` and its first
+  snapshot is the 15,224th line, so a window has to begin at a snapshot rather than at a line number; the reader
+  refuses a file whose first record is an update, which is what turns that into an error instead of a wrong book.
 * Applying every update since a snapshot does **not** reproduce the next one exactly: on the first three hundred
   thousand records, 39 of about 800 levels disagree, in ways that look like a level leaving or entering the
   400-level window and like a small size difference inside it. The archive is therefore not a lossless record of
