@@ -305,8 +305,15 @@ copied number, and **claims being re-derivable is the property this repository s
 here whose income accrues with **time** rather than per action -- an interval flow, a rate series, a two-leg ledger that
 reports gross and net notional separately, and a payback measured in hours -- which is what the one variant of this
 trade a Hong Kong account can reach and a 50 ms latency cannot touch would need: the **futures basis** on a CME micro,
-where the edge is term structure convergence over weeks rather than a venue differential over hours. That variant is
-unmeasured, and the existing machinery is what makes measuring it cheap.
+where the edge is term structure convergence over weeks rather than a venue differential over hours. **Measured at
+the ceiling, 2026-11:** 120 sessions of `MESZ6`/`MESH7` daily settlements from GLBX.MDP3, two fixed expiries rather
+than a continuous series so no rollover jump enters the spread, give a spread that runs from +153 bps in May to +89 in
+October -- converging at **2.7 bps a week**, against a **daily change of 29.8 bps in standard deviation**, a worst
+single day of -134, and a worst excursion of **-201 bps** from a running high. The round trip costs about 1.3 bps of
+notional, which is not the obstacle; the obstacle is that the income is roughly the risk-free rate and arrives
+through the noise of an equity position. That makes the basis a **money-market trade rather than an edge**, so this
+variant does not reopen the line either -- and the cost of finding that out was a fraction of a cent of data and one
+afternoon, which is the property the machinery was kept for.
 
 ### The carry gates executed: the three conditions the owner set, and the answer on nine months
 
