@@ -248,6 +248,8 @@ struct TakerSummary
 struct ExecutionAlgoSummary
 {
     bool requested{false};
+    // False when the replay ended before the parent's deadline: the opportunity term then charges nothing for
+    // what was never filled, so the shortfall is a lower bound rather than a measurement of the miss.
     bool complete{false};
     bool buy{true};
     uint64_t quantity{0};

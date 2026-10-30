@@ -519,6 +519,13 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     colon == std::string::npos ? std::string() : value.substr(colon + 1);
                 if (name == "cross")
                 {
+                    // Crossing has no parameter, and a number here would be silently ignored: refuse it the way
+                    // every other flag refuses a shape it does not use.
+                    if (!param.empty())
+                    {
+                        error = "--algo-entry=cross takes no parameter";
+                        return false;
+                    }
                     cfg.algo_entry = "cross";
                 }
                 else if (name == "post")

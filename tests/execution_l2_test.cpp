@@ -22,8 +22,7 @@ ExecutionL2Config parent(ExecutionAlgo algo, uint64_t quantity = 100, uint64_t h
                              .horizon_us = horizon_s * 1'000'000,
                              .algo = algo,
                              .slices = 10,
-                             .participation = 0.1,
-                             .tick_size = 1.0};
+                             .participation = 0.1};
 }
 
 // The pipeline assigns the id before it tells the strategy the order exists, and reports carry it back. The

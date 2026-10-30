@@ -54,7 +54,6 @@ struct ExecutionL2Config
     // `post_first` false is the crossing entry every run before the flag used.
     bool post_first{false};
     uint64_t post_timeout_us{0};
-    double tick_size{0.5};
 };
 
 class ExecutionL2Strategy : public Strategy
@@ -138,7 +137,6 @@ class ExecutionL2Strategy : public Strategy
     ExecutionL2Config config_;
     bool started_{false};
     bool sent_market_child_{false};
-    uint64_t start_ts_{0};
     uint64_t end_ts_{0};
     uint64_t next_slice_ts_{0};
     uint64_t filled_quantity_{0};
@@ -239,7 +237,6 @@ inline std::vector<StrategyOrder> ExecutionL2Strategy::on_l2_market_view(const L
     if (!started_)
     {
         started_ = true;
-        start_ts_ = view.ts;
         end_ts_ = view.ts + std::max<uint64_t>(1, config_.horizon_us);
         next_slice_ts_ = view.ts;
     }
