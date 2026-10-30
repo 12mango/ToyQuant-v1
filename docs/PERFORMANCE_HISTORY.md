@@ -2817,6 +2817,54 @@ for algo in market twap:10 pov:0.1; do
 done
 ```
 
+### Posting instead of crossing: the other side of the fee
+
+The schedule's half point is small because the fee is not in it. The other way to look for the three basis
+points between the taker and the maker rate is to change how a slice is sent, so the same parent was re-run with
+`--algo-entry=post:N`: each slice rests at the near touch and whatever it has not filled after N seconds is
+crossed. The question was stated before the runs: **does a resting entry save more in fees than it loses in
+units it never acquires?**
+
+| window | entry | filled | ratio | fees | vs TWAP | opportunity vs TWAP |
+|---|---|---:|---:|---:|---:|---:|
+| 2020-04-01 | cross | 1,000 | 1.00 | 5.00 | +5.29 | -0.00 |
+| 2020-04-01 | post:5 | 1,000 | 1.00 | 5.00 | +5.44 | -0.00 |
+| 2020-04-01 | post:30 | 800 | 0.80 | 3.40 | +5.86 | -0.29 |
+| 2020-04-01 | post:60 | 800 | 0.80 | 3.40 | +5.71 | -0.29 |
+| 2020-06-01 | cross | 1,000 | 1.00 | 5.00 | +3.74 | +0.00 |
+| 2020-06-01 | post:5 | 800 | 0.80 | 3.40 | +3.57 | +5.42 |
+| 2020-06-01 | post:30 | 700 | 0.70 | 2.60 | +6.50 | +8.14 |
+| 2020-06-01 | post:60 | 600 | 0.60 | 1.80 | +9.22 | +10.85 |
+
+All conservative-queue runs on the same 200k slices; the prorata model moved the crossing cells by less than a
+tenth of a basis point and is reported in the change log rather than in a second table.
+
+**The answer is no, and patience makes it worse rather than better.** A five-second rest almost never fills --
+its fee is still 5.00 bps on 1 April, which is the tell that every child crossed -- and once the timeout is long
+enough for the queue to reach us, the fee does fall (5.00 → 3.40 → 1.80) while the units acquired fall with it
+(100 % → 80 % → 60 %) and the opportunity cost rises faster: 0.00 → 5.42 → 10.85 bps against the benchmark on 1
+June. The maker rate saves up to 3.2 bps on what fills and gives back more than that on what does not, and no
+timeout on either window ends up better than crossing.
+
+That is the same statement as the schedule measurement, from the other side: a resting order only escapes the
+taker fee by not trading, and the parent still has to be filled. The fee is a floor on this venue, not a
+parameter to be optimised away by patience.
+
+**What this closes.** The execution line now has three chapters and one conclusion: the schedule pays a stable
+half point and can win at most that; the entry cannot buy back the fee without giving up fills; and the
+remaining question is not execution at all but a venue whose maker and taker rates differ by less than the fill
+risk costs. A parent larger than the displayed depth is still an open increment, because there the crossing
+choice stops being available -- but that is a capacity question with its own pre-registration.
+
+```bash
+for entry in cross post:5 post:30 post:60; do
+  out/build/linux-debug/toy_quant l2_replay \
+    data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv \
+    BTC-PERPETUAL 0 execution_l2 1 conservative --fast-validation \
+    --parent=buy:1000:600 --algo=twap:10 --algo-entry=$entry --metrics
+done
+```
+
 ## The pre-trade controls: what the backoff changed
 
 `tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band

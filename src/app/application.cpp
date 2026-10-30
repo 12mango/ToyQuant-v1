@@ -427,7 +427,9 @@ void Application::run_l2_session_mode() const
                                           .horizon_us = cfg_.parent_horizon_us,
                                           .algo = execution_algo_of(cfg_.algo),
                                           .slices = cfg_.algo_slices,
-                                          .participation = cfg_.algo_participation}});
+                                          .participation = cfg_.algo_participation,
+                                          .post_first = cfg_.algo_entry == "post",
+                                          .post_timeout_us = cfg_.algo_post_timeout_seconds * 1'000'000}});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
     // The paper broker wraps the venue rather than replacing it: the strategy, the book and the

@@ -63,6 +63,9 @@ struct StrategyFactoryConfig
         ExecutionAlgo algo{ExecutionAlgo::Market};
         uint64_t slices{10};
         double participation{0.10};
+        // Post-first entry: rest at the near touch and cross what the slice has not filled after the timeout.
+        bool post_first{false};
+        uint64_t post_timeout_us{0};
     } execution{};
 };
 

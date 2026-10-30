@@ -150,6 +150,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                               .algo = config.execution.algo,
                               .slices = config.execution.slices,
                               .participation = config.execution.participation,
+                              .post_first = config.execution.post_first,
+                              .post_timeout_us = config.execution.post_timeout_us,
                               .tick_size = tick_size});
     }
     if (strategy_name == "trend_l2")

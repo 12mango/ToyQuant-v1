@@ -169,6 +169,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   within three basis points on both days while the single crossing's distance from it is the drift itself --
   which is what turns "the two windows disagree" into "the single crossing is a ten basis point bet, and the
   schedule pays a stable half point".
+- **Posting instead of crossing, measured and rejected.** `--algo-entry=post:N` rests each slice at the near
+  touch and crosses what it has not filled after `N` seconds. On two windows and four timeouts the fee does fall
+  with patience (5.00 → 3.40 → 1.80 bps) but the units acquired fall with it (100 % → 60 %) and the opportunity
+  cost rises faster (0.00 → 10.85 bps against the benchmark), so no timeout beats crossing. The taker fee is a
+  floor on this venue rather than a parameter, and the remaining lever is a venue whose maker and taker rates
+  differ by less than the fill risk costs.
 - **What the crossing side cost.** `--metrics` records the midpoint each order decided at and reports
   `[TAKER]`: the arrival slippage of every aggressive fill in ticks, basis points and dollars, the drift from
   the fill to the midpoint 5, 20 and 60 quote cycles later — positive when the move covered the spread, the

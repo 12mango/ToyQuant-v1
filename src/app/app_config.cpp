@@ -91,6 +91,7 @@ constexpr std::string_view kMetricsFlag = "--metrics";
 constexpr std::string_view kMarkoutHorizonPrefix = "--markout-horizon=";
 constexpr std::string_view kParentPrefix = "--parent=";
 constexpr std::string_view kAlgoPrefix = "--algo=";
+constexpr std::string_view kAlgoEntryPrefix = "--algo-entry=";
 constexpr std::string_view kFlattenBandPrefix = "--flatten-band=";
 }  // namespace
 
@@ -222,8 +223,9 @@ void print_usage(const char* executable)
         std::cerr << "   horizon: --markout-horizon=N resolves the fill markouts and the implementation "
                      "shortfall at N quote cycles instead of the default 5\n";
         std::cerr << "   execution: --parent=SIDE:QUANTITY:SECONDS (l2_replay, execution_l2) works one parent "
-                     "order instead of quoting; --algo=market|twap:N|pov:X picks the schedule, and the run "
-                     "reports [EXECUTION_ALGO]\n";
+                     "order instead of quoting; --algo=market|twap:N|pov:X picks the schedule, "
+                     "--algo-entry=cross|post:SECONDS picks how a slice is sent, and the run reports "
+                     "[EXECUTION_ALGO]\n";
         std::cerr << "   band: --flatten-band=N (l2_replay) reduces a position above N units with a taker "
                      "order at the touch instead of carrying it into the final mark\n";
         std::cerr << "   record: --record=PREFIX (l2_replay) writes PREFIX_trades.csv and "
@@ -503,6 +505,37 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 else
                 {
                     error = "--algo must be market, twap:N or pov:X";
+                    return false;
+                }
+            }
+            else if (flag.compare(0, kAlgoEntryPrefix.size(), kAlgoEntryPrefix) == 0)
+            {
+                // The entry and its one parameter, in the same token as the schedule: `cross` has none, and
+                // `post` needs the timeout that decides when to give up waiting for the queue.
+                const std::string value = flag.substr(kAlgoEntryPrefix.size());
+                const std::size_t colon = value.find(':');
+                const std::string name = colon == std::string::npos ? value : value.substr(0, colon);
+                const std::string param =
+                    colon == std::string::npos ? std::string() : value.substr(colon + 1);
+                if (name == "cross")
+                {
+                    cfg.algo_entry = "cross";
+                }
+                else if (name == "post")
+                {
+                    uint64_t seconds = 0;
+                    if (!parse_unsigned(param, seconds) || seconds == 0)
+                    {
+                        error = "--algo-entry=post wants a positive timeout in seconds, for example "
+                                "--algo-entry=post:5";
+                        return false;
+                    }
+                    cfg.algo_entry = "post";
+                    cfg.algo_post_timeout_seconds = seconds;
+                }
+                else
+                {
+                    error = "--algo-entry must be cross or post:SECONDS";
                     return false;
                 }
             }
@@ -1064,7 +1097,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
                         "--fee-schedule=KEY=VALUE[,KEY=VALUE], "
                         "--markout-cover, --metrics, --markout-horizon=N, --parent=SIDE:QUANTITY:SECONDS, "
-                        "--algo=MARKET|TWAP:N|POV:X, --flatten-band=N, or --paper-broker with one of its faults";
+                        "--algo=MARKET|TWAP:N|POV:X, --algo-entry=CROSS|POST:SECONDS, --flatten-band=N, or "
+                        "--paper-broker with one of its faults";
                 return false;
             }
         }
@@ -1103,6 +1137,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         if (!cfg.has_parent && cfg.strategy_name == "execution_l2")
         {
             error = "execution_l2 needs --parent=SIDE:QUANTITY:SECONDS: there is nothing to execute";
+            return false;
+        }
+        if (!cfg.has_parent && cfg.algo_entry != "cross")
+        {
+            error = "--algo-entry configures how a parent is worked and needs --parent";
             return false;
         }
         if (cfg.flatten_band > 0 && !is_l2_family)

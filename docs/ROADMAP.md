@@ -37,7 +37,7 @@ existing design, architecture and user documents are the whole plan.
 | matching, partial fills, self-trade prevention, IOC/FOK | done | optional cancel/replace semantics | P2 |
 | strategy framework and market making | done | none | done |
 | non-market-making line | `trend_l2`, its 27-cell grid, and the two-window scale test that closes the taker variant by non-replication | nothing while the closure stands; a new signal is a new row | closed |
-| execution algorithms | `execution_l2` with three schedules and parent-level shortfall; the first measurement says a schedule does not beat one crossing at this size | a parent larger than the displayed depth, as a new question | P2 |
+| execution algorithms | `execution_l2` with three schedules, two entry modes and parent-level shortfall against both the arrival price and the window's TWAP; the schedule wins at most half a basis point and posting loses the fills it saves | a parent larger than the displayed depth, as a new question | P2 |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
 | order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
 | portfolio and PnL | single instrument | multi-instrument and portfolio | P2 |

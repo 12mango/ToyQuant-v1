@@ -199,6 +199,10 @@ struct AppConfig
     std::string algo = "market";
     uint64_t algo_slices = 10;
     double algo_participation = 0.10;
+    // How a slice is sent: `cross` takes the far touch with an IOC, `post:N` rests at the near touch and
+    // crosses whatever the slice has not filled after N seconds. Default cross, which is what E1 measured.
+    std::string algo_entry = "cross";
+    uint64_t algo_post_timeout_seconds = 5;
     // Inventory discipline: above this many quantity units the L2 decision layer reduces the position with a
     // taker order at the touch instead of carrying it. 0, the default, leaves the position carried into the
     // final mark, which is what every run before this flag did.
