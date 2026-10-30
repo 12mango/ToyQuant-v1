@@ -163,9 +163,12 @@ issues such as a missing BBO, stale BBO, or a trade far from the BBO midpoint.
 
 `quantity_scale` converts decimal exchange quantities to the engine's integer units. The default
 is `1000000`, so `0.001 BTC` becomes `1000` internal units. Strategy order sizes and generated
-runtime quantities use those same units. BTCUSDT replay also uses its instrument specification for
-the `0.10` price tick, minimum quantity, fee metadata, strategy spread, and inventory units. The
-existing `csv` and `udp` modes retain their legacy defaults.
+runtime quantities use those same units. The replay looks its instrument up by symbol -- `BTCUSDT`, `XRPUSDT` and `DOGEUSDT` are registered -- and each
+specification carries that symbol's price tick, its lot step as the quantity unit and the venue's 2/5 bps fee
+schedule, so `BTCUSDT` quotes in `0.10`, `XRPUSDT` in `0.0001` and `DOGEUSDT` in `0.00001`. A positional
+`quantity_scale` overrides the specification's own, which is what makes the same unit mean the same thing on every
+symbol: one unit is `0.001 BTC`, `0.1 XRP` or one DOGE by default. The existing `csv` and `udp` modes retain
+their legacy defaults.
 
 Use `l1` when you want the BBO-aware strategy:
 

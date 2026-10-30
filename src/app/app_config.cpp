@@ -376,6 +376,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 error = "quantity scale must be a positive integer";
                 return false;
             }
+            if (argc >= 8) cfg.has_quantity_scale = true;
             // The queue model is optional, so an argument starting with -- is a flag rather than a
             // model name. Without this, `... active_l2 1 --fast-validation` was read as the model
             // being \"--fast-validation\" and failed, which made the optional positional impossible to

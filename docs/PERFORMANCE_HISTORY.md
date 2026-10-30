@@ -2948,27 +2948,42 @@ python3 tq_pair_rule.py 900 3.0 data/v2/crypto/deribit_trades_2020-04-01_BTC-PER
   ETH-PERPETUAL.csv.gz data/v2/crypto/deribit_trades_2020-06-01_BTC-PERPETUAL.csv.gz ETH_0601.csv.gz
 ```
 
-### A coarser tick, and a finer one
+### The tick curve, in five points
 
 Registering a second instrument answers a question the BTC numbers cannot: how much of the floor is the fee and
 how much is the spread. `ETH-PERPETUAL` trades on the same venue under the same 5 bps taker rate, but its tick is
 five cents against a price near 132 rather than half a dollar against 6421, so a crossing pays 1.88 bps of half
-spread instead of 0.39. The third point comes from the other end: `BTCUSDT` on the futures venue, where the tick is
-ten cents -- five times finer than the perpetual on the other venue, against a price of the same order -- and the
-taker fee is 4 bps rather than 5.
+spread instead of 0.39. Three more points come from the futures venue, whose symbols differ in tick by a factor of
+ten thousand, so the curve can be drawn rather than inferred: `BTCUSDT` at ten cents, `XRPUSDT` at a hundredth of a
+cent, `DOGEUSDT` at a hundredth of a millicent, all on the same 4 bps taker rate and the same market day.
 
-| venue | instrument | tick, in bps | `is_filled` | `is_fees` | floor |
-|---|---|---:|---:|---:|---:|
-| Deribit | BTC-PERPETUAL | 0.78 | 0.39 | 5.00 | 5.39 |
-| Deribit | ETH-PERPETUAL | 3.76 | 1.88 | 5.00 | 6.88 |
-| Binance USD-M | BTCUSDT | 0.0144 | 0.0072 | 4.00 | 4.0072 |
+| venue | instrument | tick, in bps | half a tick | `is_filled` | `is_fees` | floor |
+|---|---|---:|---:|---:|---:|---:|
+| Binance USD-M | BTCUSDT | 0.0144 | 0.0072 | 0.0072 | 4.00 | 4.0072 |
+| Binance USD-M | DOGEUSDT | 0.524 | 0.262 | 1.346 | 4.00 | 5.3465 |
+| Deribit | BTC-PERPETUAL | 0.78 | 0.39 | 0.39 | 5.00 | 5.39 |
+| Binance USD-M | XRPUSDT | 1.633 | 0.816 | 0.816 | 4.00 | 4.8169 |
+| Deribit | ETH-PERPETUAL | 3.76 | 1.88 | 1.88 | 5.00 | 6.88 |
 
-Three points, one formula: the floor is the fee plus half a tick. Across them the fee moves by one basis point and
-the tick by a factor of 260, and the floor spans 4.0 to 6.9 -- so the floor is a property of the instrument and the
-venue's fee schedule, and of nothing the schedule does. The futures point also settles that the half-spread term is
-not an artefact of thin crypto books: on a market that quotes a hundredth of a basis point wide, a crossing costs
-its fee and no more. The two perpetuals then read as one instrument quoted on two venues, where the coarser tick
-costs 1.4 bps more to cross and the higher fee 1.0.
+Four of the five land on half a tick to three decimals, and the fifth is the interesting one. `DOGEUSDT` pays 1.35
+bps of half spread, five ticks rather than one, and the run says why: the parent needed forty-five children. The
+reason is in the quote rather than in the tick -- the best ask on that book held thirty-six DOGE, seven dollars --
+so a parent of any size a venue would accept walks the ladder. Shrinking the parent to seventy dollars still costs
+0.73 bps over two children, and the touch it is crossing is the same seven dollars. So the depth term is not a
+small correction on that book, it is the whole cost, and the formula is `fee + max(half a tick, impact)`.
+
+That distinction is also why the capacity ladder on the perpetual read flat: the ladder varied the parent from ten
+thousand to a million dollars of notional and the shortfall did not move, because that book is deep enough for the
+largest rung. A flat ladder is a statement about the book, not about size in general, and `DOGEUSDT` is the
+counter-example that shows what the ladder would have looked like on a thin one.
+
+Across the four points that are tick-bound, the fee moves by one basis point and the tick by a factor of 260, so the
+floor spans 4.0 to 6.9 -- it is a property of the instrument and the venue's fee schedule, and of nothing the
+schedule does. The futures point also settles that the half-spread term is not an artefact of thin crypto books: on
+a market that quotes a hundredth of a basis point wide, a crossing costs its fee and no more. The two perpetuals
+then read as one instrument quoted on two venues, where the coarser tick costs 1.4 bps more to cross and the higher
+fee 1.0.
+
 
 The fee term is identical across the two Deribit runs, as it must be; the spread term scales with the tick, and the
 floor moves by 1.5 bps for the same venue, the same schedule and the same parent notional. The drift and the
@@ -2977,12 +2992,18 @@ the time-sliced schedule sits 0.3 from it. So the execution line's findings are 
 they are the arithmetic of the fee plus the tick, and the second instrument is registered, so any of the earlier
 runs can be repeated on it.
 
-The futures run takes the `replay` mode, which reads a trade file and a best-bid-offer file rather than a book, so the
-execution line can only ask it for `--algo=market`: the L1 touch callback carries no timestamp, and a schedule that
-spaces its slices by market time would silently emit one child. That path also keeps the venue's millisecond event
-time where the L2 path carries microseconds, so both the strategy's deadline and the reported `span_seconds` are
-converted at the call site rather than assumed to share the other path's unit. Its window here is 300k quote rows,
-28 minutes, one parent of 0.1 BTC filled in a single child.
+The three futures runs take the `replay` mode, which reads a trade file and a best-bid-offer file rather than a
+book, so the execution line can only ask them for `--algo=market`: the L1 touch callback carries no timestamp, and a
+schedule that spaces its slices by market time would silently emit one child. That path also keeps the venue's
+millisecond event time where the L2 path carries microseconds, so both the strategy's deadline and the reported
+`span_seconds` are converted at the call site rather than assumed to share the other path's unit. Its window here is
+the first 300k quote rows of the day -- half an hour to an hour depending on how busy the symbol is -- with one
+parent per symbol at the same notional as the BTC run, from the venue's daily dumps at
+`data.binance.vision/data/futures/um/daily/{aggTrades,bookTicker}/<symbol>/<symbol>-<type>-2024-03-28.zip`. Adding
+the two symbols also meant the path had to look its specification up by symbol instead of taking the BTCUSDT one:
+each spec's quantity scale is the reciprocal of that symbol's lot step, so a unit is 0.001 BTC, 0.1 XRP or one DOGE,
+and the parent quantity is written in those units.
+
 
 
 The same pair of runs says what the tick does to the **maker** side, which is the line that was closed by cost.

@@ -190,16 +190,23 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   and the drift never recovered it: -1.41, -1.55 and -1.44 ticks at 5, 20 and 60 cycles. `--markout-horizon=N`
   makes the cycle count behind the passive markout and the opportunity term a parameter; the default stays 5,
   so every recorded run reads the same.
-- **The floor on a third instrument, from the other end of the tick range.** The crossing floor is the fee plus
-  half a tick, so a second instrument with a coarser tick moved it up 1.5 bps; a market with a finer one should
-  move it down, and `BTCUSDT` on the futures venue does: ten cents against a price near 69,533 is 0.014 bps of tick
-  against the perpetual's 0.78, and the measured floor is 4.007 bps, of which 4.00 is the fee and 0.007 the half
-  spread. Three instruments now sit on one formula with a fee that moves by one basis point and a tick that moves
-  by a factor of 260. That run takes the `replay` mode, so `--parent` learned to accept it -- and with it the two
-  things that path gets wrong for an execution run: its readers keep the venue's millisecond event time where the
-  book path carries microseconds, so the deadline and the reported `span_seconds` are converted at the call site,
-  and its touch callback carries no timestamp at all, so a time-sliced `--algo` is refused there rather than
-  silently emitting a single child.
+- **The tick curve, drawn in five points instead of inferred from three.** The crossing floor is the fee plus half
+  a tick, and the futures venue quotes every symbol on one 4 bps schedule while spacing its ticks by a factor of ten
+  thousand, so it is where the curve can be measured rather than argued: `BTCUSDT` 0.014 bps of tick, `DOGEUSDT`
+  0.52, `XRPUSDT` 1.63, against the two perpetuals at 0.78 and 3.76. Four of the five land on half a tick to three
+  decimals. The fifth is the finding: `DOGEUSDT` pays 1.35 bps, five ticks, because its best ask holds thirty-six
+  DOGE -- seven dollars -- so the parent walked the ladder in forty-five children, and shrinking it to seventy
+  dollars still cost 0.73. The formula is `fee + max(half a tick, impact)`, and the depth term is the whole cost on
+  a book whose touch is smaller than the venue's own minimum notional would suggest. That also re-reads the flat
+  capacity ladder: it was flat because that book is deep, not because size never matters.
+- **`--parent` on the best-bid-offer path, and the two things that path gets wrong.** The futures venue publishes
+  percentage bands rather than a price ladder, so an execution run there reads the touch, which is all a crossing
+  child needs. Two consequences. That path keeps the venue's millisecond event time where the book path carries
+  microseconds, so the strategy's deadline, the measurement's deadline and the reported `span_seconds` are converted
+  at the call site and the unit is named in the parent spec. And its touch callback carries no timestamp at all, so a
+  time-sliced `--algo` would silently emit one child: the mode now refuses anything but `--algo=market` instead of
+  half-running. The specification is also looked up by symbol rather than fixed to BTCUSDT, with the positional
+  quantity scale as an override of the symbol's own lot step, so one unit is 0.001 BTC, 0.1 XRP or one DOGE.
 
 ## The measured line
 

@@ -157,6 +157,10 @@ struct AppConfig
     // have produced. The venues' rates are in the instrument specifications, so this is a sensitivity input
     // rather than a schedule, and it is unset for every run whose numbers are recorded as a venue's own.
     bool has_maker_fee_rate = false;
+    // A positional quantity scale is an override of the instrument's own, not the default: each venue's lot step
+    // is what makes a unit mean the same thing on every symbol, and the symbols the replay path carries step by
+    // 0.001 BTC and by one DOGE.
+    bool has_quantity_scale = false;
     double maker_fee_rate = 0.0;
     // A whole broker schedule, for the runs that ask what the account's own terms would have produced: the
     // floor under one order's commission, the fee on the proceeds of a sale, the per-share fees on every

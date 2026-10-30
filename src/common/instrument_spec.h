@@ -136,16 +136,43 @@ inline double min_commission_shortfall(double min_commission_per_order, double c
                                                          : 0.0;
 }
 
-inline InstrumentSpec btc_usdt_spec(uint64_t quantity_scale = 1000000)
+// A USD-M perpetual on Binance, which is one factory rather than one function per symbol because every symbol
+// on the venue shares the fee schedule and differs only in its tick and its lot step. That difference is the
+// point: this venue's tick runs from ten cents on BTCUSDT to a hundredth of a millicent on DOGEUSDT, which is a
+// factor of ten thousand, so it is where the tick curve is drawn. Price-quoted, so a unit is worth its price;
+// one quantity unit is one step of the venue's lot size, which makes `quantity_scale` the reciprocal of the step.
+inline InstrumentSpec binance_usdt_swap_spec(const std::string& symbol, double tick_size,
+                                             uint64_t quantity_scale)
 {
     return InstrumentSpec{.exchange = "binance",
-                          .symbol = "BTCUSDT",
-                          .tick_size = 0.10,
+                          .symbol = symbol,
+                          .tick_size = tick_size,
                           .quantity_scale = quantity_scale,
+                          .unit_notional_usd = 0.0,
                           .lot_size = 1,
                           .min_order_quantity = 1,
                           .maker_fee_rate = 0.0002,
                           .taker_fee_rate = 0.0004};
+}
+
+inline InstrumentSpec btc_usdt_spec(uint64_t quantity_scale = 1000000)
+{
+    return binance_usdt_swap_spec("BTCUSDT", 0.10, quantity_scale);
+}
+
+// Two more points on the tick curve, chosen for the ratio rather than for the volume: XRPUSDT quotes a
+// hundredth of a cent against a price near sixty cents, which is 1.6 bps of tick -- twice the coarsest
+// instrument measured so far -- and DOGEUSDT quotes a hundredth of a millicent against twenty cents, 0.5 bps.
+// Both take the venue's own lot step as the unit (0.1 XRP and 1 DOGE), so the scale is 10 and 1 rather than
+// the million that suits a fraction of a coin. The venue's minimum notional of five dollars is not modelled.
+inline InstrumentSpec xrp_usdt_swap_spec()
+{
+    return binance_usdt_swap_spec("XRPUSDT", 0.0001, 10);
+}
+
+inline InstrumentSpec doge_usdt_swap_spec()
+{
+    return binance_usdt_swap_spec("DOGEUSDT", 0.00001, 1);
 }
 
 inline InstrumentSpec deribit_btc_perpetual_spec()
@@ -250,6 +277,16 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "BTCUSDT")
     {
         out = btc_usdt_spec();
+        return true;
+    }
+    if (symbol == "XRPUSDT")
+    {
+        out = xrp_usdt_swap_spec();
+        return true;
+    }
+    if (symbol == "DOGEUSDT")
+    {
+        out = doge_usdt_swap_spec();
         return true;
     }
     if (symbol == "BTC-PERPETUAL")

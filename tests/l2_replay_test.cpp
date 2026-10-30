@@ -159,4 +159,28 @@ int main()
         InstrumentSpec unknown;
         assert(!instrument_spec_of("ETH-NOT-REGISTERED", unknown));
     }
+
+    // The tick curve is drawn on one venue whose symbols differ by a factor of ten thousand in tick, so the two
+    // symbols added for it are pinned here: the price-quoted unit, the venue's fee schedule, and a scale that is
+    // the reciprocal of that symbol's lot step rather than a shared million.
+    {
+        InstrumentSpec btc;
+        InstrumentSpec xrp;
+        InstrumentSpec doge;
+        assert(instrument_spec_of("BTCUSDT", btc));
+        assert(instrument_spec_of("XRPUSDT", xrp));
+        assert(instrument_spec_of("DOGEUSDT", doge));
+        assert(std::abs(btc.tick_size - 0.10) < 1e-12);
+        assert(std::abs(xrp.tick_size - 0.0001) < 1e-12);
+        assert(std::abs(doge.tick_size - 0.00001) < 1e-12);
+        assert(xrp.quantity_scale == 10);
+        assert(doge.quantity_scale == 1);
+        assert(btc.quantity_scale == 1000000);
+        // One schedule on the venue: reading, resting and crossing are priced the same on all three.
+        assert(std::abs(xrp.taker_fee_rate - btc.taker_fee_rate) < 1e-12);
+        assert(std::abs(doge.maker_fee_rate - btc.maker_fee_rate) < 1e-12);
+        // A fractional unit of a coin whose lot is a fraction of a coin, and a whole coin whose lot is one.
+        assert(std::abs(xrp.unit_notional_usd) < 1e-12);
+        assert(std::abs(doge.unit_notional_usd) < 1e-12);
+    }
 }

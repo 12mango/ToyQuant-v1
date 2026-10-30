@@ -230,10 +230,14 @@ void Application::run_legacy_csv_mode() const
 
 void Application::run_replay_mode() const
 {
-    if (cfg_.symbol != "BTCUSDT")
+    // The specification comes from the symbol rather than from a fixed BTCUSDT default, because this path now
+    // carries three symbols of one venue whose ticks differ by a factor of ten thousand.
+    InstrumentSpec instrument;
+    if (!instrument_spec_of(cfg_.symbol, instrument))
         throw std::invalid_argument("no instrument specification for replay symbol: " + cfg_.symbol);
-
-    InstrumentSpec instrument = btc_usdt_spec(cfg_.quantity_scale);
+    // The positional scale overrides the venue's own lot step; without one, the step is what makes a unit mean
+    // the same thing on every symbol.
+    if (cfg_.has_quantity_scale) instrument.quantity_scale = cfg_.quantity_scale;
     // The venue's fee schedule unless a run asks for a different one. The override exists for the fee
     // question, so it is echoed in the mode line rather than left for a reader to infer from the numbers.
     if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
@@ -241,7 +245,7 @@ void Application::run_replay_mode() const
     const std::string quotes_file = to_abs_path(cfg_.quotes_path);
     Logger logger = make_logger();
     logger.log("[Mode: Replay] trades=", trades_file, " quotes=", quotes_file,
-               " symbol=", cfg_.symbol, " quantity_scale=", cfg_.quantity_scale,
+               " symbol=", cfg_.symbol, " quantity_scale=", instrument.quantity_scale,
                " strategy=", cfg_.strategy_name, " maker_fee_rate=", instrument.maker_fee_rate);
 
     const std::string source = "binance;trades=" + trades_file + ";quotes=" + quotes_file +
