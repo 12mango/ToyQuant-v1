@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <vector>
 
 #include "accounting/portfolio.h"
 #include "app/run_summary.h"
@@ -122,6 +123,34 @@ class RunAccounting
         return print_samples_;
     }
 
+    // The account's marked equity, sampled once per bucket while the run asked for --metrics. The
+    // bucket's last observation replaces the earlier ones, so the series is one point per bucket rather
+    // than one per event, and the annualization factor is the bucket count a year holds. Both are
+    // properties of the measurement, so they live here beside the markouts rather than in the pipeline.
+    static constexpr uint64_t kEquityBucketUs = 60'000'000;
+
+    struct EquityPoint
+    {
+        uint64_t ts{0};
+        double equity{0.0};
+    };
+
+    // Records one marked equity at `ts`, keeping only the bucket's last value. Called on every event
+    // whose midpoint advances, which is what makes the series cover the clock rather than the fills: a
+    // run that never trades still has a curve, and a drawdown is what the account marked, not what it
+    // closed.
+    void note_equity(uint64_t ts, double equity);
+
+    const std::vector<EquityPoint>& equity_curve() const
+    {
+        return equity_curve_;
+    }
+
+    // The [PERFORMANCE] figures: the drawdown, its duration, the two annualized deviations and the three
+    // ratios, all derived from the curve above. Zero for a window with fewer than two samples, because
+    // one point has no return and a return series with no interval has no dispersion.
+    PerformanceSummary performance_summary() const;
+
     // The account's result, split into what completed and what is still open, and into what it was before
     // the venue was paid. The formula lives here rather than in the coordinator's summary literal so that
     // the fields and their definitions are read together: `closed_pnl_usd` is the portfolio's realized
@@ -167,4 +196,6 @@ class RunAccounting
     uint64_t print_samples_{0};
     MarkoutEstimate markout_estimate_{};
     bool measure_market_markouts_{false};
+    // The marked account, one point per 60-second bucket, empty unless --metrics asked for it.
+    std::vector<EquityPoint> equity_curve_;
 };

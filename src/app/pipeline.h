@@ -155,6 +155,14 @@ class Pipeline
         gate_diagnostics_ = enabled;
     }
 
+    // Turn on the equity series the [PERFORMANCE] line is derived from. Off by default: it marks the whole
+    // book on every event whose midpoint advances, which is a per-event cost, and a run that does not ask
+    // must behave and print exactly as it did before the flag existed.
+    void set_metrics(bool enabled)
+    {
+        metrics_requested_ = enabled;
+    }
+
     // Names one order whose queue is worth watching. 0, the default, traces nothing. A trace turns a
     // total into a sequence: the strategy's intent, the queue the order joined behind, every change in
     // that queue, and the fill or the cancel that ended it. It is the only view this project offers of a
@@ -199,10 +207,11 @@ class Pipeline
 
     // The bookkeeping every event path shares. `begin_event` advances the run clock and applies any
     // funding settlement that fell due; `advance_mid` records the new midpoint, starts the next quote
-    // cycle and drains fills old enough to be marked out. Keeping them here means the L1, L2-view and
-    // L2-trade paths cannot drift in the order they do it.
+    // cycle, samples the marked account when --metrics asked for it and drains fills old enough to be
+    // marked out. Keeping them here means the L1, L2-view and L2-trade paths cannot drift in the order
+    // they do it.
     void begin_event(uint64_t ts);
-    void advance_mid(double mid);
+    void advance_mid(const std::string& symbol, uint64_t ts, double mid);
     // The risk answer is a pure function of the fill accounting and the event clock; keeping the
     // projection here means a second order path cannot forget one of its four quantities.
     RiskContext make_risk_context(const BboQuote* quote, uint64_t ts) const;
@@ -257,6 +266,8 @@ class Pipeline
     // the engine and the report; the mutable state lives here.
     FillAccounting fill_accounting_;
     bool gate_diagnostics_{false};
+    // Whether the equity series behind [PERFORMANCE] is being sampled, off unless --metrics asked for it.
+    bool metrics_requested_{false};
 
     // Unwinds the pipeline's own bookkeeping for an order the engine refused. Nothing rests, so no report
     // will ever arrive for it, and the strategy is told what a venue would tell it rather than left quoting

@@ -66,6 +66,12 @@ class Portfolio
 
     void apply(const ExecutionReport& report);
     void mark_to_market(const std::unordered_map<std::string, double>& prices);
+    // The same valuation as `mark_to_market`, read instead of written. The equity series a run samples
+    // needs the marked account at an arbitrary moment, and it cannot use `mark_to_market` for that: that
+    // method is not const, and it overwrites the unrealized PnL and equity the kill switch reads in the
+    // middle of an event. Both go through one loop, so the sampled number and the reported one are the
+    // same arithmetic rather than two implementations that agree today.
+    double equity_at(const std::unordered_map<std::string, double>& prices) const;
     void reset();
 
     // A fee that belongs to no single execution: a schedule's floor under one order's commission is charged
@@ -119,6 +125,12 @@ class Portfolio
     const PortfolioPosition* find_position(const std::string& symbol) const;
 
    private:
+    // The one valuation loop. `mark_to_market` writes its two outputs into the account, `equity_at`
+    // reads only the equity, and because the arithmetic is the same the sampled curve and the final
+    // [PORTFOLIO] line cannot drift apart.
+    void mark_values(const std::unordered_map<std::string, double>& prices, double& unrealized_pnl,
+                     double& equity) const;
+
     double units(uint64_t quantity) const
     {
         return static_cast<double>(quantity) / static_cast<double>(quantity_scale_);

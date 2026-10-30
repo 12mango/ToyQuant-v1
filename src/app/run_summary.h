@@ -154,6 +154,28 @@ struct PnlSummary
     double breakeven_maker_rate{0.0};
 };
 
+// What the account's marked equity did over the run, for the runs that asked for it with --metrics. The
+// equity is sampled once per 60-second bucket, so every figure here is a per-bucket rate annualized by the
+// bucket count a 24/7 year holds. `max_drawdown` is the depth of the worst decline and
+// `max_drawdown_duration_seconds` is how long the curve took to win that peak back, which are two different
+// questions: a deep-but-short decline and a shallow-but-permanent one are not the same risk. Printed only
+// when the run asked for it, because the sampling is a per-event cost and a run that does not ask must
+// print exactly what it printed before the flag existed.
+struct PerformanceSummary
+{
+    double span_seconds{0.0};
+    uint64_t samples{0};
+    // The factor the ratios and the volatility were scaled by, printed so a reader does not have to infer
+    // the sampling interval from the numbers.
+    double periods_per_year{0.0};
+    double sharpe{0.0};
+    double sortino{0.0};
+    double calmar{0.0};
+    double annualized_volatility{0.0};
+    double max_drawdown{0.0};
+    double max_drawdown_duration_seconds{0.0};
+};
+
 // What the decision layer measured and refused, for a run that asked for the adverse-selection gate or the
 // flatten band. Printed only then, because a run that does not ask must produce exactly the output it produced
 // before either existed.
@@ -228,6 +250,11 @@ struct RunSummary
     // Printed for every run, because whether a run earns anything before the venue is paid is the question
     // the market-making line exists to answer, and a reader should not have to subtract two fields by hand.
     PnlSummary pnl;
+    // Printed only when --metrics asked for the equity series: the sampling is a per-event cost and the
+    // [PERFORMANCE] line is derived from numbers no other line carries, so a run that does not ask keeps
+    // the summary it had.
+    bool metrics_requested{false};
+    PerformanceSummary performance;
     StrategyMetrics strategy;
     ExecutionQualityMetrics execution_quality;
     // Printed only when --funding-rates supplied a series: a [FUNDING] line in a run that has no funding
@@ -360,6 +387,17 @@ struct RunSummary
                << " net_per_fill_usd=" << pnl.net_per_fill_usd
                << " gross_closed_per_fill_usd=" << pnl.gross_closed_per_fill_usd
                << " breakeven_maker_rate=" << pnl.breakeven_maker_rate;
+        if (metrics_requested)
+            stream << "\n[PERFORMANCE] span_seconds=" << performance.span_seconds
+                   << " samples=" << performance.samples
+                   << " periods_per_year=" << performance.periods_per_year
+                   << " sharpe=" << performance.sharpe
+                   << " sortino=" << performance.sortino
+                   << " calmar=" << performance.calmar
+                   << " ann_vol=" << performance.annualized_volatility
+                   << " max_drawdown=" << performance.max_drawdown
+                   << " max_drawdown_duration_seconds="
+                   << performance.max_drawdown_duration_seconds;
         if (strategy.available) stream << "\n[STRATEGY_METRICS] " << strategy.to_log_string();
         if (funding_requested)
             stream << "\n[FUNDING] funding_points=" << funding.points

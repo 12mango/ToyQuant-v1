@@ -267,6 +267,7 @@ void Application::run_replay_mode() const
     // and edge figures are in dollars rather than in raw instrument units.
     pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
+    pipeline.set_metrics(cfg_.metrics);
     apply_pipeline_limits(pipeline);
     // The funding series is optional and owned here, because the pipeline only borrows it. A file that names
     // no settlement for this instrument is an error rather than an empty input, since a wrong symbol would
@@ -459,6 +460,9 @@ void Application::run_l2_session_mode() const
     // The [GATE] line is printed when the run asked for either decision-layer diagnostic, so a run that asks
     // for neither keeps the summary it had.
     pipeline.set_gate_diagnostics(cfg_.markout_cover || cfg_.flatten_band > 0);
+    // The equity series behind [PERFORMANCE], sampled where every path already advances the midpoint.
+    // Off unless --metrics named it, so a run that does not ask prints the summary it always printed.
+    pipeline.set_metrics(cfg_.metrics);
     // The funding history of the instrument being replayed, applied as the event clock passes each
     // settlement. Optional, and owned here because the pipeline only borrows it.
     FundingRateSeries funding_series;

@@ -107,6 +107,56 @@ void RunAccounting::publish_markout_estimate(ExecutionQualityMetrics& quality, S
     strategy.on_markout_estimate(markout_estimate_);
 }
 
+void RunAccounting::note_equity(uint64_t ts, double equity)
+{
+    // One point per bucket: a later observation in the bucket the last one belongs to replaces it, so
+    // the stored point is the bucket's close and its timestamp is the moment that close was taken.
+    if (!equity_curve_.empty() && ts / kEquityBucketUs == equity_curve_.back().ts / kEquityBucketUs)
+    {
+        equity_curve_.back() = {ts, equity};
+        return;
+    }
+    equity_curve_.push_back({ts, equity});
+}
+
+PerformanceSummary RunAccounting::performance_summary() const
+{
+    PerformanceSummary summary;
+    summary.samples = static_cast<uint64_t>(equity_curve_.size());
+    if (equity_curve_.empty()) return summary;
+
+    summary.span_seconds =
+        static_cast<double>(equity_curve_.back().ts - equity_curve_.front().ts) / 1'000'000.0;
+    // One sample per 60-second bucket, so a 24/7 instrument has 365 * 24 * 60 of them a year. The
+    // factor is stated on the line because it, not the sample count, is what the ratios were scaled by:
+    // a ten-minute window has ten buckets, and sqrt(10) would describe the window rather than the rate.
+    summary.periods_per_year = 365.0 * 24.0 * 60.0;
+
+    std::vector<double> equity;
+    std::vector<uint64_t> timestamps;
+    equity.reserve(equity_curve_.size());
+    timestamps.reserve(equity_curve_.size());
+    for (const auto& point : equity_curve_)
+    {
+        equity.push_back(point.equity);
+        timestamps.push_back(point.ts);
+    }
+
+    const std::vector<double> returns = metrics::compute_returns(equity);
+    summary.annualized_volatility =
+        metrics::compute_annualized_volatility(returns, summary.periods_per_year);
+    summary.sharpe = metrics::compute_sharpe(returns, summary.periods_per_year);
+    summary.sortino = metrics::compute_sortino(returns, summary.periods_per_year);
+    summary.max_drawdown = metrics::compute_max_drawdown(equity);
+    summary.calmar = metrics::compute_calmar(
+        metrics::compute_annualized_return(equity, summary.periods_per_year), summary.max_drawdown);
+    const uint64_t drawdown_duration_us =
+        metrics::compute_max_drawdown_duration(equity, timestamps);
+    summary.max_drawdown_duration_seconds =
+        static_cast<double>(drawdown_duration_us) / 1'000'000.0;
+    return summary;
+}
+
 PnlSummary RunAccounting::pnl_summary(const Portfolio& portfolio, double maker_notional_usd,
                                       uint64_t trade_reports)
 {

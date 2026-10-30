@@ -139,6 +139,12 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   an already-closed audit are counted rather than applied, and `[EXECUTION]` prints those counters only when
   non-zero. `tests/order_state_test.cpp` checks that the next order is accepted after a refused one, which is
   the pending-reservation leak the old path could hide.
+- **The account's equity series, behind a flag.** `--metrics` samples the marked equity once per
+  60-second bucket at the point every event path already advances the midpoint, and `[PERFORMANCE]` reports
+  the drawdown, how long the curve took to win its peak back, the annualized volatility, and the Sharpe,
+  Sortino and Calmar ratios, scaled by the 525,600 buckets a 24/7 year holds. `Portfolio::equity_at` is the
+  read-only valuation `mark_to_market` now shares, so a sample cannot move the unrealized PnL the kill switch
+  reads in the middle of an event. Off by default, so every recorded line is byte for byte what it was.
 
 ## The measured line
 

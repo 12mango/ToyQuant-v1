@@ -177,6 +177,11 @@ struct AppConfig
     // have actually cost, measured from the market's own prints. It exists on the L2 decision layer that carries
     // the expected-value gate, so it is refused for the other strategies rather than silently ignored.
     bool markout_cover = false;
+    // Sample the marked equity once per 60-second bucket and print a [PERFORMANCE] line: span, sample
+    // count, the annualization factor, Sharpe, Sortino, Calmar, annualized volatility, maximum drawdown
+    // and its longest duration. Off, the default, because the sampling marks the book on every event and
+    // every recorded run has to keep the summary it already prints.
+    bool metrics = false;
     // Inventory discipline: above this many quantity units the L2 decision layer reduces the position with a
     // taker order at the touch instead of carrying it. 0, the default, leaves the position carried into the
     // final mark, which is what every run before this flag did.

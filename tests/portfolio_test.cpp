@@ -41,6 +41,13 @@ int main()
     assert(std::abs(metrics.unrealized_pnl - 1.0) < 1e-12);
     assert(std::abs(metrics.equity - 1001.485) < 1e-12);
 
+    // equity_at is the read-only companion of mark_to_market: the same prices give the same equity, a
+    // different mark gives a different one, and the account's own stored mark does not move.
+    assert(std::abs(portfolio.equity_at({{"TEST", 12.0}}) - 1001.485) < 1e-12);
+    assert(std::abs(portfolio.equity_at({{"TEST", 13.0}}) - 1001.985) < 1e-12);
+    assert(std::abs(portfolio.metrics().equity - 1001.485) < 1e-12);
+    assert(std::abs(portfolio.metrics().unrealized_pnl - 1.0) < 1e-12);
+
     // A contract with a fixed USD face value holds that USD amount of the base asset, bought at
     // the entry price. One Deribit BTC-PERPETUAL contract is 10 USD, so a 10% price move on one
     // contract gains 10 USD * 10% = 1 USD. Valuing the contract at the BTC price instead would

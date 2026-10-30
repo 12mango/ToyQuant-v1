@@ -142,7 +142,7 @@ void Pipeline::handle_event(const BboQuote& quote)
                               ? TopOfBook{quote.bid_price, quote.bid_quantity,
                                           quote.ask_price, quote.ask_quantity}
                               : TopOfBook{};
-    advance_mid((quote.bid_price + quote.ask_price) / 2.0);
+    advance_mid(quote.symbol, quote.ts, (quote.bid_price + quote.ask_price) / 2.0);
     record_inventory_sample();
     process_top_of_book(quote.symbol, quote.ts, top);
 }
@@ -191,7 +191,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
         // The report callback runs inside process_l2_top and reads last_mid_, so this
         // update has to stay after that call.
         profiler_begin(Stage::TopBookKeeping);
-        advance_mid((view.top.bid_price + view.top.ask_price) / 2.0);
+        advance_mid(view.symbol, view.ts, (view.top.bid_price + view.top.ask_price) / 2.0);
         record_market_prints();
         profiler_end(Stage::TopBookKeeping);
     }
@@ -286,6 +286,8 @@ RunSummary Pipeline::summary() const
             .working_orders = strategy_.working_order_count(),
             .portfolio = portfolio_.metrics(),
             .pnl = pnl,
+            .metrics_requested = metrics_requested_,
+            .performance = accounting_.performance_summary(),
             .strategy = strategy_.metrics(),
             .execution_quality = execution_quality_,
             .funding_requested = accounting_.funding_requested(),
@@ -411,10 +413,15 @@ void Pipeline::begin_event(uint64_t ts)
     current_ts_ = ts;
 }
 
-void Pipeline::advance_mid(double mid)
+void Pipeline::advance_mid(const std::string& symbol, uint64_t ts, double mid)
 {
     last_mid_ = mid;
     ++quote_cycle_;
+    // The equity sample is taken after the engine has processed this event, so it marks the account the
+    // view is about to trade against. `equity_at` is read-only: the kill switch reads realized plus
+    // unrealized in the middle of an event, and a sample that moved either would make that a race with
+    // the measurement.
+    if (metrics_requested_) accounting_.note_equity(ts, portfolio_.equity_at({{symbol, mid}}));
     // The report callback pushes a markout for every fill, but only this drain closes them, so on the
     // L2 path adverse selection used to stay at zero however many fills there were. Both paths use the
     // same five-cycle horizon.

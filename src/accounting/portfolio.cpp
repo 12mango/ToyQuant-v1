@@ -117,10 +117,11 @@ void Portfolio::apply(const ExecutionReport& report)
     }
 }
 
-void Portfolio::mark_to_market(const std::unordered_map<std::string, double>& prices)
+void Portfolio::mark_values(const std::unordered_map<std::string, double>& prices,
+                            double& unrealized_pnl, double& equity) const
 {
-    unrealized_pnl_ = 0.0;
-    equity_ = cash_;
+    unrealized_pnl = 0.0;
+    equity = cash_;
     for (const auto& [symbol, position] : positions_)
     {
         const auto price_it = prices.find(symbol);
@@ -131,15 +132,28 @@ void Portfolio::mark_to_market(const std::unordered_map<std::string, double>& pr
         const double value_at_entry = unit_value(position.average_price) * amount;
         if (position.quantity > 0)
         {
-            unrealized_pnl_ += value_now - value_at_entry;
-            equity_ += value_now;
+            unrealized_pnl += value_now - value_at_entry;
+            equity += value_now;
         }
         else
         {
-            unrealized_pnl_ += value_at_entry - value_now;
-            equity_ -= value_now;
+            unrealized_pnl += value_at_entry - value_now;
+            equity -= value_now;
         }
     }
+}
+
+double Portfolio::equity_at(const std::unordered_map<std::string, double>& prices) const
+{
+    double unrealized_pnl = 0.0;
+    double equity = 0.0;
+    mark_values(prices, unrealized_pnl, equity);
+    return equity;
+}
+
+void Portfolio::mark_to_market(const std::unordered_map<std::string, double>& prices)
+{
+    mark_values(prices, unrealized_pnl_, equity_);
 }
 
 const PortfolioPosition* Portfolio::find_position(const std::string& symbol) const
