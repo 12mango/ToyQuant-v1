@@ -222,6 +222,14 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
   ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
   enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
+- **The revival test: can better execution rescue a negative edge? No.** The closing claim that execution cost is the
+  one lever that does not decay was tested by asking whether any *quoting policy* on the fine-tick venue earns before
+  the fee: nine combinations of width (2, 4, 8 ticks) and patience (refresh every 1, 4, 16 price moves), both symbols,
+  same 200k windows. **Every cell is negative.** BTC improves monotonically with width and patience, from -1.39 to
+  **-0.21 bps**, and is still nineteen basis points short of the 2 bps fee; ETH does not improve at all, sitting at
+  -1.0 to -1.2 bps in all nine. So the difference execution can make -- 10 to 20 bps a round trip -- multiplies an edge
+  and does not create one, and the loss here is in the *fill*, not in the plumbing: it is adverse selection, and
+  execution does not select.
 - **Selling options: measured three times, and only the third one counts.** The first pass priced the straddle from an
   at-the-money approximation on strikes up to 6.4 % away from spot and called the variance premium negative on ten
   samples. The audit split those by moneyness and read +19.9 points on the four that were genuinely at the money --

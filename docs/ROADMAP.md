@@ -350,11 +350,23 @@ anyone can reach.
 
 Two things do survive, and neither is a strategy:
 
-* **Execution cost.** CME's futures cost 1.2 bps for a round trip against 4 to 24 in crypto, and resting instead of
-  crossing saves 10 to 20 bps of it. Any future edge -- from any source -- should be expressed there and executed as a
-  maker, because that is a multiplier that does not decay.
+* **Execution cost, as a multiplier rather than a rescue.** CME's futures cost 1.2 bps for a round trip against 4 to
+  24 in crypto, and resting instead of crossing saves 10 to 20 bps of it -- but the revival test below shows that this
+  multiplies an edge and does not create one. **Nine quoting policies on the fine-tick venue stay negative before the
+  fee is charged**, and the best of them is -0.21 bps against a 2 bps fee: no execution improvement closes that gap,
+  because the gap is adverse selection and execution does not select.
+
+  | policy | BTC gross | ETH gross |
+  |---|---:|---:|
+  | 2 ticks wide, refresh every 1 / 4 / 16 | -1.39 / -1.11 / -0.97 | -1.84 / -1.13 / -1.20 |
+  | 4 ticks wide, refresh every 1 / 4 / 16 | -1.00 / -0.92 / -0.59 | -1.21 / -1.01 / -1.07 |
+  | 8 ticks wide, refresh every 1 / 4 / 16 | -0.69 / -0.67 / **-0.21** | -1.19 / -1.22 / -1.15 |
+
+  The BTC column improves with width and patience and is still nineteen basis points short of the fee; the ETH column
+  does not improve at all. That is the sharper form of the closing: **the loss is in the fill, not in the plumbing.**
 * **Breadth.** One trade worth 0.5 bps is not worth doing; two hundred of them a day across twenty symbols is a
   different question, and it is a question about infrastructure and cost, not about alpha.
+
 
 What remains genuinely unmeasured is not another instrument but another *kind of information*: on-chain flows, exchange
 netflows, funding-rate extremes as event signals with hours-long horizons. That is research rather than execution, it
