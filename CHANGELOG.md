@@ -222,6 +222,16 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
   ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
   enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
+- **Lead-lag, the last shape that would pay for speed, priced and closed.** BTC prints first and the alts follow within
+  a few hundred milliseconds -- the one structure where a fast client is paid for reading one symbol and trading
+  another. One free day of Binance's USDT-perp tape, 2024-03-28, 5,664 BTC triggers at the top percentile of size, five
+  followers: **every follower is within 0.06 bps of the control, and the control itself is 0.03 to 0.11**. A round trip
+  costs nine basis points, so the largest number in the table is a hundred and fiftieth of what it would need to be.
+  That closes the fifteenth structure, and with it the shape of the whole answer: what is paid per action does not clear
+  the fee charged per action, and what is paid per unit of time does not clear the noise it arrives through. Two things
+  survive and neither is a strategy -- execution cost (CME 1.2 bps a round trip against 4 to 24 in crypto, and resting
+  instead of crossing saves 10 to 20 of it) and breadth (two hundred half-basis-point trades a day across twenty symbols
+  is a question about infrastructure, not alpha).
 - **Three candidates that would need speed, priced before any code was written.** Each is a place where being fast is
   worth money for a measurable reason, and each was measured from free data. **The CME calendar**, held long the near
   and short the far over 120 sessions, drifts **+0.54 bps a day (+64.6 in total, +11.4 a month) against a round trip of

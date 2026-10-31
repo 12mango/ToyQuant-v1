@@ -287,6 +287,30 @@ volatility rather than a proper inversion -- but the direction is the same as ev
 is the one BIS describes for crypto carry: a small investor's demand for upside is what the other side is paid to
 absorb, and it is not paid enough.
 
+### Lead-lag: a large BTC print and the five alts that are supposed to follow it
+
+The last untested idea was that BTC moves first and the alts follow within a few hundred milliseconds, which is the one
+shape where a fast client is paid for being fast: you are not fighting a queue, you are trading on information that is
+already public on another symbol. One free day of Binance's USDT-perp tape, 2024-03-28, with 5,664 BTC triggers (the
+top percentile of trade size, at least five seconds apart) and the followers measured from their last print before
+each trigger to the first one after each horizon, in basis points:
+
+| symbol | 100 ms | 250 ms | 500 ms | 1 s | 2 s |
+|---|---:|---:|---:|---:|---:|
+| BTC (the trigger itself) | +0.00 | +0.00 | -0.00 | -0.02 | -0.03 |
+| ETH | +0.00 | +0.00 | -0.01 | -0.04 | -0.04 |
+| SOL | -0.01 | -0.00 | -0.02 | -0.05 | -0.05 |
+| XRP | -0.02 | -0.00 | -0.02 | -0.02 | -0.02 |
+| DOGE | +0.04 | +0.06 | +0.03 | -0.00 | +0.00 |
+| ADA | +0.01 | +0.01 | +0.00 | -0.01 | -0.00 |
+| control (ETH at evenly spaced moments) | +0.03 | +0.03 | +0.04 | +0.03 | +0.03 |
+
+**Every follower is within six hundredths of a basis point of the control.** The effect people describe is either
+absent at this granularity on this day or already arbitraged into the noise, and the noise itself is a fifteenth of
+what the effect would have to be: a round trip costs nine basis points and the largest number in the table is 0.06.
+One day and trade prices rather than book states are the limits, and neither is large enough to change the verdict --
+a 0.06 bps effect does not become 9 bps on another day.
+
 **What the three together say.** Each candidate had a mechanism that speed genuinely serves, and each was priced
 against its own cost: the CME slope drifts +11.4 bps a month against a 1.94 bps round trip but carries 30 bps of daily
 noise; a forced seller's footprint continues 0.7 bps against an 8 bps round trip; a stale quote deviates 2.4 bps at the
@@ -294,7 +318,27 @@ noise; a forced seller's footprint continues 0.7 bps against an 8 bps round trip
 premium, not an edge. **Being fast does not move any of these ratios** -- it decides whether you are the one who takes
 the 0.7 bps or the one who provides it.
 
+### The last line, and what is left standing
 
+Fifteen structures have now been priced, and the shape of the answer is the same in each: **what is paid per action
+does not clear the fee charged per action, and what is paid per unit of time does not clear the noise it arrives
+through.** That is not a statement about effort or skill; it is what the arithmetic says at retail size in markets
+anyone can reach.
+
+Two things do survive, and neither is a strategy:
+
+* **Execution cost.** CME's futures cost 1.2 bps for a round trip against 4 to 24 in crypto, and resting instead of
+  crossing saves 10 to 20 bps of it. Any future edge -- from any source -- should be expressed there and executed as a
+  maker, because that is a multiplier that does not decay.
+* **Breadth.** One trade worth 0.5 bps is not worth doing; two hundred of them a day across twenty symbols is a
+  different question, and it is a question about infrastructure and cost, not about alpha.
+
+What remains genuinely unmeasured is not another instrument but another *kind of information*: on-chain flows, exchange
+netflows, funding-rate extremes as event signals with hours-long horizons. That is research rather than execution, it
+needs its own pre-registration and out-of-sample discipline, and this repository's history says most such rules die the
+same way these did. It is the only door still open, and it opens onto work rather than onto money.
+
+## What stays inside this repository, and what does not
 
 The demo and a personal trading system share a method and one program, not a codebase. The line is drawn by
 what a change produces:
