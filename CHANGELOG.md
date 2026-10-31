@@ -211,6 +211,17 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   all eight windows (-0.50 to -1.87 bps, before the fee) and the coarse-tick venue's ETH contract is negative on all
   four of its days. Frequency turned out not to be a knob at all: the same strategy holds a round trip 0.03 to 0.14
   seconds where the tick is 0.015 bps and 60 to 720 seconds where it is 0.78.
+- **The dated basis, which the funding differential was mistaken for.** The twelve-month measurement that closed the
+  carry line compared two venues' *perpetual funding*, where the differential flips sign inside a day. A dated future
+  is a different animal: it carries a fixed gap to spot that must close at delivery. Six monthly samples of Deribit's
+  free first days price 19 dated legs and 22 calendar spreads. The dated legs average **+252 bps annualised, 17 of 19
+  positive**, and fail the registered gates on one count -- the near contract inverted twice, at -186 bps annualised
+  in June as BTC fell from 77,889 to 72,043, which is the crash regime the BIS carry paper warns about. The calendar
+  spreads, which need no spot at all, are **positive in 22 of 22 samples with a mean of +399 and a worst of +67 bps
+  annualised** -- and that is recorded as a hypothesis rather than a result, because the gates were registered on the
+  dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
+  ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
+  enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
 - **`--parent` on the best-bid-offer path, and the two things that path gets wrong.** The futures venue publishes
   percentage bands rather than a price ladder, so an execution run there reads the touch, which is all a crossing
   child needs. Two consequences. That path keeps the venue's millisecond event time where the book path carries

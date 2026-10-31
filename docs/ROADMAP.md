@@ -315,32 +315,53 @@ through the noise of an equity position. That makes the basis a **money-market t
 variant does not reopen the line either -- and the cost of finding that out was a fraction of a cent of data and one
 afternoon, which is the property the machinery was kept for.
 
-### The dated basis, which the funding-differential measurement did not cover
+### The dated basis, measured over six monthly samples
 
 The measurement above compares **two venues' perpetual funding**, and it closes that: the differential flips sign
 inside a day, so no run pays its round trip. That is not the carry trade the literature measures. A dated future
-carries a fixed gap to spot that must close at delivery, and the gap is an order of magnitude larger. On one free
-sample day, 2026-10-01, Deribit's own trade files give:
+carries a fixed gap to spot that has to close at delivery, and the gap is a different size. The free archive serves
+the first day of every month, so the same six samples that fed the tick curve also price this: Deribit's own trade
+files, VWAP per contract, the perpetual standing in for spot.
 
-| contract | vwap | days to expiry | gap to the perpetual | annualised | round trip at maker / taker |
-|---|---:|---:|---:|---:|---|
-| `BTC-PERPETUAL` | 84,002.61 | -- | -- | -- | -- |
-| `BTC-25DEC26` | 84,805.62 | 85 | **+95.6 bps** | **+4.10% p.a.** | 8 / 20 bps |
-| `BTC-26MAR27` | 86,248.87 | 176 | **+267.4 bps** | **+5.55% p.a.** | 8 / 20 bps |
-| Dec to Mar calendar | -- | 91 | **+170.2 bps** | **+6.83% p.a.** | 8 / 20 bps, no spot leg |
+| contract | samples | annualised basis, bps p.a. | mean | worst | inversions |
+|---|---|---:|---:|---:|---:|
+| `BTC-26JUN26` | 2 | -127, -186 | **-157** | -186 | 2 of 2 |
+| `BTC-25SEP26` | 5 | +181, +87, +16, +367, +323 | **+195** | +16 | 0 |
+| `BTC-25DEC26` | 6 | +203, +198, +291, +405, +332, +410 | **+307** | +198 | 0 |
+| `BTC-26MAR27` | 6 | +275, +339, +216, +400, +507, +555 | **+382** | +216 | 0 |
+| all dated legs | 19 | -- | **+252** | -186 | 2 of 19 |
 
-The gap clears its own round trip by five to ten times rather than failing by an order of magnitude, and the last row
-needs no spot custody at all: two futures, opposite sides, and the spread converges because both legs expire. This is
-the one carry variant that is neither closed by the fee arithmetic nor the size of the money market, and the BIS
-documents its scale -- a working paper on crypto carry finds a basis averaging above 10% a year and reaching 60%,
-driven by leveraged retail demand and a scarcity of capital willing to take the other side, with the warning that
-holding that side is dangerous "due to spikes in margins and liquidations amid drawdowns".
+Two legs of dated contracts need no spot at all, and the calendar spread is where the premium lives:
 
-So the line's earlier closing stands for what it measured and does not extend to this. What it would take to settle
-it is what the machinery already has: the two-leg ledger, the funding series, and the fills priced through
-`fee_on_fill`, run over a dated future against a spot or perpetual leg. The open risks are the ones a PnL backtest
-handles worst -- venue solvency on the spot leg, margin calls on the short future, and the fact that the sample day
-above is one day of one quarter.
+| calendar | samples | mean | worst | inversions |
+|---|---|---:|---:|---:|
+| Sep to Dec | 5 | +378 | +238 | 0 |
+| Sep to Mar | 5 | +419 | +310 | 0 |
+| Dec to Mar | 6 | **+494** | **+67** | 0 |
+| all calendars | 22 | **+399** | +67 | **0 of 22** |
+
+**The registered test fails, and the honest reading of the calendar is that it is a hypothesis.** The three gates were
+fixed before the numbers: a mean above three times the 20 bps round trip, a worst inversion smaller than half the
+mean, and the same sign in at least two thirds of the samples. On the dated legs the first and third pass (mean 252
+bps against a gate of 60; 17 of 19 positive) and **the second fails**, because the near contract inverted twice --
+June settled at 25 days to expiry with the future *below* the perpetual, at -186 bps annualised, while BTC fell from
+77,889 to 72,043. That is the crash regime the BIS paper warns about, and it is exactly the sample a holder of a
+cash-and-carry would have been marked through. The calendar series passes all three gates, and it is **not** a result
+because it was not the series the gates were registered on: choosing the instrument after seeing both is the same
+error as quoting the two days that agreed.
+
+Three limits belong with the numbers. The prices are daily VWAPs rather than executable quotes, and the dated legs are
+a hundredth of the perpetual's activity -- 2,406 and 3,517 trades against 280,411 on the same day -- so the spread
+paid to enter and leave is not in this table. The six samples are one regime: BTC ran from 77,889 to 84,003 with a dip
+to 59,587 in July, and the premium moved with it, Dec to Mar collapsing from +654 bps annualised in June to +67 in
+July, which is a 10x compression in one month and the opposite of a stable income. And a calendar position is two
+legs only until the near one expires; after that it is a naked short future that has to be closed or rolled, which is
+two more crossings priced by a book this measurement never looked at.
+
+The next registered question is therefore narrower and cheaper: the same six-sample shape on the **calendar** pair,
+with the entry cost taken from the book rather than from VWAP, and extended back to 2019 -- dated quarterly contracts
+existed then, the archive serves their first days for nothing, and a bear year is the sample this table does not have.
+
 
 ### The carry gates executed: the three conditions the owner set, and the answer on nine months
 
