@@ -261,7 +261,8 @@ class RunAccounting
     // One child order sent while the parent is being worked, and one fill of any child. The fill's USD cost is
     // computed here from the stored decision price, so every child is measured against the same benchmark.
     void note_parent_child();
-    void note_parent_fill(Side side, double price, uint64_t quantity, double fee);
+    void note_parent_fill(Side side, double price, uint64_t quantity, double fee,
+                          LiquidityRole role = LiquidityRole::Unknown);
 
     // One midpoint while the parent is being worked, for the time-weighted benchmark: a schedule that finishes
     // early and one that spreads to the deadline are compared against the average the market actually traded
@@ -382,6 +383,9 @@ class RunAccounting
     double parent_multiplier_{1.0};
     uint64_t parent_quantity_scale_{1};
     uint64_t parent_filled_quantity_{0};
+    double parent_maker_units_{0.0};
+    double parent_maker_fees_usd_{0.0};
+    double parent_taker_fees_usd_{0.0};
     uint64_t parent_children_{0};
     double parent_filled_usd_{0.0};
     double parent_fees_usd_{0.0};

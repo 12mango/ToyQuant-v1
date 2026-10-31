@@ -378,7 +378,7 @@ int main()
         parent.start_parent(1'000, 100.0, 0.0, 1.0, 1);
         parent.note_parent_child();
         parent.note_parent_child();
-        parent.note_parent_fill(Side::Buy, 101.0, 6, 0.6);
+        parent.note_parent_fill(Side::Buy, 101.0, 6, 0.6, LiquidityRole::Maker);
         // Two midpoints inside the window make the time-weighted benchmark 101: thirty seconds at 100 and
         // thirty at 102 give the same average, which is the point of the column -- a schedule is judged
         // against the average price the market traded at, not against where it happened to start.
@@ -401,7 +401,27 @@ int main()
         assert(std::abs(parent_summary.opportunity_vs_twap_bps - 39.603960396039604) < 1e-9);
         assert(std::abs(parent_summary.is_vs_twap_bps - 45.544554455445545) < 1e-9);
         // A fill after the deadline belongs to nothing: the measurement closed with the horizon's charge.
-        parent.note_parent_fill(Side::Buy, 102.0, 4, 0.4);
+        parent.note_parent_fill(Side::Buy, 102.0, 4, 0.4, LiquidityRole::Taker);
         assert(parent.parent_summary().filled_quantity == 6);
+    }
+
+    // The execution mix behind [EXECUTION_ALGO]: the same parent worked half by resting and half by crossing. The
+    // split matters because every venue prices the two roles differently, and "the fee was 3.2 bps" says nothing
+    // about whether the parent took the cheap role or paid for the expensive one.
+    {
+        RunAccounting mixed;
+        mixed.set_parent_order({.side = Side::Buy, .quantity = 10, .horizon_us = 60'000'000});
+        mixed.start_parent(1'000, 100.0, 0.0, 1.0, 1);
+        mixed.note_parent_child();
+        mixed.note_parent_fill(Side::Buy, 100.5, 6, 0.12, LiquidityRole::Maker);
+        mixed.note_parent_fill(Side::Buy, 100.5, 4, 0.20, LiquidityRole::Taker);
+        mixed.finish_parent(61'000, 100.5);
+        const auto summary = mixed.parent_summary();
+        assert(std::abs(summary.maker_share - 0.6) < 1e-12);
+        // The two roles' fees are the total, which is the invariant that keeps the split from becoming a third
+        // story: whatever the venue did not report is charged to neither side and shows as the difference.
+        assert(std::abs(summary.maker_fees_bps + summary.taker_fees_bps - summary.is_fees_bps) < 1e-12);
+        assert(std::abs(summary.maker_fees_bps - 1.2) < 1e-12);
+        assert(std::abs(summary.taker_fees_bps - 2.0) < 1e-12);
     }
 }

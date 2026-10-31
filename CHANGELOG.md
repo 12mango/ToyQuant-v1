@@ -222,6 +222,14 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
   ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
   enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
+- **The execution line reports which fee rate it paid, not just how much.** `[EXECUTION_ALGO]` gains `maker_share`,
+  `maker_fees_bps` and `taker_fees_bps`: the share of the parent's filled quantity that rested, and the fee charged
+  on each role, whose sum is the existing `is_fees_bps`. Every venue here prices the two roles differently -- 1.5
+  against 3.5 bps on a dated future, 2 against 5 on a swap -- and the whole difference between the post-first
+  experiment's fee of 1.80 bps and a crossing's 5.00 came from this mix, so a fee without it is not interpretable. A
+  role the venue does not report is charged to neither side and stays visible as the gap against `is_fees_bps`. The
+  invariant is asserted in `pipeline_accounting_test`: the two halves add up to the total on a parent worked half by
+  resting and half by crossing.
 - **Lead-lag, the last shape that would pay for speed, priced and closed.** BTC prints first and the alts follow within
   a few hundred milliseconds -- the one structure where a fast client is paid for reading one symbol and trading
   another. One free day of Binance's USDT-perp tape, 2024-03-28, 5,664 BTC triggers at the top percentile of size, five

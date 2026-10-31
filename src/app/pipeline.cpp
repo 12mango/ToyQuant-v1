@@ -58,7 +58,8 @@ void Pipeline::handle_report(const ExecutionReport& report)
         // Every fill while the parent is being worked is the parent's, because an execution run has no other
         // reason to trade. The measurement closes at the horizon and ignores what arrives after it.
         accounting_.note_parent_fill(report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
-                                      report.price, report.executed_quantity(), report.fee);
+                                      report.price, report.executed_quantity(), report.fee,
+                                      report.liquidity_role);
     }
     strategy_.on_order_update(report);
     // The strategy keeps its own position from the same reports. A divergence is silent drift

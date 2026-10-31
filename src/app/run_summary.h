@@ -264,6 +264,14 @@ struct ExecutionAlgoSummary
     double is_fees_bps{0.0};
     double is_opportunity_bps{0.0};
     double is_total_bps{0.0};
+    // How the parent was actually executed: the share of the filled quantity that rested rather than crossed,
+    // and the fee paid on each side. Every venue here prices the two roles differently -- 1.5 against 3.5 bps on
+    // a dated future, 2 against 5 on the swaps -- so a parent's fee is only interpretable next to the mix that
+    // produced it, and a schedule that rests more is the one lever this repository measured as worth 10 to 20 bps
+    // a round trip. The two fee figures add up to `is_fees_bps`.
+    double maker_share{0.0};
+    double maker_fees_bps{0.0};
+    double taker_fees_bps{0.0};
     // The same trade measured against the time-weighted midpoint of the window rather than against the arrival
     // price, which is the comparison that separates a schedule from the market's drift. `twap_mid` is the
     // benchmark itself; the three terms add up the same way they do against the arrival price.
@@ -564,6 +572,9 @@ struct RunSummary
                    << " horizon_mid=" << execution_algo.horizon_mid
                    << " is_filled_bps=" << execution_algo.is_filled_bps
                    << " is_fees_bps=" << execution_algo.is_fees_bps
+                   << " maker_share=" << execution_algo.maker_share
+                   << " maker_fees_bps=" << execution_algo.maker_fees_bps
+                   << " taker_fees_bps=" << execution_algo.taker_fees_bps
                    << " is_opportunity_bps=" << execution_algo.is_opportunity_bps
                    << " is_total_bps=" << execution_algo.is_total_bps
                    << " twap_mid=" << execution_algo.twap_mid

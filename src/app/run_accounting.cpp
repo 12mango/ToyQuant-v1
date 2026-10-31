@@ -378,7 +378,8 @@ void RunAccounting::note_parent_child()
     ++parent_children_;
 }
 
-void RunAccounting::note_parent_fill(Side side, double price, uint64_t quantity, double fee)
+void RunAccounting::note_parent_fill(Side side, double price, uint64_t quantity, double fee,
+                                     LiquidityRole role)
 {
     if (!parent_started_ || parent_finished_ || quantity == 0) return;
     parent_filled_quantity_ += quantity;
@@ -386,6 +387,19 @@ void RunAccounting::note_parent_fill(Side side, double price, uint64_t quantity,
     const double units = static_cast<double>(quantity) / static_cast<double>(parent_quantity_scale_);
     parent_filled_units_ += units;
     parent_filled_units_price_ += units * price;
+    // The role decides which of the venue's two rates this fill paid, and the split is what a schedule is chosen
+    // by: resting is worth 10 to 20 bps a round trip on the venues measured here, and only the mix says whether a
+    // parent took it. A role the venue did not report is charged to neither side and stays visible as the gap
+    // between the two fee figures and `is_fees_bps`.
+    if (role == LiquidityRole::Maker)
+    {
+        parent_maker_units_ += units;
+        parent_maker_fees_usd_ += fee;
+    }
+    else if (role == LiquidityRole::Taker)
+    {
+        parent_taker_fees_usd_ += fee;
+    }
     // Signed as a cost, the same form the child arrival slippage uses: a buy above the decision price and a
     // sell below it are both money paid away.
     const double signed_move =
@@ -449,6 +463,10 @@ ExecutionAlgoSummary RunAccounting::parent_summary() const
     summary.is_fees_bps = parent_fees_usd_ * per_bp;
     summary.is_opportunity_bps = parent_opportunity_usd_ * per_bp;
     summary.is_total_bps = summary.is_filled_bps + summary.is_fees_bps + summary.is_opportunity_bps;
+    // The execution mix, in the same basis points of the decision notional as the fee it produced.
+    summary.maker_share = parent_filled_units_ > 0.0 ? parent_maker_units_ / parent_filled_units_ : 0.0;
+    summary.maker_fees_bps = parent_maker_fees_usd_ * per_bp;
+    summary.taker_fees_bps = parent_taker_fees_usd_ * per_bp;
 
     // The time-weighted benchmark over the same window, and the same three terms against it. This is the column
     // that separates a schedule from the market's drift: a parent that buys into a rising midpoint looks
