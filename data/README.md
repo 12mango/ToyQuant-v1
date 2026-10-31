@@ -374,7 +374,33 @@ tar -xzOf data/v2/crypto/BTC-USDT-SWAP-L2orderbook-400lv-2026-01-07.tar.gz | hea
 The venue is taken from the depth file rather than from the command line, so the same command runs either the OKX
 archive or the Deribit files this repository holds.
 
-## Funding Rates
+## Options: The At-the-Money Straddle, One Per Month
+
+The options line of the roadmap is the only measurement whose collection started as a scratch script, and a number
+that cannot be re-collected is a copied number. `tools/fetch_deribit_options.py` is that collection as a tool: for each
+month it takes the first day's free sample, prices the straddle whose strike sits nearest spot (100-point grid, then
+250, then 500), inverts implied volatility from Black-Scholes per leg, and reports the short straddle's result at the
+nearest listed expiry at least twenty days out.
+
+```bash
+python3 tools/fetch_deribit_options.py --self-test
+python3 tools/fetch_deribit_options.py --start 2024-04 --end 2024-04
+python3 tools/fetch_deribit_options.py --start 2020-01 --end 2026-09 --output data/v2/options/atm_straddles.csv
+```
+
+Three facts the first version of the measurement got wrong and this one encodes:
+
+* **the strike has to be at the money.** The at-the-money identity `straddle ≈ 0.8 S sigma sqrt(T)` is only valid there;
+  applied to a strike six percent away it reports a volatility that does not exist, which is how a sample of ten mixed
+  strikes produced a premium of -45 points and then a re-read of +19.9 on the four that were genuinely at the money.
+  The self-test checks the identity in the direction it is valid and asserts that an out-of-the-money straddle is *not*
+  cheaper, because it carries intrinsic value;
+* **the volatility is inverted, not approximated**, per leg, with a zero rate -- a coin-settled crypto option priced in
+  its own coin has no discounting to apply;
+* **every month contributes a sample**, which is what lets the two crashes of 2020 be a minority rather than half the
+  sample. Ninety-two straddles from 2020-01 to 2026-09 give the figure the roadmap quotes.
+
+
 
 The carry line's second input, and the smallest file this project reads: a funding history is a few megabytes
 per symbol per year even at an hourly settlement. `tools/fetch_funding_rates.py` fetches one instrument from

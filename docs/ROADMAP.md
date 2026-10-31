@@ -298,6 +298,11 @@ points** over six and a half years, against which the short straddle is a coin f
 five do not. That is what a risk premium priced at fair value looks like: the seller is compensated in most months and
 not compensated on average, and the compensation he does take is smaller than the noise he carries.
 
+The collection is `tools/fetch_deribit_options.py`, which is where this measurement stops being a scratch script: the
+ninety-two rows, their strikes and their inverted volatilities are re-derived by running it, and its own self-test
+checks the at-the-money identity against the pricing function rather than trusting the one that produced the first
+version.
+
 So this line closes, and it closes differently from how it opened twice. The first version called the premium negative
 on ten mixed samples; the audit called it +19.9 points on four; the measurement calls it +0.2 on ninety-two. **The
 progression is the point:** both earlier answers read a statistic off a sample small enough to say anything, and this
