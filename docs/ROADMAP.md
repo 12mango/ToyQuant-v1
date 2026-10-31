@@ -341,9 +341,44 @@ noise; a forced seller's footprint continues 0.7 bps against an 8 bps round trip
 premium, not an edge. **Being fast does not move any of these ratios** -- it decides whether you are the one who takes
 the 0.7 bps or the one who provides it.
 
-### The last line, and what is left standing
+### The funding extreme: a bet on one crisis year
 
-Fifteen structures have now been priced, and the shape of the answer is the same in each: **what is paid per action
+The last unmeasured class of information was the funding rate as an event signal: when longs are paying heavily, the
+crowd is levered and a contrarian position collects both the funding and whatever the squeeze does. The test was
+registered before the numbers: at each settlement a z-score of the rate against the previous ninety days, a short when
+the z is high and a long when it is low, an eight-hour hold, two taker crossings at 8 bps, and three gates -- mean net
+above three times that cost, worst trade shallower than half the mean, and positive in two thirds of the years, with
+2024-2026 held back.
+
+Seven thousand three hundred and ninety-five settlements of BTCUSDT, 3,863 with a full ninety-day window:
+
+| threshold | trades | mean net | median | worst | positive | by year |
+|---|---:|---:|---:|---:|---:|---|
+| abs z >= 1.5 | 453 | +3.17 bps | -5.88 | -813.9 | 215 of 453 | 2020 -16.7, 2021 -2.7, **2022 +120.1**, 2023 -4.4, 2024 -2.0, 2025 +6.2, 2026 -5.0 |
+| abs z >= 2.0 | 251 | +7.29 bps | -3.74 | -813.9 | 121 of 251 | 2020 -5.1, 2021 +0.9, **2022 +189.2**, 2023 -6.3, 2024 -0.1, 2025 -0.9, 2026 -5.5 |
+| abs z >= 3.0 | 104 | +4.30 bps | -6.83 | -813.9 | 49 of 104 | 2020 -34.4, 2021 -10.1, **2022 +257.7**, 2023 -7.7, 2024 +3.2, 2025 +11.8, 2026 -0.4 |
+
+**All three gates fail at every threshold**, and the shape behind the failure is the finding. The mean is positive and
+the **median is negative at every threshold** -- most of these trades lose a little and a handful win enormously, which
+is a lottery ticket rather than an edge. The whole positive mean is **one year**: 2022 contributes +189 bps at the
+middle threshold and every other year is between -6 and +1. 2022 is the year of the deleveraging and the FTX
+collapse, when a negative funding extreme really did precede a squeeze.
+
+And the held-out period agrees with that reading rather than with the full sample: **2024-2026 averages -1.06 bps**
+across 117 trades. There is no version of this rule that survives out of sample, and the reason is the same one that
+closed the carry line: a signal that pays in the year you cannot foresee and loses in the six you can is not a
+strategy, it is a lottery with a story attached.
+
+**The rule and its gates live in `tools/funding_extreme_test.py`**, not in this prose, so the table above is that
+tool's output rather than a paragraph that agreed with it -- the collection reads the same free monthly archives as the
+carry line's funder, `tools/fetch_funding_rates.py`, and writes no file of its own. Its own self-test -- `python3
+tools/funding_extreme_test.py --self-test` -- checks both legs
+against hand arithmetic, and it caught its own author writing the long leg as a payment: with a negative rate the short
+side pays, so the contrarian long *collects* the funding, and the sign of that term is the entire carry argument in one
+line of code.
+
+
+Sixteen structures have now been priced, and the shape of the answer is the same in each: **what is paid per action
 does not clear the fee charged per action, and what is paid per unit of time does not clear the noise it arrives
 through.** That is not a statement about effort or skill; it is what the arithmetic says at retail size in markets
 anyone can reach.
@@ -368,10 +403,13 @@ Two things do survive, and neither is a strategy:
   different question, and it is a question about infrastructure and cost, not about alpha.
 
 
-What remains genuinely unmeasured is not another instrument but another *kind of information*: on-chain flows, exchange
-netflows, funding-rate extremes as event signals with hours-long horizons. That is research rather than execution, it
-needs its own pre-registration and out-of-sample discipline, and this repository's history says most such rules die the
-same way these did. It is the only door still open, and it opens onto work rather than onto money.
+What remains genuinely unmeasured is narrower than the list above, because the first item on it has now been measured:
+**funding-rate extremes as an event signal fail their own gates** (see above), and they fail in the way that matters --
+positive mean, negative median, one crisis year carrying the average, and -1.06 bps across the held-out 2024-2026.
+What is left is the information this repository has no feed for at all: on-chain flows, exchange netflows, stablecoin
+issuance, unlock calendars. Those are research rather than execution, they need their own pre-registration and
+out-of-sample discipline, and this repository's history says most such rules die the same way these did. It is the only
+door still open, and it opens onto work rather than onto money.
 
 ## What stays inside this repository, and what does not
 

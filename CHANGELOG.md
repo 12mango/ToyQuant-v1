@@ -230,6 +230,15 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   -1.0 to -1.2 bps in all nine. So the difference execution can make -- 10 to 20 bps a round trip -- multiplies an edge
   and does not create one, and the loss here is in the *fill*, not in the plumbing: it is adverse selection, and
   execution does not select.
+- **Funding extremes as an event signal: a lottery with a story attached.** The last unmeasured class of information was
+  the funding rate read as a crowd indicator -- when longs pay heavily, sell the perpetual and collect both the funding
+  and the squeeze. The rule was registered before the numbers: a z-score of the rate against ninety days, a short above
+  it and a long below, an eight-hour hold, 8 bps of taker crossings, and three gates. Over 3,863 usable settlements of
+  BTCUSDT **all three gates fail at every threshold**, and the failure has a shape worth keeping: the **mean is positive
+  and the median negative** at 1.5, 2 and 3 sigma (at 2 sigma: +7.29 against -3.74 bps, 121 of 251 trades positive),
+  because the entire mean is **one year** -- 2022 contributes +189 bps while every other year sits between -6 and +1. The
+  held-out period says the same thing more plainly: **2024-2026 averages -1.06 bps** over 117 trades. A rule that pays
+  in the crash you cannot foresee and loses in the six years you can is not an edge, it is a bet on regime.
 - **Selling options: measured three times, and only the third one counts.** The first pass priced the straddle from an
   at-the-money approximation on strikes up to 6.4 % away from spot and called the variance premium negative on ten
   samples. The audit split those by moneyness and read +19.9 points on the four that were genuinely at the money --
