@@ -291,6 +291,14 @@ int main()
         assert(std::abs(round_trips.taker_notional_usd - 20.0) < 1e-12);
         assert(std::abs(round_trips.total_notional_usd - 30.0) < 1e-12);
         assert(std::abs(round_trips.turnover - 3.0) < 1e-12);
+        // The fees each round trip paid, and the pair that decides whether a run can pay at all: 0.6 over three
+        // trips is 0.2 a trip against an expectancy of -0.1667. The basis-point figure divides by the notional the
+        // run traded, which this fixture sets at 30 arbitrarily, so it is the arithmetic that is asserted here
+        // rather than the fixture's realism.
+        assert(std::abs(round_trips.fees_usd - 0.6) < 1e-12);
+        assert(std::abs(round_trips.fees_per_round_trip_usd - 0.2) < 1e-12);
+        assert(std::abs(round_trips.fees_bps_of_turnover - 0.6 / 30.0 * 1e4) < 1e-9);
+        assert(round_trips.fees_per_round_trip_usd > std::abs(round_trips.expectancy_usd));
 
         // The same distribution split by the side the position was opened on: two longs (one win, one loss at
         // -0.1 net) and one short (a loss). The split has to add up to the aggregate, and a side with no

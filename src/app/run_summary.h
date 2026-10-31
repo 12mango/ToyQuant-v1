@@ -199,6 +199,14 @@ struct RoundTripSummary
     double average_loss_usd{0.0};
     // Mean time from the position's opening fill to the closing one, over every round trip.
     double average_holding_seconds{0.0};
+    // What the round trips paid to be made: the fees booked to them when they closed, their mean, and the fees as
+    // a fraction of the notional that turned over. `expectancy_usd` is already net of these, so the decision a
+    // reader makes with this pair is whether the gross edge exists at all -- a strategy whose fees per round trip
+    // exceed its gross edge has no fee schedule it can survive, and that is the shape most of this repository's
+    // closed lines took.
+    double fees_usd{0.0};
+    double fees_per_round_trip_usd{0.0};
+    double fees_bps_of_turnover{0.0};
     // What the aggressive and the quoted fills traded, and their sum over the collateral the run started
     // with. A turnover below one says the account never did its own size in business, which is the capacity
     // question behind a participation limit.
@@ -527,6 +535,9 @@ struct RunSummary
                    << " average_win_usd=" << round_trips.average_win_usd
                    << " average_loss_usd=" << round_trips.average_loss_usd
                    << " average_holding_seconds=" << round_trips.average_holding_seconds
+                   << " fees_usd=" << round_trips.fees_usd
+                   << " fees_per_round_trip_usd=" << round_trips.fees_per_round_trip_usd
+                   << " fees_bps_of_turnover=" << round_trips.fees_bps_of_turnover
                    << " taker_notional_usd=" << round_trips.taker_notional_usd
                    << " total_notional_usd=" << round_trips.total_notional_usd
                    << " turnover=" << round_trips.turnover;

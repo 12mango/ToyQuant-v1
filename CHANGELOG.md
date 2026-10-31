@@ -222,6 +222,14 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
   ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
   enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
+- **Every run now states what a round trip cost it.** `[ROUND_TRIPS]` gains `fees_usd`, `fees_per_round_trip_usd`
+  and `fees_bps_of_turnover`: the fees booked to the closed round trips, their mean, and those fees over the notional
+  the run traded. `expectancy_usd` is already net of them, so the comparison that decides whether a run can pay at all
+  is now two adjacent fields -- fees per round trip against gross edge -- instead of a subtraction a reader had to do
+  from `[PNL]`. On the 200k slice a single round trip reports 0.004 USD of fees against 30 USD traded, 1.33 bps, which
+  is the maker rate the run paid. The ratio divides by the run's own notional and not by `quantity * price`: the latter
+  is not a notional on a fixed-face-value contract, and the first version of this field made that mistake and printed
+  0.003 bps where the answer was 1.33.
 - **The execution line reports which fee rate it paid, not just how much.** `[EXECUTION_ALGO]` gains `maker_share`,
   `maker_fees_bps` and `taker_fees_bps`: the share of the parent's filled quantity that rested, and the fee charged
   on each role, whose sum is the existing `is_fees_bps`. Every venue here prices the two roles differently -- 1.5

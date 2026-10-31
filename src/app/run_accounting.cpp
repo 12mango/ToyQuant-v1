@@ -167,6 +167,8 @@ void RunAccounting::fill_round_trip_distribution(const std::vector<ClosedTrade>&
     double win_sum = 0.0;
     double loss_sum = 0.0;
     double holding_seconds = 0.0;
+    double fee_total = 0.0;
+    double turnover_usd = 0.0;
     uint64_t wins = 0;
     uint64_t losses = 0;
     uint64_t count = 0;
@@ -178,6 +180,7 @@ void RunAccounting::fill_round_trip_distribution(const std::vector<ClosedTrade>&
         // The fee belongs to the fill, and the slice of it that closed this quantity was apportioned when
         // the trade was booked, so the net here is what the round trip contributed to realized PnL.
         const double net = trade.pnl - trade.fee;
+        fee_total += trade.fee;
         net_total += net;
         if (net > 0.0)
         {
@@ -202,6 +205,11 @@ void RunAccounting::fill_round_trip_distribution(const std::vector<ClosedTrade>&
     summary.average_win_usd = wins > 0 ? win_sum / static_cast<double>(wins) : 0.0;
     summary.average_loss_usd = losses > 0 ? loss_sum / static_cast<double>(losses) : 0.0;
     summary.average_holding_seconds = holding_seconds / trades_count;
+    summary.fees_usd = fee_total;
+    summary.fees_per_round_trip_usd = fee_total / trades_count;
+    // No ratio here: the notional a fee was charged on is the run's own figure, computed by `fill_notional_usd`
+    // with the instrument's face value, and a trade record does not carry the specification to recompute it. The
+    // aggregate summary divides by that figure instead.
 }
 
 RoundTripSummary RunAccounting::round_trip_summary(const std::vector<ClosedTrade>& trades,
@@ -214,6 +222,10 @@ RoundTripSummary RunAccounting::round_trip_summary(const std::vector<ClosedTrade
     summary.total_notional_usd = total_notional_usd;
     summary.turnover = starting_cash_usd > 0.0 ? total_notional_usd / starting_cash_usd : 0.0;
     fill_round_trip_distribution(trades, std::nullopt, summary);
+    // The fees booked to the closed round trips over the notional the run actually traded. Negatives are left on
+    // the books deliberately: a rebate would show up here as a negative cost rather than as a missing field.
+    summary.fees_bps_of_turnover =
+        total_notional_usd > 0.0 ? summary.fees_usd / total_notional_usd * 1e4 : 0.0;
     return summary;
 }
 
