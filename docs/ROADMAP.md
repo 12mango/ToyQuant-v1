@@ -344,17 +344,30 @@ term premium. A calendar spread therefore does not harvest carry at all; it bets
 this sample the slope moved by up to 330 bps in a single month. The level is a slope, the slope is a price, and a
 price is not an income.
 
-What survives the correction is the instrument the level was standing in for: **one dated future against spot** (or
-against the perpetual, which funding keeps near spot). There the convergence is contractual -- at its own expiry the
-future equals spot, so the entry basis is the return, whatever the path -- and the earlier six-sample run prices it at
-+195 to +382 bps annualised depending on the contract, with the 2026-10-01 sample at +95.6 bps over 85 days. What a
-level series cannot show, and what decides whether that is a business, is the path: the June 2026 inversion at -186
-bps annualised is a paper loss on the way, the venue charges margin on both legs, and the spot leg carries the venue's
-solvency. Those three are the next measurement, and they need the two-leg ledger rather than another price snapshot.
+What survives the correction is the instrument the level was standing in for: **one dated future against the index**.
+Priced that way on the same 91 samples -- the venue's own index price against the future's mark at noon -- the entry
+basis has a median of **+124 bps** and is negative in 3 of 31 contracts. Held from its first sample to its last, the
+basis decays by a median of **+77 bps**, the adverse widening before that decay is a median of **0** (the worst is
++189 bps, September 2020), and one round trip at 24 bps leaves a median of **+53 bps per quarter of notional**.
 
-The lesson is worth more than the number: **a carry statistic has to be the change in a price over the holding period,
-not the price itself**, and the way this one passed its own gates is the way a wrong statistic usually passes them --
-by looking exactly like an income.
+Then the capital arithmetic, which is where it ends:
+
+| item | value |
+|---|---:|
+| net per quarter of notional | +53 bps |
+| capital per unit notional | spot leg at 1:1 plus a 4 % initial margin on the future, so about 1.04 |
+| **net return on capital** | **about 2 % a year** |
+| worst adverse widening, against that 4 % margin | 1.9 % of notional, half the margin |
+| median size resting at the touch of a dated future | 20,000 to 240,000 USD, by year |
+| what that pays on a 100,000 USD position | **about 2,000 USD a year** |
+
+**Two per cent a year, below the risk-free rate the trade is supposed to harvest**, before the spot leg's venue is
+considered, on a position sized by a book whose top level holds tens of thousands of dollars. That is the honest end
+of this line: the convergence is contractual and real, the arithmetic that turns it into money on a retail account is
+not. The lesson is worth more than the number: **a carry statistic has to be the change in a price over the holding
+period, not the price itself**, and the way this one passed its own gates is the way a wrong statistic usually passes
+them -- by looking exactly like an income.
+
 
 
 The level, for the record, on all 91 samples: mean +696 bps annualised, median +689, worst -150, 85 of 91 positive,
