@@ -136,6 +136,7 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-30 | Pair pre-check before building a multi-symbol pipeline: Tardis serves ETH-PERPETUAL in the same schema without a key, and a fixed z-score rule captures 2–10 bps of reversion against a 28 bps round trip, so the pair closes by measurement rather than by missing data | `53f7f63` |
 | 2026-10-30 | Second instrument: `ETH-PERPETUAL` registered (five-cent tick, one dollar of face value, same fee), its account numbers separated from the BTC contract's, and the crossing floor measured at 6.88 against 5.39 bps for an identical fee | `432dc18` |
 | 2026-10-30 | Maker break-even is tick-dependent: −5.65 bps on the BTC contract against +1.26 on the ETH one, same venue and fee; recorded as a hint, because the free days give too few fills to settle it | `0b79452` |
+| 2026-10-31 | The campaign after the tick curve, each with its verdict in the sections above: the dated and calendar basis, the CME calendar over 23 quarterly holds, the straddle measured three times (the first two wrong), the maker revival test that falsifies "execution rescues a closed line", and the funding extreme that fails all three gates | `8df8777` … `86be0ce` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
