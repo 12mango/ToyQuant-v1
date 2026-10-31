@@ -222,6 +222,21 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
   ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
   enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
+- **Three candidates that would need speed, priced before any code was written.** Each is a place where being fast is
+  worth money for a measurable reason, and each was measured from free data. **The CME calendar**, held long the near
+  and short the far over 120 sessions, drifts **+0.54 bps a day (+64.6 in total, +11.4 a month) against a round trip of
+  1.94 bps** -- the cost is trivial and the drift is real, but the daily standard deviation is **29.76 bps, 55 times the
+  drift**, so a holder is paid half a basis point to sit through thirty. **Large aggressive prints**, the footprint of a
+  forced seller, do show continuation -- **+0.71 bps a second after a big buy, -0.68 after a big sell, against -0.09 for
+  a random trade** -- and it is **eight times too small** for a round trip that costs 8. **A stale quote on one venue**,
+  measured on 40.2 million aligned quote states on 2024-03-01, shows an executable gap between Binance's linear perp and
+  Deribit's inverse perp that is **positive 99 % of the day at a median of +2.99 bps** -- a level, not an opportunity,
+  which is why the harvestable part is the deviation from that level and not the level itself. The deviation, measured
+  against each minute's median over 3.1 million merged states: **median 0.00, p99 +2.39 bps, and above the 9 bps a
+  crossing round trip costs for 0.012 % of the day -- 16 spells, median 63 ms, under a minute in total.**
+  **Together the three say the same thing**: the CME slope drifts 11.4 bps a month against a 1.94 bps round trip but
+  carries 30 bps of daily noise; a forced seller continues 0.7 bps against an 8 bps round trip; a stale quote deviates
+  2.4 bps at the 99th percentile against 9. Speed decides which side of those numbers you are on, not what they are.
 - **The calendar basis passed its gates as a level and fails as a return -- my error, and the correction.** Ninety-one
   monthly samples from 2019 to 2026 price the calendar spread at a mean **+696 bps annualised, 85 of 91 positive**, and
   against a measured round trip of 20.5 to 30.2 bps it clears the three registered gates seven times over. That was the

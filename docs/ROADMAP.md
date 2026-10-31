@@ -176,7 +176,84 @@ Checked once, at the time of writing, so re-verify before paying for anything.
 | Bybit public data | trades, premium index and spot index; no order book directory | **rejected**: no L2 history |
 | Tardis paid, Crypto Lake, LOBSTER, Databento | wider L2 and L3 coverage | **rejected for now**: Tardis has a minimum order far above a few days of data, LOBSTER wants an academic address, and Databento is CME and Nasdaq, which would start a different measurement lineage rather than extend this one |
 
-## What stays inside this repository, and what does not
+## Three candidates that would need speed, measured
+
+The lines above all failed on cost per action. These three were chosen because each is a place where **being fast is
+worth money for a reason that can be measured**: a slope that decays over time, a forced seller whose footprint is in
+the trade tape, and a quote that is stale on one venue while fresh on another. All three are priced here from free
+data, before any code was written for them.
+
+### The CME calendar, measured the right way round
+
+The crypto calendar spread failed because its level was a slope and a slope is a price. The same statistic on a
+rates-driven slope behaves differently: `MESZ6` against `MESH7`, 120 daily settlements from 2026-05-07 to 2026-10-29,
+held long the near and short the far, gives a **mean daily PnL of +0.54 bps, a standard deviation of 29.76, a worst
+day of -131.7 and a total of +64.6 bps** over the sample, positive on 62 of 119 days.
+
+| item | value |
+|---|---:|
+| implied per month | +11.4 bps of notional |
+| one tick | 0.325 bps |
+| four commissions (both legs in and out) | 1.29 bps |
+| round trip incl. two tick-wide spreads | **1.94 bps** |
+| months of holding to pay it | **0.2** |
+
+So the cost is not the obstacle here and the drift is genuinely positive: **eleven basis points a month against a round
+trip of two**. What kills it as a trade is the second column: a daily standard deviation of 29.76 bps is **55 times the
+daily drift**, so a holder is paid about half a basis point a day to sit through thirty. That is what a risk premium
+looks like, and the 2026-07 widening to -66 bps in a month is the tail a margined account would meet.
+
+### Large aggressive prints: the sign is right and eight times too small
+
+A liquidation is not in Binance's daily archive, but its footprint is a large market order the taker crossed into the
+book. Taking the top percentile of sizes on BTCUSDT for 2024-03-28 -- 7,468 aggressive buys and 7,266 aggressive sells
+out of 1.47 million trades -- and measuring the price 1, 5, 30 seconds and 5 minutes later:
+
+| print | 1 s | 5 s | 30 s | 5 m |
+|---|---:|---:|---:|---:|
+| large aggressive buy | **+0.71 bps** | +0.77 | +0.98 | -0.35 |
+| large aggressive sell | **-0.68 bps** | -0.66 | -0.37 | +0.02 |
+| random trade (control) | -0.09 | -0.00 | +0.46 | -1.56 |
+
+The sign is exactly what a cascade should produce and the control shows no such thing, so the mechanism is real. It is
+also **eight times too small**: a round trip at the venue's own taker rate costs 8 bps and the continuation is worth
+one. Following a cascade is not a trade, it is a donation of the spread; fading it is worse, because the sign is
+against you.
+
+### A stale quote on one venue while the other is fresh
+
+Two venues, one asset, one free day, one vendor so the clocks and schemas match: Binance's linear perp against
+Deribit's inverse perp on 2024-03-01, 40.2 million aligned quote states. The raw executable gap -- one venue's ask
+against the other's bid -- is **positive 99.0 % of the day at a median of +2.99 bps**, which is not an opportunity but
+a level: two different contracts carry a small permanent basis, and only the deviation from that level can be
+harvested repeatedly.
+
+So the deviation is measured against each minute's median, over 3.1 million merged states in 1,440 minutes:
+
+| statistic | value |
+|---|---:|
+| per-minute baseline | median **+2.95 bps** (range +0.11 to +9.61 across the day) |
+| deviation, median / p95 / p99 | 0.00 / **+1.60** / **+2.39 bps** |
+| deviation, worst one-way | -9.34 bps |
+| share of the day above 9 bps (both taker fees) | **0.012 %** |
+| spells above 9 bps | **16 in the day**, median 63 ms, p90 258 ms, longest 2 s |
+| total time above 9 bps | **under a minute** |
+
+That is the answer to the stale-quote hypothesis, and it is no: the deviations are two and a half basis points at the
+99th percentile while a crossing round trip costs nine, so the opportunity exists for sixteen flashes of about sixty
+milliseconds in a day. A fast client changes the *reaction time* to those flashes; it does not change their number.
+What it would change, and what this measurement cannot see, is a version that **rests** on the stale venue instead of
+crossing it -- posting on the far side of the level and letting the deviation come to you. That is a maker trade, and
+the maker measurements above say what a resting quote earns here: negative before fees.
+
+**What the three together say.** Each candidate had a mechanism that speed genuinely serves, and each was priced
+against its own cost: the CME slope drifts +11.4 bps a month against a 1.94 bps round trip but carries 30 bps of daily
+noise; a forced seller's footprint continues 0.7 bps against an 8 bps round trip; a stale quote deviates 2.4 bps at the
+99th percentile against a 9 bps round trip. Two of the three are out by an order of magnitude and the third is a risk
+premium, not an edge. **Being fast does not move any of these ratios** -- it decides whether you are the one who takes
+the 0.7 bps or the one who provides it.
+
+
 
 The demo and a personal trading system share a method and one program, not a codebase. The line is drawn by
 what a change produces:
