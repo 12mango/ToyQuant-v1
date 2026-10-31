@@ -222,17 +222,20 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
   ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
   enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
-- **The calendar basis passes its registered test, 91 samples from 2019 to 2026.** The gates were written before the
-  numbers, on the instrument the previous run had left as a hypothesis: two dated legs, no spot custody, the annualised
-  basis against a round trip, and three conditions -- mean above three times the cost, worst inversion under half the
-  mean, positive in at least two thirds of the samples. **Mean +696 bps annualised, median +689, worst -150, and 85 of
-  91 samples positive.** The round trip, measured from the best-bid-offer archive on twelve days at a fixed hour
-  rather than from VWAP, is **20.5 to 30.2 bps**, of which 20 is four taker fees; a maker entry would be about 12. So
-  the cost gate is cleared seven times over, the worst inversion is -37 bps in quarter terms against a half-mean of
-  87, and 93 % of samples are positive against a gate of two thirds. The negatives cluster where the market was in
-  trouble -- April and May 2019, April 2020 a month after the crash, July 2022 in the deleveraging -- which is the
-  shape of a risk premium rather than of noise. What is not measured is the number that decides whether this is a
-  business: **the margin a delta-neutral pair requires**, because 696 bps is on the spread's notional, not on capital.
+- **The calendar basis passed its gates as a level and fails as a return -- my error, and the correction.** Ninety-one
+  monthly samples from 2019 to 2026 price the calendar spread at a mean **+696 bps annualised, 85 of 91 positive**, and
+  against a measured round trip of 20.5 to 30.2 bps it clears the three registered gates seven times over. That was the
+  first passing line in this repository and it was wrong: **a level is not a return**. Holding each pair one month and
+  pricing the same two contracts a month later gives 60 realised observations -- **mean -6.7 bps a month gross, 28 of
+  60 positive, worst -330, best +386, and -30.7 bps after one round trip**. The arithmetic is simple once written:
+  what converges to spot at its expiry is a future against spot; the gap between two futures converges to *the gap at
+  the near expiry*, which is not zero. A calendar spread bets on the **slope** of the curve, and the slope moved up to
+  330 bps in a month here. What survives is the instrument the level stood in for: **one dated future against spot**,
+  where convergence is contractual and the entry basis is the return -- +195 to +382 bps annualised on the six-sample
+  run, and the venue itself publishes 1.5 bps to rest and 3.5 to cross on a dated future with 25x maximum leverage,
+  which is a 4 % initial margin a leg. What is left to measure is the path, not the price: the June 2026 inversion at
+  -186 bps annualised, the margin on both legs, and the spot leg's venue.
+
 - **`--parent` on the best-bid-offer path, and the two things that path gets wrong.** The futures venue publishes
   percentage bands rather than a price ladder, so an execution run there reads the touch, which is all a crossing
   child needs. Two consequences. That path keeps the venue's millisecond event time where the book path carries

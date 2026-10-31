@@ -315,53 +315,55 @@ through the noise of an equity position. That makes the basis a **money-market t
 variant does not reopen the line either -- and the cost of finding that out was a fraction of a cent of data and one
 afternoon, which is the property the machinery was kept for.
 
-### The calendar basis, 91 monthly samples from 2019 to 2026
+### The calendar basis: a level, not a return
 
-The registered question was narrow on purpose, after the last run picked its own sample: the instrument is the
-**calendar pair** -- two dated legs, no spot custody -- the statistic is the annualised basis against a round trip, and
-the gates were fixed before the numbers: a mean net capture above three times the cost, a worst inversion smaller than
-half the mean, and a positive net in at least two thirds of the samples. The free archive serves the first day of every
-month, which gives 91 samples from 2019-04 to 2026-10, priced from the day's trade VWAP per contract.
+Registered before the run, and on the right instrument this time: the calendar pair, two dated legs, no spot custody,
+91 monthly samples from 2019-04 to 2026-10, basis from trade VWAP per contract, cost from the best-bid-offer archive
+on twelve days at a fixed hour. The gates were a mean net above three times the cost, a worst inversion under half the
+mean, and a positive net in two thirds of the samples.
 
-| year | samples | mean, bps p.a. | worst | positive |
-|---|---:|---:|---:|---:|
-| 2019 | 9 | +426 | **-141** | 7 of 9 |
-| 2020 | 12 | +653 | -23 | 11 of 12 |
-| 2021 | 12 | +1302 | +710 | 12 of 12 |
-| 2022 | 12 | +351 | **-150** | 10 of 12 |
-| 2023 | 12 | +440 | -16 | 11 of 12 |
-| 2024 | 12 | +1156 | +573 | 12 of 12 |
-| 2025 | 12 | +741 | +427 | 12 of 12 |
-| 2026 | 10 | +380 | +163 | 10 of 10 |
-| **all** | **91** | **+696** | **-150** | **85 of 91** |
+The **level** passes them: mean +696 bps annualised, median +689, worst -150, 85 of 91 samples positive, against a
+round trip of 20.5 to 30.2 bps -- seven times the cost. Every year is positive on average, and the six negatives
+cluster where the market was in trouble (April and May 2019, April 2020, July 2022).
 
-The cost is measured separately, on twelve days spread across the period, from the best-bid-offer archive at a fixed
-UTC hour rather than from VWAP: the two legs' half-spreads sum to 0.24 to 5.12 bps one way, so a **round trip is 20.5
-to 30.2 bps**, of which 20 bps is four taker fees at the venue's 5 bps. A maker entry would cost about 12 bps instead.
+**Then the level was turned into a return, and the result reversed.** What a holder earns is the change in that level
+over the holding period, not the level itself. Holding each pair for one month and pricing the same two contracts a
+month later gives 60 realised observations:
 
-**All three gates pass, and this is the first direction in this repository that does.** A mean of +696 bps annualised
-is about +174 bps per quarter against a round trip of 24, so the gate of three times the cost is cleared seven times
-over; the worst inversion, -150 bps annualised, is -37 bps in quarter terms against a half-mean of 87; and 85 of 91
-samples are positive against a gate of two thirds. The negatives are not noise either: they cluster exactly where the
-market was in trouble -- April and May 2019 at -139 and -141, April 2020 at -23 one month after the crash, July 2022
-at -150 in the middle of the deleveraging.
+| statistic | value |
+|---|---:|
+| mean realised, gross | **-6.7 bps per month** |
+| positive holds | **28 of 60** |
+| worst / best month | -329.7 / +386.3 bps |
+| net of one round trip per hold | **-30.7 bps** |
 
-Four limits decide whether this is a business or a curiosity, and three of them are unmeasured.
+So the gates were applied to a statistic that is not a return, and that pass is withdrawn. The arithmetic behind the
+reversal is not subtle once it is written down: what converges to spot at expiry is a **future against spot**. The gap
+between two futures converges to *the gap at the near expiry*, which is not zero -- it is the other leg's remaining
+term premium. A calendar spread therefore does not harvest carry at all; it bets on the **slope** of the curve, and in
+this sample the slope moved by up to 330 bps in a single month. The level is a slope, the slope is a price, and a
+price is not an income.
 
-* The basis and the cost are measured on different samples and combined by subtraction, not observed together. A
-  braver version of this table would have taken both from the same book on the same day.
-* **The 696 bps is on the spread's notional, not on capital.** A calendar spread still holds two futures, and what
-  the venue charges in margin for a delta-neutral pair -- and whether its portfolio margining credits the offset --
-  decides the return on capital. That number is not in this table and it is the next one that matters.
-* The position is two legs only until the near one expires; after that it is a naked short future that has to be
-  closed or rolled, and both of those are crossings this measurement never priced.
-* Venue risk, and the tail in the last row of the table: a month can reverse the trade entirely, and 2022-07 shows
-  the reversal lasting long enough to matter.
+What survives the correction is the instrument the level was standing in for: **one dated future against spot** (or
+against the perpetual, which funding keeps near spot). There the convergence is contractual -- at its own expiry the
+future equals spot, so the entry basis is the return, whatever the path -- and the earlier six-sample run prices it at
++195 to +382 bps annualised depending on the contract, with the 2026-10-01 sample at +95.6 bps over 85 days. What a
+level series cannot show, and what decides whether that is a business, is the path: the June 2026 inversion at -186
+bps annualised is a paper loss on the way, the venue charges margin on both legs, and the spot leg carries the venue's
+solvency. Those three are the next measurement, and they need the two-leg ledger rather than another price snapshot.
 
-What this changes is the shape of the answer, not the numbers: the market-making, execution, signal and pair lines all
-failed because the fee is charged per action and the edge per action is smaller than the fee. A calendar spread is the
-first thing here whose edge accrues **per day of holding** instead of per trade, which is why one round trip can pay
-for a quarter. Whether it pays for the capital is the question left.
+The lesson is worth more than the number: **a carry statistic has to be the change in a price over the holding period,
+not the price itself**, and the way this one passed its own gates is the way a wrong statistic usually passes them --
+by looking exactly like an income.
+
+
+The level, for the record, on all 91 samples: mean +696 bps annualised, median +689, worst -150, 85 of 91 positive,
+and every year positive on average. The round trip measured from the book is 20.5 to 30.2 bps, and the venue's own
+instrument metadata prices a dated future at 1.5 bps to rest and 3.5 to cross, so most of that is fees. Those are the
+numbers a level series produces, they look exactly like an income, and the realised series above is what a holder
+earned on the same samples.
+
+
 
 
 An earlier six-sample version of this question (the free days of 2026-05 to 2026-10) put the registered gates on the
