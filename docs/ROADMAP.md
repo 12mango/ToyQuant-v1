@@ -252,6 +252,41 @@ What it would change, and what this measurement cannot see, is a version that **
 crossing it -- posting on the far side of the level and letting the deviation come to you. That is a maker trade, and
 the maker measurements above say what a resting quote earns here: negative before fees.
 
+### Options: selling the straddle, which is the last thing that looked like an income
+
+Every line above earns per action or per day; selling options earns a **premium up front** for accepting a tail, which
+is the one structure this repository had never priced. Ten quarterly samples, 2020-02 to 2021-08: the at-the-money
+straddle of the nearest quarterly expiry, priced from its own best bid and offer at noon, its implied volatility
+recovered from the at-the-money straddle approximation, the realised volatility taken from the same window's daily
+closes, and the payoff in the coin-settled form the venue uses (an option pays |S - K| / S in BTC).
+
+| day | IV % | RV % | IV - RV | premium USD | payoff USD | PnL USD |
+|---|---:|---:|---:|---:|---:|---:|
+| 2020-02-01 | 59.4 | **155.2** | **-95.8** | 1,724 | 3,880 | -2,156 |
+| 2020-03-01 | 55.6 | **219.2** | **-163.6** | 1,027 | 2,911 | -1,884 |
+| 2020-05-01 | 77.2 | 61.9 | +15.3 | 2,179 | 159 | +2,020 |
+| 2020-06-01 | 66.2 | 44.9 | +21.3 | 1,317 | 351 | +966 |
+| 2020-08-01 | 64.3 | 52.4 | +11.9 | 2,330 | 342 | +1,988 |
+| 2020-11-01 | 59.6 | 70.9 | -11.3 | 2,513 | 6,500 | -3,987 |
+| 2021-02-01 | 112.3 | 90.1 | +22.2 | 11,702 | 14,308 | -2,606 |
+| 2021-03-01 | 101.7 | 68.2 | +33.5 | 10,188 | 6,107 | +4,081 |
+| 2021-05-01 | 66.3 | 109.9 | -43.6 | 11,909 | **44,742** | **-32,833** |
+| 2021-08-01 | 79.9 | 70.3 | +9.6 | 10,225 | 788 | +9,437 |
+
+**The premium is negative in this sample**: implied volatility averages **74.2 %** against realised **94.3 %**, the
+seller collects 0.69 dollars of premium for every dollar of payoff, and the average hold loses **45 % of the premium
+it took in** (mean -2,497 USD, median -459, positive on 5 of 10). Six of ten months did have IV above RV -- the
+premium exists in the quiet ones -- and the four that did not include both of the sample's crashes: February and March
+2020, when realised ran at 155 and 219 % against 59 and 56 sold, and May 2021, when a single expiry paid out 44,742
+USD against 11,909 collected.
+
+So the last structure that looked like an income does not pay either, and it fails in the way a short-gamma book
+always fails: **small gains most months, and the losses arrive in the months you cannot choose**. Two limits belong
+with the number -- ten samples, all from a crash-heavy period, and an at-the-money approximation for the implied
+volatility rather than a proper inversion -- but the direction is the same as every other line here, and the mechanism
+is the one BIS describes for crypto carry: a small investor's demand for upside is what the other side is paid to
+absorb, and it is not paid enough.
+
 **What the three together say.** Each candidate had a mechanism that speed genuinely serves, and each was priced
 against its own cost: the CME slope drifts +11.4 bps a month against a 1.94 bps round trip but carries 30 bps of daily
 noise; a forced seller's footprint continues 0.7 bps against an 8 bps round trip; a stale quote deviates 2.4 bps at the
