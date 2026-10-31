@@ -315,52 +315,60 @@ through the noise of an equity position. That makes the basis a **money-market t
 variant does not reopen the line either -- and the cost of finding that out was a fraction of a cent of data and one
 afternoon, which is the property the machinery was kept for.
 
-### The dated basis, measured over six monthly samples
+### The calendar basis, 91 monthly samples from 2019 to 2026
 
-The measurement above compares **two venues' perpetual funding**, and it closes that: the differential flips sign
-inside a day, so no run pays its round trip. That is not the carry trade the literature measures. A dated future
-carries a fixed gap to spot that has to close at delivery, and the gap is a different size. The free archive serves
-the first day of every month, so the same six samples that fed the tick curve also price this: Deribit's own trade
-files, VWAP per contract, the perpetual standing in for spot.
+The registered question was narrow on purpose, after the last run picked its own sample: the instrument is the
+**calendar pair** -- two dated legs, no spot custody -- the statistic is the annualised basis against a round trip, and
+the gates were fixed before the numbers: a mean net capture above three times the cost, a worst inversion smaller than
+half the mean, and a positive net in at least two thirds of the samples. The free archive serves the first day of every
+month, which gives 91 samples from 2019-04 to 2026-10, priced from the day's trade VWAP per contract.
 
-| contract | samples | annualised basis, bps p.a. | mean | worst | inversions |
-|---|---|---:|---:|---:|---:|
-| `BTC-26JUN26` | 2 | -127, -186 | **-157** | -186 | 2 of 2 |
-| `BTC-25SEP26` | 5 | +181, +87, +16, +367, +323 | **+195** | +16 | 0 |
-| `BTC-25DEC26` | 6 | +203, +198, +291, +405, +332, +410 | **+307** | +198 | 0 |
-| `BTC-26MAR27` | 6 | +275, +339, +216, +400, +507, +555 | **+382** | +216 | 0 |
-| all dated legs | 19 | -- | **+252** | -186 | 2 of 19 |
+| year | samples | mean, bps p.a. | worst | positive |
+|---|---:|---:|---:|---:|
+| 2019 | 9 | +426 | **-141** | 7 of 9 |
+| 2020 | 12 | +653 | -23 | 11 of 12 |
+| 2021 | 12 | +1302 | +710 | 12 of 12 |
+| 2022 | 12 | +351 | **-150** | 10 of 12 |
+| 2023 | 12 | +440 | -16 | 11 of 12 |
+| 2024 | 12 | +1156 | +573 | 12 of 12 |
+| 2025 | 12 | +741 | +427 | 12 of 12 |
+| 2026 | 10 | +380 | +163 | 10 of 10 |
+| **all** | **91** | **+696** | **-150** | **85 of 91** |
 
-Two legs of dated contracts need no spot at all, and the calendar spread is where the premium lives:
+The cost is measured separately, on twelve days spread across the period, from the best-bid-offer archive at a fixed
+UTC hour rather than from VWAP: the two legs' half-spreads sum to 0.24 to 5.12 bps one way, so a **round trip is 20.5
+to 30.2 bps**, of which 20 bps is four taker fees at the venue's 5 bps. A maker entry would cost about 12 bps instead.
 
-| calendar | samples | mean | worst | inversions |
-|---|---|---:|---:|---:|
-| Sep to Dec | 5 | +378 | +238 | 0 |
-| Sep to Mar | 5 | +419 | +310 | 0 |
-| Dec to Mar | 6 | **+494** | **+67** | 0 |
-| all calendars | 22 | **+399** | +67 | **0 of 22** |
+**All three gates pass, and this is the first direction in this repository that does.** A mean of +696 bps annualised
+is about +174 bps per quarter against a round trip of 24, so the gate of three times the cost is cleared seven times
+over; the worst inversion, -150 bps annualised, is -37 bps in quarter terms against a half-mean of 87; and 85 of 91
+samples are positive against a gate of two thirds. The negatives are not noise either: they cluster exactly where the
+market was in trouble -- April and May 2019 at -139 and -141, April 2020 at -23 one month after the crash, July 2022
+at -150 in the middle of the deleveraging.
 
-**The registered test fails, and the honest reading of the calendar is that it is a hypothesis.** The three gates were
-fixed before the numbers: a mean above three times the 20 bps round trip, a worst inversion smaller than half the
-mean, and the same sign in at least two thirds of the samples. On the dated legs the first and third pass (mean 252
-bps against a gate of 60; 17 of 19 positive) and **the second fails**, because the near contract inverted twice --
-June settled at 25 days to expiry with the future *below* the perpetual, at -186 bps annualised, while BTC fell from
-77,889 to 72,043. That is the crash regime the BIS paper warns about, and it is exactly the sample a holder of a
-cash-and-carry would have been marked through. The calendar series passes all three gates, and it is **not** a result
-because it was not the series the gates were registered on: choosing the instrument after seeing both is the same
-error as quoting the two days that agreed.
+Four limits decide whether this is a business or a curiosity, and three of them are unmeasured.
 
-Three limits belong with the numbers. The prices are daily VWAPs rather than executable quotes, and the dated legs are
-a hundredth of the perpetual's activity -- 2,406 and 3,517 trades against 280,411 on the same day -- so the spread
-paid to enter and leave is not in this table. The six samples are one regime: BTC ran from 77,889 to 84,003 with a dip
-to 59,587 in July, and the premium moved with it, Dec to Mar collapsing from +654 bps annualised in June to +67 in
-July, which is a 10x compression in one month and the opposite of a stable income. And a calendar position is two
-legs only until the near one expires; after that it is a naked short future that has to be closed or rolled, which is
-two more crossings priced by a book this measurement never looked at.
+* The basis and the cost are measured on different samples and combined by subtraction, not observed together. A
+  braver version of this table would have taken both from the same book on the same day.
+* **The 696 bps is on the spread's notional, not on capital.** A calendar spread still holds two futures, and what
+  the venue charges in margin for a delta-neutral pair -- and whether its portfolio margining credits the offset --
+  decides the return on capital. That number is not in this table and it is the next one that matters.
+* The position is two legs only until the near one expires; after that it is a naked short future that has to be
+  closed or rolled, and both of those are crossings this measurement never priced.
+* Venue risk, and the tail in the last row of the table: a month can reverse the trade entirely, and 2022-07 shows
+  the reversal lasting long enough to matter.
 
-The next registered question is therefore narrower and cheaper: the same six-sample shape on the **calendar** pair,
-with the entry cost taken from the book rather than from VWAP, and extended back to 2019 -- dated quarterly contracts
-existed then, the archive serves their first days for nothing, and a bear year is the sample this table does not have.
+What this changes is the shape of the answer, not the numbers: the market-making, execution, signal and pair lines all
+failed because the fee is charged per action and the edge per action is smaller than the fee. A calendar spread is the
+first thing here whose edge accrues **per day of holding** instead of per trade, which is why one round trip can pay
+for a quarter. Whether it pays for the capital is the question left.
+
+
+An earlier six-sample version of this question (the free days of 2026-05 to 2026-10) put the registered gates on the
+**dated legs against the perpetual**, failed them on the second -- the June contract inverted at -186 bps annualised as
+BTC fell from 77,889 to 72,043 -- and left the calendar spreads, which were positive in 22 of 22 samples, recorded as
+a hypothesis rather than a result, because the gates had been fixed on the other instrument. The table above is that
+hypothesis's registered test: the calendar pair, 91 samples, and the same three gates written down first.
 
 
 ### The carry gates executed: the three conditions the owner set, and the answer on nine months
