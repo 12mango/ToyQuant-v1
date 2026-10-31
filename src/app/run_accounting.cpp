@@ -168,7 +168,6 @@ void RunAccounting::fill_round_trip_distribution(const std::vector<ClosedTrade>&
     double loss_sum = 0.0;
     double holding_seconds = 0.0;
     double fee_total = 0.0;
-    double turnover_usd = 0.0;
     uint64_t wins = 0;
     uint64_t losses = 0;
     uint64_t count = 0;

@@ -273,19 +273,37 @@ closes, and the payoff in the coin-settled form the venue uses (an option pays |
 | 2021-05-01 | 66.3 | 109.9 | -43.6 | 11,909 | **44,742** | **-32,833** |
 | 2021-08-01 | 79.9 | 70.3 | +9.6 | 10,225 | 788 | +9,437 |
 
-**The premium is negative in this sample**: implied volatility averages **74.2 %** against realised **94.3 %**, the
-seller collects 0.69 dollars of premium for every dollar of payoff, and the average hold loses **45 % of the premium
-it took in** (mean -2,497 USD, median -459, positive on 5 of 10). Six of ten months did have IV above RV -- the
-premium exists in the quiet ones -- and the four that did not include both of the sample's crashes: February and March
-2020, when realised ran at 155 and 219 % against 59 and 56 sold, and May 2021, when a single expiry paid out 44,742
-USD against 11,909 collected.
+**Then the sample was audited, twice.** The first version applied the at-the-money approximation to strikes up to
+6.4 % away from spot, where it is not valid; splitting by moneyness made the premium look like +19.9 points on the four
+samples that were genuinely at the money and -45.4 on the six that were a skew trade. **That split was itself the same
+error one level down -- four samples is not a measurement.** So the question was re-run properly: the strike chosen as
+the nearest 100 (250 and 500 as fallbacks), the implied volatility inverted from Black-Scholes per leg, the expiry the
+nearest listed one at least twenty days out so every month contributes, and **92 straddles** from 2020-01 to 2026-09
+with a worst moneyness of 3.3 %.
 
-So the last structure that looked like an income does not pay either, and it fails in the way a short-gamma book
-always fails: **small gains most months, and the losses arrive in the months you cannot choose**. Two limits belong
-with the number -- ten samples, all from a crash-heavy period, and an at-the-money approximation for the implied
-volatility rather than a proper inversion -- but the direction is the same as every other line here, and the mechanism
-is the one BIS describes for crypto carry: a small investor's demand for upside is what the other side is paid to
-absorb, and it is not paid enough.
+| year | samples | IV % | RV % | IV - RV | mean PnL per straddle | positive |
+|---|---:|---:|---:|---:|---:|---:|
+| 2020 | 21 | 64.2 | 63.8 | +0.4 | -138 | 9 of 21 |
+| 2021 | 14 | 86.6 | 84.7 | +1.9 | -979 | 9 of 14 |
+| 2022 | 12 | 63.8 | 63.9 | -0.1 | -977 | 7 of 12 |
+| 2023 | 12 | 43.2 | 43.7 | -0.4 | -337 | 6 of 12 |
+| 2024 | 12 | 53.5 | 51.9 | +1.6 | **+1,421** | 8 of 12 |
+| 2025 | 12 | 43.1 | 41.8 | +1.3 | **+1,148** | 8 of 12 |
+| 2026 | 9 | 40.9 | 45.4 | -4.5 | -900 | 4 of 9 |
+| **all** | **92** | **58.4** | **58.1** | **+0.2** | **-105** | **51 of 92** |
+
+**The premium is real and it is worthless.** Implied exceeds realised in 63 % of months and averages **+0.2 volatility
+points** over six and a half years, against which the short straddle is a coin flip -- 51 of 92 -- with a mean of
+**-105 USD**, a median of +319, and a left tail that runs to **-25,450** against a best of +8,367. Two years pay and
+five do not. That is what a risk premium priced at fair value looks like: the seller is compensated in most months and
+not compensated on average, and the compensation he does take is smaller than the noise he carries.
+
+So this line closes, and it closes differently from how it opened twice. The first version called the premium negative
+on ten mixed samples; the audit called it +19.9 points on four; the measurement calls it +0.2 on ninety-two. **The
+progression is the point:** both earlier answers read a statistic off a sample small enough to say anything, and this
+repository's whole method is the correction of exactly that.
+
+
 
 ### Lead-lag: a large BTC print and the five alts that are supposed to follow it
 

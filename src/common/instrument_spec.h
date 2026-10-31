@@ -237,8 +237,8 @@ inline InstrumentSpec okx_eth_swap_spec(uint64_t quantity_scale = 1000000)
                           .tick_size = 0.01,
                           .quantity_scale = quantity_scale,
                           .lot_size = 1,
-                          .min_order_quantity = 10000,
-                          // One contract is 0.1 ETH, so with this scale the minimum order is 10000 units.
+                          .min_order_quantity = 100000,
+                          // One contract is 0.1 ETH, so with this scale the minimum order is 100000 units.
                           .contract_size = 0.1,
                           .maker_fee_rate = 0.0002,
                           .taker_fee_rate = 0.0005};

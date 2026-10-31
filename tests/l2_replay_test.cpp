@@ -193,6 +193,11 @@ int main()
         assert(instrument_spec_of("ETH-USDT-SWAP", eth_swap));
         assert(std::abs(btc_swap.contract_size - 0.01) < 1e-12);
         assert(std::abs(eth_swap.contract_size - 0.1) < 1e-12);
+        // The minimum order is one contract, so it is the contract value times the scale: 10000 units for BTC's
+        // hundredth of a coin and 100000 for ETH's tenth. The first version copied BTC's figure onto ETH and was
+        // ten times too small, which no run noticed because the parents used here are far above it.
+        assert(btc_swap.min_order_quantity == 10000);
+        assert(eth_swap.min_order_quantity == 100000);
         assert(std::abs(btc_swap.tick_size - 0.1) < 1e-12);
         assert(std::abs(eth_swap.tick_size - 0.01) < 1e-12);
         assert(std::abs(eth_swap.maker_fee_rate - btc_swap.maker_fee_rate) < 1e-12);

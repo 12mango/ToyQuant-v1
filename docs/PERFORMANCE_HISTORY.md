@@ -3056,10 +3056,13 @@ decides how often it trades; nothing in the configuration does.
 
 The better sample also answers what the hint could not. On the venue where the tick is negligible the gross is
 **negative in all eight windows**, -0.50 to -1.87 bps, so the passive quote loses money *before* the 2 bps maker fee
-is charged. And on the coarse-tick venue the ETH contract loses in all four of its days (-1.52 to -3.23), while the
-BTC contract is positive on two of four (-6.44, +5.47, -3.50, +5.22), which is a coin landing the way the drift
-pushed it. The maker line's closing therefore survives both venues: at 2 bps to rest, neither a hundredth of a basis
-point of tick nor a tick worth 3.76 pays.
+is charged. That figure is the run's gross PnL over the notional it quoted, and it carries the mark of whatever
+position the window ended holding, so it was audited against the closed-pnl figure that does not: on the two windows
+re-run, the closed gross is -0.64 bps on BTC and -0.99 on ETH against totals of -0.72 and -1.00, which is the same
+sign and nearly the same size. **The loss is not an artefact of the final mark.** And on the coarse-tick venue the ETH
+contract loses in all four of its days (-1.52 to -3.23), while the BTC contract is positive on two of four (-6.44,
++5.47, -3.50, +5.22), which is a coin landing the way the drift pushed it. The maker line's closing therefore survives
+both venues: at 2 bps to rest, neither a hundredth of a basis point of tick nor a tick worth 3.76 pays.
 
 
 Two caveats belong with the numbers. Round trips close in 0.03 to 0.14 seconds on the fine-tick venue, so this

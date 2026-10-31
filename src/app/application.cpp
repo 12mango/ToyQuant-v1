@@ -366,6 +366,10 @@ void Application::run_l2_session_mode() const
     InstrumentSpec instrument;
     if (!instrument_spec_of(cfg_.symbol, instrument))
         throw std::invalid_argument("no instrument specification for L2 replay symbol: " + cfg_.symbol);
+    // The positional quantity scale is accepted here for the same command shape as the other modes and then not
+    // applied: on this path the instrument's own scale is the contract's, and every recorded run passes a scale of
+    // one against a specification that carries a million, so honouring it would reprice the whole corpus. The mode
+    // line prints the figure actually in force, which is what keeps the no-op visible rather than silent.
     // A different maker fee rate than the venue's, for the runs that ask what the fee would have had to be.
     if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
     // And the account's own schedule, when a run names one. It is applied here, before the instrument reaches

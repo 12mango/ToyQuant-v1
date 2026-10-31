@@ -222,7 +222,16 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   dated legs and swapping instruments after seeing both is how a sample gets picked to fit. The open limits are the
   ones a VWAP cannot answer: the dated books trade a hundredth of the perpetual's activity, so the spread paid to
   enter is unmeasured, and the six samples are one bull regime whose premium compressed 10x in July.
-- **Every run now states what a round trip cost it.** `[ROUND_TRIPS]` gains `fees_usd`, `fees_per_round_trip_usd`
+- **Selling options: measured three times, and only the third one counts.** The first pass priced the straddle from an
+  at-the-money approximation on strikes up to 6.4 % away from spot and called the variance premium negative on ten
+  samples. The audit split those by moneyness and read +19.9 points on the four that were genuinely at the money --
+  which is the same error one level down. The measurement that counts chose the strike as the nearest 100, inverted
+  Black-Scholes per leg, took the nearest listed expiry at least twenty days out, and covered **92 straddles from
+  2020-01 to 2026-09**: implied **58.4 %** against realised **58.1 %**, a premium of **+0.2 volatility points**, and a
+  short straddle that is a coin flip -- **51 of 92 positive, mean -105 USD, median +319, left tail -25,450 against a
+  best of +8,367**. Implied exceeds realised in 63 % of months and the seller is still not paid on average, which is
+  what a risk premium priced at fair value looks like. Two years pay, five do not.
+
   and `fees_bps_of_turnover`: the fees booked to the closed round trips, their mean, and those fees over the notional
   the run traded. `expectancy_usd` is already net of them, so the comparison that decides whether a run can pay at all
   is now two adjacent fields -- fees per round trip against gross edge -- instead of a subtraction a reader had to do
