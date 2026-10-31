@@ -183,25 +183,31 @@ worth money for a reason that can be measured**: a slope that decays over time, 
 the trade tape, and a quote that is stale on one venue while fresh on another. All three are priced here from free
 data, before any code was written for them.
 
-### The CME calendar, measured the right way round
+### The CME calendar, over 23 quarterly holds
 
-The crypto calendar spread failed because its level was a slope and a slope is a price. The same statistic on a
-rates-driven slope behaves differently: `MESZ6` against `MESH7`, 120 daily settlements from 2026-05-07 to 2026-10-29,
-held long the near and short the far, gives a **mean daily PnL of +0.54 bps, a standard deviation of 29.76, a worst
-day of -131.7 and a total of +64.6 bps** over the sample, positive on 62 of 119 days.
+The crypto calendar spread failed because its level was a slope and a slope is a price. A rates-driven slope behaves
+better in one window and not in the sample: one pair, `MESZ6` against `MESH7`, drifts **+0.54 bps a day (+64.6 in
+total, +11.4 a month)** against a round trip of 1.94 bps -- and that is one window. Held over **23 quarterly holds from
+2021 to 2026**, front against next, ninety days each, at ES's fifty-dollar point value:
 
 | item | value |
 |---|---:|
-| implied per month | +11.4 bps of notional |
-| one tick | 0.325 bps |
-| four commissions (both legs in and out) | 1.29 bps |
-| round trip incl. two tick-wide spreads | **1.94 bps** |
-| months of holding to pay it | **0.2** |
+| net per hold | **mean +8 USD (-0.14 bps)**, median +20, worst -617 |
+| positive holds | **12 of 23** |
+| cost per hold | 30 USD (1.20 bps) |
+| worst mark-to-market drawdown per hold | mean -647 USD, worst **-1,900 USD** |
+| at 3,000 USD of spread margin | **+0.3 % per hold, +1.1 % a year**, worst hold -21 %, worst drawdown **-63 % of margin** |
 
-So the cost is not the obstacle here and the drift is genuinely positive: **eleven basis points a month against a round
-trip of two**. What kills it as a trade is the second column: a daily standard deviation of 29.76 bps is **55 times the
-daily drift**, so a holder is paid about half a basis point a day to sit through thirty. That is what a risk premium
-looks like, and the 2026-07 widening to -66 bps in a month is the tail a margined account would meet.
+So the cost is not the problem here either -- a hold costs 1.2 bps and the good windows pay 20 -- and the trade still
+fails, because **the outcome is a coin flip whose tail is twice the average gain and, at any retail margin, most of the
+margin itself**. The 2026 pair that looked like a positive drift was the window that happened to work, which is the
+same error as the two days that agreed, one level up.
+
+Two findings are worth keeping from it. The CME structure is the *cheapest* thing measured in this repository -- 1.2 bps
+per round trip against 4 to 24 in crypto -- so any future trade with a real edge should be expressed here rather than
+on a perpetual. And a slope's drift does not survive sampling: a single contract pair is one observation of a
+refinancing cycle, not a strategy.
+
 
 ### Large aggressive prints: the sign is right and eight times too small
 
