@@ -315,6 +315,33 @@ through the noise of an equity position. That makes the basis a **money-market t
 variant does not reopen the line either -- and the cost of finding that out was a fraction of a cent of data and one
 afternoon, which is the property the machinery was kept for.
 
+### The dated basis, which the funding-differential measurement did not cover
+
+The measurement above compares **two venues' perpetual funding**, and it closes that: the differential flips sign
+inside a day, so no run pays its round trip. That is not the carry trade the literature measures. A dated future
+carries a fixed gap to spot that must close at delivery, and the gap is an order of magnitude larger. On one free
+sample day, 2026-10-01, Deribit's own trade files give:
+
+| contract | vwap | days to expiry | gap to the perpetual | annualised | round trip at maker / taker |
+|---|---:|---:|---:|---:|---|
+| `BTC-PERPETUAL` | 84,002.61 | -- | -- | -- | -- |
+| `BTC-25DEC26` | 84,805.62 | 85 | **+95.6 bps** | **+4.10% p.a.** | 8 / 20 bps |
+| `BTC-26MAR27` | 86,248.87 | 176 | **+267.4 bps** | **+5.55% p.a.** | 8 / 20 bps |
+| Dec to Mar calendar | -- | 91 | **+170.2 bps** | **+6.83% p.a.** | 8 / 20 bps, no spot leg |
+
+The gap clears its own round trip by five to ten times rather than failing by an order of magnitude, and the last row
+needs no spot custody at all: two futures, opposite sides, and the spread converges because both legs expire. This is
+the one carry variant that is neither closed by the fee arithmetic nor the size of the money market, and the BIS
+documents its scale -- a working paper on crypto carry finds a basis averaging above 10% a year and reaching 60%,
+driven by leveraged retail demand and a scarcity of capital willing to take the other side, with the warning that
+holding that side is dangerous "due to spikes in margins and liquidations amid drawdowns".
+
+So the line's earlier closing stands for what it measured and does not extend to this. What it would take to settle
+it is what the machinery already has: the two-leg ledger, the funding series, and the fills priced through
+`fee_on_fill`, run over a dated future against a spot or perpetual leg. The open risks are the ones a PnL backtest
+handles worst -- venue solvency on the spot leg, margin calls on the short future, and the fact that the sample day
+above is one day of one quarter.
+
 ### The carry gates executed: the three conditions the owner set, and the answer on nine months
 
 The line's own measurement needed 745 hours to pay for its fees against 728 hours held, and it charged the fee once.
