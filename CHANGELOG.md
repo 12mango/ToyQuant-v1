@@ -233,12 +233,19 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
 - **Funding extremes as an event signal: a lottery with a story attached.** The last unmeasured class of information was
   the funding rate read as a crowd indicator -- when longs pay heavily, sell the perpetual and collect both the funding
   and the squeeze. The rule was registered before the numbers: a z-score of the rate against ninety days, a short above
-  it and a long below, an eight-hour hold, 8 bps of taker crossings, and three gates. Over 3,863 usable settlements of
-  BTCUSDT **all three gates fail at every threshold**, and the failure has a shape worth keeping: the **mean is positive
-  and the median negative** at 1.5, 2 and 3 sigma (at 2 sigma: +7.29 against -3.74 bps, 121 of 251 trades positive),
-  because the entire mean is **one year** -- 2022 contributes +189 bps while every other year sits between -6 and +1. The
-  held-out period says the same thing more plainly: **2024-2026 averages -1.06 bps** over 117 trades. A rule that pays
-  in the crash you cannot foresee and loses in the six years you can is not an edge, it is a bet on regime.
+  it and a long below, a hold from one settlement to the next, 8 bps of taker crossings, and three gates. Over 3,863
+  usable settlements of BTCUSDT **all three gates fail at every threshold**, and the failure has a shape worth keeping:
+  the **mean is positive and the median negative** at 1.5 and 2 sigma (at 2 sigma: +3.36 against -4.81 bps, 119 of 251
+  trades positive), and at 3 sigma the mean is **-1.03**. The whole positive mean is **one year** -- 2022 contributes
+  +136 bps while the other six are a scatter between -18 and +31. The held-out period says the same thing more plainly:
+  **2024-2026 averages -11.63 bps** over 117 trades. A rule that pays in the crash you cannot foresee and loses in the
+  six years you can is not an edge, it is a bet on regime.
+- **That measurement's first version was wrong, and wrong in the flattering direction.** It priced the entry from the
+  close of the hour that *starts* at the settlement and credited the position with that same settlement's funding, so a
+  trade that began an hour late was paid for a settlement it never held through -- and the rule selects exactly the
+  settlements whose rate is largest. Aligning the entry to the settlement instant and crediting the next settlement,
+  which is the one the hold spans, moved the two-sigma mean from +7.29 to +3.36 bps and the held-out mean from -1.06 to
+  -11.63. The verdict survived; the number had been paying itself.
 - **Selling options: measured three times, and only the third one counts.** The first pass priced the straddle from an
   at-the-money approximation on strikes up to 6.4 % away from spot and called the variance premium negative on ten
   samples. The audit split those by moneyness and read +19.9 points on the four that were genuinely at the money --

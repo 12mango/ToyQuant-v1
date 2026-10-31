@@ -3,8 +3,9 @@
 
 The rule was registered before the numbers were seen, so it lives here unchanged rather than in whichever form fitted
 the result: at each settlement, a z-score of the rate against the previous ninety days; a short when the z is high (the
-longs are paying and a contrarian collects both the funding and the squeeze) and a long when it is low; an eight-hour
-hold; and two taker crossings at four basis points each.
+longs are paying and a contrarian collects both the funding and the squeeze) and a long when it is low; a hold from the
+settlement instant to the next one, which collects the *next* settlement's funding because that is the one the position
+spans; and two taker crossings at four basis points each.
 
 The gates are part of the tool for the same reason: mean net above three times the cost, a worst trade shallower than
 half the mean, positive in two thirds of the calendar years, and 2024-2026 held back so the answer to "does it survive"
@@ -27,7 +28,7 @@ MONTHLY = "https://data.binance.vision/data/futures/um/monthly"
 UA = {"User-Agent": "toyquant"}
 COST_BPS = 8.0
 Z_WINDOW = 270
-LOOKAHEAD_MS = 8 * 3600 * 1000
+HOUR_MS = 3600 * 1000
 
 
 def month_list(start, end):
@@ -88,10 +89,10 @@ def z_score(history, rate):
     return None if sigma <= 0.0 else (rate - mu) / sigma
 
 
-def trade_return(z, rate, entry, exit_price):
-    """Net basis points of the rule's position, signed so a high z means short."""
+def trade_return(z, funding_rate, entry, exit_price):
+    """Net basis points of the rule's position, signed so a high z means short, on the funding it actually collects."""
     move = (exit_price / entry - 1.0) * 1e4
-    gross = (-move + rate * 1e4) if z > 0 else (move - rate * 1e4)
+    gross = (-move + funding_rate * 1e4) if z > 0 else (move - funding_rate * 1e4)
     return gross - COST_BPS
 
 
@@ -102,11 +103,16 @@ def build_trades(settlements, prices):
         z = z_score([value for _, value in settlements[index - Z_WINDOW:index]], rate)
         if z is None:
             continue
-        entry = prices.get(stamp)
-        exit_price = prices.get(stamp + LOOKAHEAD_MS)
+        # The price at the settlement is the close of the hour that ends there, and the hold runs to the next
+        # settlement, so the funding a position actually collects is the *next* row's. Crediting the signal's own rate
+        # was this tool's first bug: an entry priced an hour after the settlement was paid for a settlement it never
+        # held through, and the rule selects exactly the settlements whose rate is largest.
+        entry = prices.get(stamp - HOUR_MS)
+        exit_price = prices.get(stamp + 7 * HOUR_MS)
         if entry is None or exit_price is None:
             continue
-        trades.append({"ts": stamp, "z": z, "net": trade_return(z, rate, entry, exit_price)})
+        trades.append({"ts": stamp, "z": z,
+                       "net": trade_return(z, settlements[index + 1][1], entry, exit_price)})
     return trades
 
 
@@ -119,7 +125,20 @@ def self_test():
     assert abs(trade_return(2.0, 0.0001, 100.0, 99.9) - (10.0 + 1.0 - COST_BPS)) < 1e-9
     # A low z is a long, and with a negative rate the short side pays, so the long collects the same 1 bp.
     assert abs(trade_return(-2.0, -0.0001, 100.0, 100.1) - (10.0 + 1.0 - COST_BPS)) < 1e-9
-    print("self-test OK: the z-score and the signed return match hand arithmetic at both extremes")
+
+    # The alignment, end to end, because the price and the funding it is paid on are two separate indices and the first
+    # version of this tool got both wrong in the direction that flattered the rule. Prices are 1000 + the hour number,
+    # so the hour each leg lands on is visible in the number: a settlement at hour 2160 must enter at 3159 (the close of
+    # the hour that ends there, not the one that starts there) and exit eight hours later at 3167, and it must be paid
+    # the *next* settlement's rate -- 3 bps here -- rather than the 10 bps that fired the signal.
+    prices = {hour * HOUR_MS: 1000.0 + hour for hour in range(0, 2400)}
+    rates = [0.0001 if index % 2 else 0.0002 for index in range(272)]
+    rates[270], rates[271] = 0.001, 0.0003
+    trades = build_trades(list(zip([8 * HOUR_MS * index for index in range(272)], rates)), prices)
+    assert len(trades) == 1, len(trades)
+    expected = (-(3167.0 / 3159.0 - 1.0) * 1e4) + 3.0 - COST_BPS
+    assert abs(trades[0]["net"] - expected) < 1e-9, (trades[0]["net"], expected)
+    print("self-test OK: the z-score, the signed return and the entry/funding alignment match hand arithmetic")
 
 
 def main():

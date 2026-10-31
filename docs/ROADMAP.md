@@ -355,20 +355,29 @@ Seven thousand three hundred and ninety-five settlements of BTCUSDT, 3,863 with 
 
 | threshold | trades | mean net | median | worst | positive | by year |
 |---|---:|---:|---:|---:|---:|---|
-| abs z >= 1.5 | 453 | +3.17 bps | -5.88 | -813.9 | 215 of 453 | 2020 -16.7, 2021 -2.7, **2022 +120.1**, 2023 -4.4, 2024 -2.0, 2025 +6.2, 2026 -5.0 |
-| abs z >= 2.0 | 251 | +7.29 bps | -3.74 | -813.9 | 121 of 251 | 2020 -5.1, 2021 +0.9, **2022 +189.2**, 2023 -6.3, 2024 -0.1, 2025 -0.9, 2026 -5.5 |
-| abs z >= 3.0 | 104 | +4.30 bps | -6.83 | -813.9 | 49 of 104 | 2020 -34.4, 2021 -10.1, **2022 +257.7**, 2023 -7.7, 2024 +3.2, 2025 +11.8, 2026 -0.4 |
+| abs z >= 1.5 | 453 | +2.66 bps | -6.39 | -709.3 | 212 of 453 | 2020 -22.1, 2021 +35.1, **2022 +79.2**, 2023 -0.3, 2024 -11.6, 2025 +1.5, 2026 +2.1 |
+| abs z >= 2.0 | 251 | +3.36 bps | -4.81 | -709.3 | 119 of 251 | 2020 -17.7, 2021 +30.6, **2022 +135.6**, 2023 -0.2, 2024 -15.5, 2025 +2.5, 2026 -7.2 |
+| abs z >= 3.0 | 104 | -1.03 bps | -9.59 | -709.3 | 48 of 104 | 2020 -51.9, 2021 +39.3, **2022 +185.6**, 2023 +4.7, 2024 -38.2, 2025 +40.6, 2026 +56.5 |
 
 **All three gates fail at every threshold**, and the shape behind the failure is the finding. The mean is positive and
 the **median is negative at every threshold** -- most of these trades lose a little and a handful win enormously, which
-is a lottery ticket rather than an edge. The whole positive mean is **one year**: 2022 contributes +189 bps at the
-middle threshold and every other year is between -6 and +1. 2022 is the year of the deleveraging and the FTX
-collapse, when a negative funding extreme really did precede a squeeze.
+is a lottery ticket rather than an edge. The whole positive mean is **one year**: 2022 contributes +136 bps at the
+middle threshold, the other six years are a scatter between -18 and +31, and at three sigma the rule loses money
+outright. 2022 is the year of the deleveraging and the FTX collapse, when a negative funding extreme really did precede
+a squeeze.
 
-And the held-out period agrees with that reading rather than with the full sample: **2024-2026 averages -1.06 bps**
+And the held-out period agrees with that reading rather than with the full sample: **2024-2026 averages -11.63 bps**
 across 117 trades. There is no version of this rule that survives out of sample, and the reason is the same one that
 closed the carry line: a signal that pays in the year you cannot foresee and loses in the six you can is not a
 strategy, it is a lottery with a story attached.
+
+**The first version of this measurement was wrong, and wrong in the flattering direction.** It priced the entry from
+the close of the hour that *starts* at the settlement and then credited the position with that same settlement's
+funding -- a trade that began an hour late, paid for a settlement it never held through, and the rule selects exactly
+the settlements whose rate is largest. Aligning the entry to the settlement instant and crediting the *next* row's
+funding, which is the settlement the hold actually spans, moved the two-sigma mean from +7.29 to **+3.36** bps and the
+held-out mean from -1.06 to **-11.63**. The verdict did not change; the rule looked better than it was for exactly as
+long as it was paying itself.
 
 **The rule and its gates live in `tools/funding_extreme_test.py`**, not in this prose, so the table above is that
 tool's output rather than a paragraph that agreed with it -- the collection reads the same free monthly archives as the
@@ -406,7 +415,7 @@ Two things do survive, and neither is a strategy:
 
 What remains genuinely unmeasured is narrower than the list above, because the first item on it has now been measured:
 **funding-rate extremes as an event signal fail their own gates** (see above), and they fail in the way that matters --
-positive mean, negative median, one crisis year carrying the average, and -1.06 bps across the held-out 2024-2026.
+positive mean, negative median, one crisis year carrying the average, and -11.63 bps across the held-out 2024-2026.
 What is left is the information this repository has no feed for at all: on-chain flows, exchange netflows, stablecoin
 issuance, unlock calendars. Those are research rather than execution, they need their own pre-registration and
 out-of-sample discipline, and this repository's history says most such rules die the same way these did. It is the only
