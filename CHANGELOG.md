@@ -284,6 +284,16 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   at a time and pays a quarter of its commission against the whole 0.35 floor. The tier is a 43 percent cut of
   the commission line and a **zero percent** cut of the bill for a quoter; it pays in full only where orders fill
   in full. Raising the clip to where the floor would stop binding at a complete fill buys about 15 percent.
+- **The tier and the clip, measured against each other: the fee is smallest where the money is worst.** Seven runs
+  of the same window across three tiers and four clips: at a clip of 100 the tiers are **indistinguishable** (1.001
+  ticks a unit, the same net to the cent), at the clips a complete fill would need for the floor to stop binding
+  (175 and 234 shares) the fee falls to 0.881 and 0.847 while the gross closed P&L falls 45 and 107 percent, and at a
+  clip of 1,000 the fee is best at 0.766 and the net is worst at -8,798, because the clip that buys a smaller fee buys
+  six times the inventory. **A quoter that optimises its fee is optimising the wrong column.**
+- **The screen now prices breadth.** `tools/screen_spread.py` takes a capital and prints, per symbol, the round trip
+  in basis points at 20 names and the widest book that stays under a stated ceiling, using the capacity arithmetic
+  rather than a copy of it: AAPL at 50,000 USD and a three-tick trade spread is 3.79 bps at 20 names and 50 names
+  wide under 10 bps.
 - **A capacity table, so breadth is priced before it is chosen.** `tools/capacity_table.py` turns capital,
   name count, share price, spread and tier into round-trip basis points and a year of drag, and prints the clip
   at which the floor stops binding -- `0.35` divided by the rate, which is 100 shares at tier 1, 175 at tier 2 and

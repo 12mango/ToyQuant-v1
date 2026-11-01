@@ -2753,9 +2753,31 @@ fills is still 26 a fill. **The tier pays in full only where orders fill in full
 book rather than a quoter, and that is the whole difference between the two fee structures the research notes
 compare.
 
-Reproduction: `tools/equity_schedule_sweep.sh` prints all four tables from the two files on disk, including the
-three volume tiers above, and the attribution is `tools/calibrate_queue_model.py` on the same window -- the tool
-the perpetuals' queue model was calibrated with, which is what makes the two venues' numbers comparable at all.
+**The tier and the clip decide between them, and the fee is smallest exactly where the money is worst.** Seven
+runs on the same window: three tiers at the clip the tier would need for a *complete* fill and at the default, plus
+the two tiers at a clip large enough for the floor to be small.
+
+| tier | commission | clip | fee ticks/unit | of which the floor | gross closed USD | net USD |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 0.0035 | 100 | 1.001 | 0.418 | -1119.04 | -2201.62 |
+| 2 | 0.0020 | 100 | **1.001** | 0.568 | -1119.04 | -2201.62 |
+| 3 | 0.0015 | 100 | **1.001** | 0.618 | -1119.04 | -2201.62 |
+| 2 | 0.0020 | 175 | 0.881 | 0.449 | -1619.28 | -2749.44 |
+| 3 | 0.0015 | 234 | 0.847 | 0.465 | -2319.68 | -3477.88 |
+| 2 | 0.0020 | 1,000 | **0.783** | 0.355 | -7378.88 | -8826.23 |
+| 3 | 0.0015 | 1,000 | **0.766** | 0.388 | -7378.88 | -8798.13 |
+
+**The fee falls 23 percent down the column and the money falls by four times**, because the clip that buys the
+fee buys inventory with it: at a clip of 1,000 the position term is six times the one at a clip of 100, and the
+gross closed P&L goes from -1,119 to -7,379. The two rows the tier was supposed to rescue -- 175 and 234 shares,
+where the floor stops binding at a complete fill -- do cut the fee to 0.881 and 0.847, and they cost more in gross
+than they save, so the net gets worse in both. **The fee is not the term a quoter should be optimising**, and this
+grid is the fourth table in this document that says so from a different direction.
+
+Reproduction: `tools/equity_schedule_sweep.sh` prints every table in this section from the two files on disk,
+including the three volume tiers and the tier by clip grid, and the attribution is
+`tools/calibrate_queue_model.py` on the same window -- the tool the perpetuals' queue model was calibrated with,
+which is what makes the two venues' numbers comparable at all.
 
 
 

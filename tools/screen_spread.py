@@ -243,7 +243,42 @@ def measure(path, symbol, tick, multiplier, fee_per_share, schedule=None):
     }
 
 
-def report(args, results):
+def capacity_terms(schedule, fee_per_share):
+    """The screen's schedule in the shape the capacity arithmetic takes, so the two cannot disagree."""
+    terms = {"commission": fee_per_share, "min_order": 0.0, "clearing": 0.0, "audit": 0.0,
+             "regulatory": 0.0, "rebate": 0.0}
+    if schedule:
+        terms["commission"] = schedule["commission"] if schedule["commission"] > 0.0 else fee_per_share
+        terms["min_order"] = schedule["min"]
+        terms["clearing"] = schedule["clearing"]
+        terms["audit"] = schedule["audit"]
+        terms["regulatory"] = schedule["regulatory"]
+        terms["rebate"] = schedule["rebate"]
+    return terms
+
+
+def capacity_block(row, capital, schedule, args):
+    """What this symbol costs to run at a stated capital, at the breadths a personal account can reach.
+
+    The arithmetic is `tools/capacity_table.py`'s, imported rather than repeated: the price and the spread are this
+    symbol's own, measured above, and the schedule is the account's. What comes out is the number the screen has
+    never been able to print -- breadth buys cost, and the minimum per order is what charges for it.
+    """
+    from capacity_table import table as capacity_rows
+
+    terms = capacity_terms(schedule, args.fee_per_share)
+    price = row["price"] if row["price"] > 0 else 0.0
+    spread = row["median_trade_ticks"] if row["median_trade_ticks"] > 0 else row["median_ticks"]
+    if price <= 0.0:
+        return None
+    rows = capacity_rows(capital, [10, 20, 50, 100], price, spread, args.tick, terms, 12.0)
+    widths = [entry["names"] for entry in rows if entry["bps"] <= args.ceiling_bps]
+    at_twenty = next(entry for entry in rows if entry["names"] == 20)
+    return {"symbol": row["symbol"], "price": price, "spread": spread, "rows": rows,
+            "widest": max(widths) if widths else 0, "at_twenty": at_twenty}
+
+
+def report(args, results, schedule=None):
     print()
     floor = args.min_trades_per_second
     print("| symbol | price USD | median book spread | median trade spread | half at trades | fee/side | "
@@ -271,6 +306,18 @@ def report(args, results):
               f"schedule_ticks={row['schedule_ticks']:.6f} round_turn_ticks={row['round_turn_ticks']:.6f} "
               f"schedule_ratio={row['schedule_ratio']:.6f} threshold_ticks={schedule_threshold:.6f} "
               f"verdict={schedule_verdict}")
+    if args.capital > 0.0:
+        print()
+        print(f"[SCREEN] capacity: {args.capital:,.0f} USD of capital and a ceiling of {args.ceiling_bps:g} bps a "
+              f"round trip, at each symbol's own price and trade spread, for 10, 20, 50 and 100 names")
+        for row in results:
+            block = capacity_block(row, args.capital, schedule, args)
+            if block is None:
+                print(f"[SCREEN] capacity symbol={row['symbol']} no trade price, so no capacity")
+                continue
+            print(f"[SCREEN] capacity symbol={block['symbol']} price={block['price']:.4f} "
+                  f"spread_ticks={block['spread']:.3f} bps_at_20_names={block['at_twenty']['bps']:.3f} "
+                  f"widest_under_ceiling={block['widest']} ceiling_bps={args.ceiling_bps:g}")
     print()
     print(f"[SCREEN] the rule is the pre-registered one: half spread >= {args.min_ratio:.1f} x the fee per side, "
           f"which is a median spread of {args.min_ratio * 2.0 * (FEE_PER_SHARE / TICK):.3f} ticks at the default "
@@ -309,12 +356,18 @@ def main():
     parser.add_argument("--fee-per-share", type=float, default=FEE_PER_SHARE)
     parser.add_argument("--fee-schedule", default="",
                         help="the account's schedule as KEY=VALUE pairs, the same keys as the engine's flag: "
-                             "min, regulatory, clearing, audit, rebate. Empty, the default, applies the "
+                             "min, regulatory, clearing, audit, rebate, commission. Empty, the default, applies the "
                              "commission alone, which is what the recorded table was measured under. With a "
                              "schedule the second verdict compares the spread at the trades to the round turn of "
                              "the account's own terms at that share's price, and the minimum is reported but not "
                              "charged, because it is per order instance and top of book cannot see orders")
     parser.add_argument("--min-ratio", type=float, default=3.0)
+    parser.add_argument("--capital", type=float, default=0.0,
+                        help="USD of capital, which turns on the capacity block: what a round trip costs at this "
+                             "symbol's own price and spread for 10, 20, 50 and 100 names, and the widest book that "
+                             "stays under --ceiling-bps. 0, the default, prints the rule without the capacity")
+    parser.add_argument("--ceiling-bps", type=float, default=10.0,
+                        help="the round trip cost a name has to beat in the capacity block")
     parser.add_argument("--min-trades-per-second", type=float, default=0.0,
                         help="the activity floor recorded in docs/ROADMAP.md; 0, the default, reports "
                              "trades_per_second without a verdict")
@@ -336,7 +389,7 @@ def main():
         if not args.symbol:
             raise SystemExit("--input needs --symbol")
         report(args, [measure(args.input, args.symbol, args.tick, args.multiplier, args.fee_per_share,
-                             schedule)])
+                             schedule)], schedule)
         return 0
     symbols = [name.strip() for name in args.symbols.split(",") if name.strip()]
     if args.symbols_file:
@@ -355,7 +408,7 @@ def main():
     results = [measure(download(args, symbol), symbol, args.tick, args.multiplier, args.fee_per_share,
                        schedule)
                for symbol in symbols]
-    report(args, results)
+    report(args, results, schedule)
     return 0
 
 

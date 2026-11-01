@@ -97,6 +97,31 @@ schedule_row() {
       }'
 }
 
+# One run at a named commission tier and clip, for the table that asks whether a discount survives the partial
+# fills a quoting policy produces. The commission is the schedule's sixth key, so the run is priced exactly as the
+# account would be rather than by editing the venue registry.
+tier_row() {
+  local tier=$1 rate=$2 clip=$3 output units fees floor capture markout gross net
+  # shellcheck disable=SC2086
+  output=$("$BIN" l2_replay "$TRADES" "$DEPTH" "$SYMBOL" 0 active_l2 1 prorata --order-size="$clip" \
+    --inventory-limit=$((clip * 3)) --base-spread-ticks=1 $SCHEDULE,commission="$rate" 2>&1)
+  units=$(field_of "$output" trade_report_quantity)
+  fees=$(field_of "$output" fees_paid)
+  floor=$(field_of "$output" min_commission_paid)
+  capture=$(field_of "$output" captured_edge_per_unit_ticks)
+  markout=$(field_of "$output" markout_per_unit_ticks)
+  gross=$(field_of "$output" gross_closed_pnl_usd)
+  net=$(field_of "$output" net_pnl_usd)
+  awk -v m="$tier" -v r="$rate" -v s="$clip" -v u="$units" -v f="$fees" -v fl="$floor" -v c="$capture" \
+      -v k="$markout" -v g="$gross" -v n="$net" -v t="$TICK" \
+      -v o="$(field_of "$output" submitted_orders)" \
+      -v fills="$(field_of "$output" trade_reports)" 'BEGIN {
+        if (u + 0 == 0) { printf "| %s | %s | %s | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |\n", m, r, s; exit }
+        printf "| %s | %s | %s | %s | %s | %s | %.3f | %.3f | %.3f | %.3f | %.2f | %.2f |\n",
+          m, r, s, o, fills, u, c, k, f / u / t, fl / u / t, g, n
+      }'
+}
+
 echo "## Queue-model attribution, $SYMBOL $DAY"
 echo
 python3 tools/calibrate_queue_model.py "$DEPTH" "$TRADES" --max-rows=400000 | head -12
@@ -120,6 +145,22 @@ row prorata 100 default
 row prorata 500 default
 row prorata 1000 default
 row prorata 2000 default
+echo
+echo "## The tier against the clip: where a discount survives a partial fill"
+echo
+# The floor is charged per order instance, so what a tier is worth depends on how much of an order fills before
+# it is replaced, which is a property of the policy and not of the schedule. These rows put the two against each
+# other at the clip each tier would need for a complete fill, and at one large enough for the floor to be small.
+echo "| tier | commission | clip | order instances | fills | units | capture ticks/unit | markout ticks/unit | fee ticks/unit | of which the floor | gross closed USD | net USD |"
+echo "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+tier_row "1" 0.0035 100
+tier_row "2" 0.0020 100
+tier_row "3" 0.0015 100
+tier_row "2" 0.0020 175
+tier_row "3" 0.0015 234
+tier_row "2" 0.0020 1000
+tier_row "3" 0.0015 1000
+
 echo
 echo "## The refresh, which is what sets the number of order instances"
 echo
