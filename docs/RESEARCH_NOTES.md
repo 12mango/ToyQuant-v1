@@ -107,17 +107,21 @@ nothing.
 
 ### 3.2 The six levers, in order of size
 
-1. **The monthly volume tier, which is free and which no earlier note here mentions.** A window of the
-   size already measured crosses it: the AAPL window trades 108,667 shares in two hours, which is about
-   2.2 million a month and therefore **tier 2 at 0.0020**, and the notional-matched MU window's 164,599
-   shares are about 3.3 million and reach **tier 3 at 0.0015**. That is a 43 to 57 percent cut of the
-   commission line before anything else is touched, on the same strategy sized as it already is.
+1. **The monthly volume tier, which is free, and which the strategy that trades most does not collect.** A
+   window of the size already measured crosses it: the AAPL window's 108,667 shares in two hours are about 2.2
+   million a month and therefore **tier 2 at 0.0020**, and the MU window's 164,599 are about 3.3 million and reach
+   **tier 3 at 0.0015** — a 43 to 57 percent cut of the commission line. Measured through the engine on that
+   window, **the total fee does not move at all**: the floor absorbs every cent of the discount, because a quoting
+   strategy's order fills about 24 shares at a time and therefore pays a quarter of its commission against the
+   whole 0.35 floor. The tier pays in full only where orders fill in full, which is a factor or taker book, and
+   about 15 percent where they do not; the measured table is in
+   [Performance History](PERFORMANCE_HISTORY.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
 2. **Tiered rather than Fixed**, for any maker. The rebate is 0.0013 a share, worth 37 percent of a
    0.0035 commission, and Fixed neither collects nor passes it through.
 3. **The minimum per order has to move with the tier, or the discount is confiscated.** The floor is 0.35
    an order, so a clip of 100 shares pays exactly 0.35 at tier 1 and no more, but at tier 2 the same clip
-   pays 0.20 of commission against a 0.35 floor. The clip that keeps the floor invisible is
-   `0.35 / rate` shares: **100 shares at tier 1, 175 at tier 2, 234 at tier 3**. A strategy that halves
+   pays 0.20 of commission against a 0.35 floor. The clip that keeps the floor invisible **for a complete fill**
+   is `0.35 / rate` shares: **100 shares at tier 1, 175 at tier 2, 234 at tier 3**. A strategy that halves
    its rate without raising its clip hands the difference back.
 4. **The instrument class, which is worth more than any of the above in basis points.**
 

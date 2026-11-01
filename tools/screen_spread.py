@@ -53,7 +53,8 @@ FEE_PER_SHARE = 0.0035
 TICK = 0.01
 # The account's schedule, all zero until named, so a run without the flag reproduces the recorded table exactly:
 # the keys match the engine's own --fee-schedule, so one string prices the screen and the replay the same way.
-SCHEDULE_DEFAULTS = {"min": 0.0, "regulatory": 0.0, "clearing": 0.0, "audit": 0.0, "rebate": 0.0}
+SCHEDULE_DEFAULTS = {"min": 0.0, "regulatory": 0.0, "clearing": 0.0, "audit": 0.0, "rebate": 0.0,
+                     "commission": 0.0}
 
 
 def parse_schedule(text):
@@ -325,6 +326,11 @@ def main():
     if args.min_trades_per_second < 0.0:
         raise SystemExit("--min-trades-per-second cannot be negative")
     schedule = parse_schedule(args.fee_schedule) if args.fee_schedule else None
+    # A commission named in the schedule replaces the per-share default, which is how a broker's monthly volume
+    # tier is screened: the rate is a term of the same string the engine takes, so one command prices the screen
+    # and the replay the same way.
+    if schedule and schedule["commission"] > 0.0:
+        args.fee_per_share = schedule["commission"]
 
     if args.input:
         if not args.symbol:

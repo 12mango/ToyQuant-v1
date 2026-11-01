@@ -4,6 +4,7 @@
 #include <fstream>
 #include <vector>
 
+#include "app/app_config.h"
 #include "market/l2_replay_feed.h"
 #include "support/test_support.h"
 
@@ -203,5 +204,47 @@ int main()
         assert(std::abs(eth_swap.maker_fee_rate - btc_swap.maker_fee_rate) < 1e-12);
         assert(std::abs(eth_swap.taker_fee_rate - btc_swap.taker_fee_rate) < 1e-12);
         assert(eth_swap.exchange == btc_swap.exchange);
+    }
+
+    // The broker's monthly volume tier is a commission a share, and it is the one schedule term whose zero
+    // means "the venue's own rate" rather than "free". Naming it has to replace the instrument's figure, and
+    // naming any other key has to leave it alone, because a run that asks for a floor and nothing else still
+    // pays the venue's commission. This is the plumbing the tier measurements ride on.
+    {
+        std::vector<std::string> tokens{"toy_quant", "l2_replay", trades_path.string(), depth_path.string(),
+                                        "AAPL", "0", "active_l2", "1", "prorata",
+                                        "--fee-schedule=min=0.35,commission=0.0020"};
+        std::vector<char*> argv;
+        for (auto& token : tokens)
+            argv.push_back(token.data());
+        AppConfig cfg;
+        std::string error;
+        assert(parse_config(static_cast<int>(argv.size()), argv.data(), cfg, error));
+        assert(cfg.has_fee_schedule);
+        assert(cfg.fee_schedule.has_commission_per_share);
+        assert(std::abs(cfg.fee_schedule.commission_per_share - 0.0020) < 1e-12);
+        assert(std::abs(cfg.fee_schedule.min_commission_per_order - 0.35) < 1e-12);
+
+        std::vector<std::string> floor_only{"toy_quant", "l2_replay", trades_path.string(),
+                                            depth_path.string(), "AAPL", "0", "active_l2", "1", "prorata",
+                                            "--fee-schedule=min=0.35"};
+        std::vector<char*> floor_argv;
+        for (auto& token : floor_only)
+            floor_argv.push_back(token.data());
+        AppConfig plain;
+        assert(parse_config(static_cast<int>(floor_argv.size()), floor_argv.data(), plain, error));
+        assert(plain.has_fee_schedule);
+        assert(!plain.fee_schedule.has_commission_per_share);
+
+        // A key nobody defined is still refused rather than ignored, which is what keeps a typo from pricing a
+        // run at zero.
+        std::vector<std::string> typo{"toy_quant", "l2_replay", trades_path.string(), depth_path.string(),
+                                      "AAPL", "0", "active_l2", "1", "prorata",
+                                      "--fee-schedule=comission=0.0020"};
+        std::vector<char*> typo_argv;
+        for (auto& token : typo)
+            typo_argv.push_back(token.data());
+        AppConfig rejected;
+        assert(!parse_config(static_cast<int>(typo_argv.size()), typo_argv.data(), rejected, error));
     }
 }

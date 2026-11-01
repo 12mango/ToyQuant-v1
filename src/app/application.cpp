@@ -384,6 +384,12 @@ void Application::run_l2_session_mode() const
         instrument.clearing_fee_per_share = cfg_.fee_schedule.clearing_fee_per_share;
         instrument.audit_fee_per_share = cfg_.fee_schedule.audit_fee_per_share;
         instrument.maker_rebate_per_share = cfg_.fee_schedule.maker_rebate_per_share;
+        // The commission is applied only when the run named one, because the schedule's other terms default
+        // to zero and this one's zero means "the venue's own rate" rather than "free": a run that named a
+        // floor and nothing else must keep paying the instrument's commission, and a run that names a
+        // commission is asking for a different tier than the registry's.
+        if (cfg_.fee_schedule.has_commission_per_share)
+            instrument.fee_per_share = cfg_.fee_schedule.commission_per_share;
     }
     Logger logger = make_logger();
     if (live)
@@ -396,7 +402,8 @@ void Application::run_l2_session_mode() const
                    " regulatory_fee_rate=", instrument.regulatory_fee_rate,
                    " clearing_fee_per_share=", instrument.clearing_fee_per_share,
                    " audit_fee_per_share=", instrument.audit_fee_per_share,
-                   " maker_rebate_per_share=", instrument.maker_rebate_per_share);
+                   " maker_rebate_per_share=", instrument.maker_rebate_per_share,
+                   " fee_per_share=", instrument.fee_per_share);
     else
         logger.log("[Mode: L2 Replay] trades=", trades_file, " depth=", depth_file,
                    " symbol=", cfg_.symbol, " strategy=", cfg_.strategy_name,
@@ -406,7 +413,8 @@ void Application::run_l2_session_mode() const
                    " regulatory_fee_rate=", instrument.regulatory_fee_rate,
                    " clearing_fee_per_share=", instrument.clearing_fee_per_share,
                    " audit_fee_per_share=", instrument.audit_fee_per_share,
-                   " maker_rebate_per_share=", instrument.maker_rebate_per_share);
+                   " maker_rebate_per_share=", instrument.maker_rebate_per_share,
+                   " fee_per_share=", instrument.fee_per_share);
 
     // Per-stage timing is opt-in. The profiler allocates nothing until sampling starts, so
     // a run without --profile-stages pays nothing beyond this construction.

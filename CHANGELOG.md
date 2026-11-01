@@ -276,12 +276,25 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   can close this line. It also reconciles what the previous bullet left open: `net_pnl_usd` is the gross closed P&L
   less `fees_paid` to the cent, and the tick decomposition does not add to the gross because a window's closes include
   what a five-cycle markout cannot see.
+- **A broker's volume tier is a schedule term, and on a quoting strategy the fee floor takes it back.** The
+  schedule gained a sixth key, `commission`, so a run can be priced at the tier the account is actually on
+  rather than at the venue registry's rate; the screen tool takes the same key, so one string prices the screen
+  and the replay. Measured on the AAPL window at 0.0035, 0.0020 and 0.0015 a share: **the total fee is identical
+  to the cent at all three**, 1.001 ticks a unit and the same net, because a quote's order fills about 24 shares
+  at a time and pays a quarter of its commission against the whole 0.35 floor. The tier is a 43 percent cut of
+  the commission line and a **zero percent** cut of the bill for a quoter; it pays in full only where orders fill
+  in full. Raising the clip to where the floor would stop binding at a complete fill buys about 15 percent.
+- **A capacity table, so breadth is priced before it is chosen.** `tools/capacity_table.py` turns capital,
+  name count, share price, spread and tier into round-trip basis points and a year of drag, and prints the clip
+  at which the floor stops binding -- `0.35` divided by the rate, which is 100 shares at tier 1, 175 at tier 2 and
+  234 at tier 3, so a book of that many names needs that many times the share price in capital before a single
+  order pays its own commission. Its cells are checked against hand arithmetic in tier 1 of the gate.
 - **Line nine is forfeited, and the reason recorded is the measured one.** The thirty mid-cap names were priced at
   0.165701 USD and not bought, and the equity quoting line is closed on two measurements rather than on resolve: the
   gross is negative before any fee, and the sixth gate takes the one positive window to nothing at one millisecond each
   way. Writing "a pass line was registered, so nothing was run" would have been a category error -- the line is what a
   run is judged against, and the 17 cents was the price of the run.
-
+- **A round trip now reports what it paid.** `[ROUND_TRIPS]` gains `fees_usd`, `fees_per_round_trip_usd`
   and `fees_bps_of_turnover`: the fees booked to the closed round trips, their mean, and those fees over the notional
   the run traded. `expectancy_usd` is already net of them, so the comparison that decides whether a run can pay at all
   is now two adjacent fields -- fees per round trip against gross edge -- instead of a subtraction a reader had to do

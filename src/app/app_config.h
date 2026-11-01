@@ -164,8 +164,9 @@ struct AppConfig
     double maker_fee_rate = 0.0;
     // A whole broker schedule, for the runs that ask what the account's own terms would have produced: the
     // floor under one order's commission, the fee on the proceeds of a sale, the per-share fees on every
-    // execution, and the venue's credit for adding liquidity. `--fee-schedule=min=0.35,regulatory=0.0000206,
-    // clearing=0.0002,audit=0.000003,rebate=0.0013` sets all five, any subset sets the rest to zero, and a
+    // execution, the venue's credit for adding liquidity, and a commission per unit that replaces the
+    // instrument's own so a broker's monthly volume tier can be priced. `--fee-schedule=min=0.35,regulatory=0.0000206,
+    // clearing=0.0002,audit=0.000003,rebate=0.0013` sets five of the six, any subset sets the rest to zero, and a
     // run that names none is priced under the venue's own schedule, which is every recorded row.
     struct ScheduleTerms
     {
@@ -174,6 +175,14 @@ struct AppConfig
         double clearing_fee_per_share{0.0};
         double audit_fee_per_share{0.0};
         double maker_rebate_per_share{0.0};
+        // The per-unit commission this run is charged instead of the instrument's own. It is separate from
+        // the terms above and carries its own flag because zero is a *meaningful* value for the others (an
+        // unscheduled run has no floor) while the commission's zero would silently wipe the venue's rate:
+        // naming `commission` replaces the instrument's figure, and naming any other key leaves it alone.
+        // The use it exists for is the volume tier a broker prices by monthly shares, where the same
+        // strategy pays a different commission at 100,000 shares a month and at 3,000,000.
+        bool has_commission_per_share{false};
+        double commission_per_share{0.0};
     };
     bool has_fee_schedule = false;
     ScheduleTerms fee_schedule;

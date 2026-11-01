@@ -209,8 +209,9 @@ void print_usage(const char* executable)
         std::cerr << "   schedule: --fee-schedule=KEY=VALUE[,KEY=VALUE] (l2_replay) prices a run under a "
                      "broker's own schedule, where the keys are min (a floor per order, in USD), regulatory "
                      "(a fraction of the proceeds of a sale), clearing and audit (USD a share on every "
-                     "execution) and rebate (USD a share of credit for adding liquidity); every one of them "
-                     "is zero unless named, and the [Mode] line reports the five in force";
+                     "execution), rebate (USD a share of credit for adding liquidity) and commission (USD a "
+                     "share instead of the instrument's own, for a broker's monthly volume tier); every one of "
+                     "them is zero unless named, and the [Mode] line reports the terms in force";
         std::cerr << "\n";
         std::cerr << "   fees: --maker-fee-rate=R replaces the venue's maker rate for a sensitivity "
                      "measurement, and the run reports it in the [Mode] line\n";
@@ -1088,9 +1089,14 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         cfg.fee_schedule.audit_fee_per_share = value;
                     else if (key == "rebate")
                         cfg.fee_schedule.maker_rebate_per_share = value;
+                    else if (key == "commission")
+                    {
+                        cfg.fee_schedule.commission_per_share = value;
+                        cfg.fee_schedule.has_commission_per_share = true;
+                    }
                     else
                     {
-                        error = "--fee-schedule keys are min, regulatory, clearing, audit and rebate";
+                        error = "--fee-schedule keys are min, regulatory, clearing, audit, rebate and commission";
                         return false;
                     }
                 }

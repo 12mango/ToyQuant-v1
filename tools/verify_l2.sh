@@ -220,6 +220,10 @@ tier1() {
   # which is why the tool decodes none.
   local tool_check=0
   python3 tools/fetch_iex_hist.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The capacity table is arithmetic over the fee schedule, and that schedule is what every equities row in the
+  # documents is priced with: a table of money is worth what its arithmetic is, so its own hand-checked cells run
+  # here rather than being trusted.
+  python3 tools/capacity_table.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&

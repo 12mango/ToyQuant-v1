@@ -142,3 +142,7 @@ schedule_row "commission only" ""
 schedule_row "tiered, no rebate" "--fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0"
 schedule_row "tiered, rebate" "$SCHEDULE"
 schedule_row "tiered, rebate, no floor" "--fee-schedule=min=0,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013"
+# The broker's monthly volume tiers, at the clip above rather than at the clip the tier would need: the point of
+# these two rows is that the floor takes back what the tier gives, which is only visible with both columns.
+schedule_row "tier 2, rebate" "--fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013,commission=0.0020"
+schedule_row "tier 3, rebate" "--fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013,commission=0.0015"

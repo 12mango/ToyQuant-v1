@@ -2732,9 +2732,30 @@ P&L less `fees_paid`, to the cent (-1119.04 - 380.33 = -1499.37, and so on down 
 decomposition does not add up to the gross because a window's closes include what a five-cycle markout cannot see.
 The money column is the gross, and the tick fields are what explain it rather than a substitute for it.
 
-Reproduction: `tools/equity_schedule_sweep.sh` prints all three tables from the two files on disk, and the
-attribution is `tools/calibrate_queue_model.py` on the same window -- the tool the perpetuals' queue model was
-calibrated with, which is what makes the two venues' numbers comparable at all.
+**The volume tier is the largest fee lever this account has, and on a quoting strategy the floor takes it back.**
+The broker prices its commission a share by monthly volume: 0.0035 up to 300,000 shares a month, 0.0020 to
+3,000,000, 0.0015 to 20,000,000. The same window, the same fills and the same schedule at each of the three, in
+ticks a unit:
+
+| commission | tier | venue and schedule | the floor | total | net USD |
+|---|---|---:|---:|---:|---:|
+| 0.0035 | 1, to 300,000 shares | 0.582 | 0.418 | 1.001 | -2201.62 |
+| 0.0020 | 2, to 3,000,000 | 0.432 | 0.569 | **1.001** | **-2201.62** |
+| 0.0015 | 3, to 20,000,000 | 0.382 | 0.619 | **1.001** | **-2201.62** |
+
+**The total is identical at all three rates and the net does not move by a cent.** The commission falls 0.15 of a
+tick a tier and the floor rises by exactly the same, because this strategy's orders fill about 23.6 shares at a
+time -- 108,667 shares over 4,614 fills -- and an order that fills a quarter of its size pays a quarter of the
+commission a full one would, against the whole 0.35 floor. Raising the clip to where the floor would stop binding
+at a *complete* fill, 175 shares at tier 2 and 234 at tier 3, does buy something and much less than the arithmetic
+suggests: 1.001 ticks a unit becomes **0.881 and 0.847**, about 15 percent, because 128,583 shares over 4,897
+fills is still 26 a fill. **The tier pays in full only where orders fill in full**, which is a taker or a factor
+book rather than a quoter, and that is the whole difference between the two fee structures the research notes
+compare.
+
+Reproduction: `tools/equity_schedule_sweep.sh` prints all four tables from the two files on disk, including the
+three volume tiers above, and the attribution is `tools/calibrate_queue_model.py` on the same window -- the tool
+the perpetuals' queue model was calibrated with, which is what makes the two venues' numbers comparable at all.
 
 
 

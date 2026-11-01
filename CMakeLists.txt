@@ -79,6 +79,7 @@ set(LINE_SOURCES
 # The application layer's own files, listed here for the same reason as the two above: a target takes the
 # layer rather than repeating what is in it.
 set(APP_SOURCES
+    src/app/app_config.cpp
     src/app/fill_accounting.cpp
     src/app/order_ledger.cpp
     src/app/pipeline.cpp
@@ -122,7 +123,7 @@ set(STACK_SOURCES ${CORE_SOURCES} ${LINE_SOURCES} ${APP_SOURCES})
 
 # ==================== toy_quant Executable ====================
 # The entry point and the two files only it uses. Everything else arrives through the three layers.
-add_executable(toy_quant src/main.cpp src/app/app_config.cpp src/app/application.cpp)
+add_executable(toy_quant src/main.cpp src/app/application.cpp)
 target_link_libraries(toy_quant PRIVATE toy_core toy_lines toy_app)
 set_target_properties(toy_quant PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
