@@ -135,7 +135,7 @@ tier1() {
   local prose_check=0
   python3 tools/lint_prose.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
       docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md docs/LATENCY_DESIGN.md docs/index.md \
-      docs/ROADMAP.md docs/RETROSPECTIVE.md docs/MAINLINE.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+      docs/ROADMAP.md docs/RETROSPECTIVE.md docs/MAINLINE.md docs/RESEARCH_NOTES.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   python3 tools/check_layering.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   # The eight closed lines are claims about arithmetic too, and a copied number drifts the way a copied claim does.
   # This re-derives every quotient from the recorded inputs, checks that the first gate to fire is the one the line

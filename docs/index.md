@@ -36,6 +36,7 @@ wrong with the demo, and the three lengths of the same story for talking about i
 | [Performance](PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted | the mechanism behind each accepted change (`LATENCY_DESIGN`) | the ledger's claims are paired measurements from `tools/measure_l2_baseline.py` |
 | [Low-Latency Design](LATENCY_DESIGN.md) | Why each low-latency change is faster: problem, mechanism, and the designs that were measured and rejected | the numbers themselves (`PERFORMANCE`) | prose linted |
 | [Performance History](PERFORMANCE_HISTORY.md) | Measurements in the order they were taken, kept as a lab notebook, superseded ones included | the current set of conclusions | marked blocks re-run by `tools/check_docs.py` |
+| [Research Notes](RESEARCH_NOTES.md) | External cases of individual quantitative trading, the nine tests that separate a business from a bet, and what a Hong Kong account on Interactive Brokers Pro can do about the fee | any measurement of this repository, or a plan | every external claim carries a `[read]`, `[reported]` or `[not verified]` mark; prose linted |
 | [Data Files](https://github.com/12mango/ToyQuant-v1/blob/main/data/README.md) | Tick CSV format, runtime outputs, typical workflow | - | - |
 
 ## What the project covers, and what it deliberately does not
