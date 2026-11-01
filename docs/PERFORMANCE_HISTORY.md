@@ -2635,6 +2635,93 @@ must carry to earn its spread, and no quoting parameter changes either of the tw
 that is left is the venue, where the same arithmetic comes out differently, and `docs/ROADMAP.md` now carries the
 test for one rather than a preference between them.
 
+## What the queue model decides, and what the per order floor does
+
+Two questions were left open by the equities rows above, and both are answered from files that were already
+on disk.
+
+**The first is which model the tape supports.** `conservative` lets only a trade move a queue; `prorata`
+lets a level's whole decrease move it. The attribution is the one `tools/calibrate_queue_model.py` already
+makes for the perpetuals -- every level decrease split into the part the trades explain and the part they do
+not -- run on the same two hours of AAPL and of AMD:
+
+| window, 400,000 depth rows | decrease events | explained by trades | therefore cancelled |
+|---|---:|---:|---:|
+| AAPL 2026-09-29 | 201,696 | 450,041 units, **5.0 %** | 8,639,668 units, **95.0 %** |
+| AMD 2026-09-29 | 202,318 | 380,161 units, **4.0 %** | 9,115,442 units, **96.0 %** |
+
+**One unit in twenty that leaves a price level leaves because it traded; the other nineteen are cancelled.**
+So `conservative` is not a conservative model of a US equity book, it is a model of a different book, one in
+which nobody ever cancels: a floor by a factor rather than by a shade, which is a stronger statement than the
+one F4 could make when it called its row "a floor rather than the window's answer".
+
+**The second is whether the sign survives the whole schedule, and here the sentence has to be narrowed
+rather than repeated.** F4 says the model "decides the sign as well", and that was measured against one
+side's commission, 0.35 of a tick. Under the account's own terms -- commission, clearing, the audit fee, the
+SEC fee on the proceeds of a sale, the credit for adding liquidity and the minimum per order -- the same
+window, policy and clip come out:
+
+| queue model | fills | units | capture ticks/unit | markout ticks/unit | fee ticks/unit | of which the floor | closed USD | net USD |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| conservative | 2,294 | 59,601 | 0.655 | +0.033 | 0.936 | 0.354 | -2046.48 | -2046.19 |
+| prorata | 4,614 | 108,667 | 1.020 | -0.272 | 1.001 | 0.418 | -2206.57 | -2201.62 |
+| lumpy | 4,304 | 105,769 | 1.032 | -0.281 | 0.985 | 0.402 | -2026.32 | -2016.91 |
+| optimistic | 4,775 | 118,290 | 1.073 | -0.330 | 0.965 | 0.382 | -2188.78 | -2178.31 |
+
+**The model doubles the fill count and moves the capture by 64 percent, from 0.655 to 1.073 ticks a unit, and
+the two hours lose money in all four rows** -- closed between 2,026 and 2,207 USD. So the model decides how
+many fills there are and what each one is worth, and against the whole schedule it does not decide the sign.
+The capture the other three models find does clear the 0.35 commission the earlier sentence compared it with;
+it does not clear the 0.94 to 1.00 a fill actually pays, and that is the whole difference between the two
+claims.
+
+**The fee term a policy can move is the floor, and it moves by requoting less rather than by quoting bigger.**
+The clip first, `prorata` at the default refresh:
+
+| clip | fills | units | capture ticks/unit | markout ticks/unit | fee ticks/unit | of which the floor | closed USD |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 100 | 4,614 | 108,667 | 1.020 | -0.272 | 1.001 | 0.418 | -2206.57 |
+| 500 | 5,160 | 153,927 | 0.948 | -0.176 | 0.877 | 0.297 | -5058.14 |
+| 1,000 | 5,152 | 164,599 | 0.922 | -0.132 | 0.856 | 0.278 | -8788.51 |
+| 2,000 | 5,114 | 168,626 | 0.923 | -0.113 | 0.845 | 0.270 | -11485.20 |
+
+Twenty times the clip takes the floor from 0.418 to 0.270 ticks a unit and the whole fee from 1.001 to 0.845,
+so the floor **dilutes but never disappears**, and the reason is that its numerator is the number of orders that
+end below it rather than the size of them: of the 44,537 orders two hours of this policy submits, about **2,000**
+end below the floor whatever the clip is, because that count follows how often the quote is replaced and not how
+much each one quotes. The refresh is the control that owns the term:
+
+| refresh | order instances | fills | units | capture ticks/unit | markout ticks/unit | capture plus markout | fee ticks/unit | of which the floor | closed USD |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 97,094 | 2,778 | 68,743 | 1.258 | -0.479 | 0.779 | 1.184 | 0.603 | -1393.97 |
+| 4 | 19,784 | 6,329 | 145,741 | 0.742 | +0.025 | 0.767 | 0.843 | 0.260 | -2586.43 |
+| 16 | 11,545 | 7,236 | 163,034 | 0.389 | +0.358 | 0.747 | 0.769 | 0.187 | -3696.10 |
+| 64 | 11,535 | 7,276 | 163,974 | 0.374 | +0.364 | 0.738 | 0.769 | 0.186 | -3786.17 |
+
+**A slower requote buys a smaller fee by giving back exactly the capture it saves.** The floor falls from 0.603
+to 0.186 ticks a unit -- a third of the fee at the fast end and a quarter at the slow end -- and the capture
+falls with it while the markout rises, so **capture plus markout is 0.779, 0.767, 0.747, 0.738: flat**. The fee
+is the only term in the table that moves independently, and what it buys is 0.415 of a tick, which takes the
+gap between cost and edge from 0.405 to 0.031 ticks and leaves a loss between 1,394 and 3,786 USD. That is the
+third time this document has found the same shape, and the first time on a venue where the fee is a fraction
+of a tick rather than a multiple of one: **capture and markout are one number in two halves, and a policy that
+changes one changes the other by the same amount.**
+
+**What this does not show is that the fields add up to the money, and they do not.** At the default clip the
+decomposition leaves a few tenths of a tick of gap while `closed_pnl_usd` is -2.03 ticks a unit, and at a clip
+of 2,000 the money is -6.81 ticks a unit against a decomposition that is still within a fraction of one. The
+difference lives inside the account rather than inside the measurement -- a window's closed P&L includes fills
+that the capture and the five-cycle markout do not describe -- and it is **recorded rather than reconciled**,
+because a decomposition presented as if it added up to the money would be the more expensive error of the two.
+What the fields are exact for is the comparison they make in one unit under one policy: the fee against the
+capture, which is the question this section was asked.
+
+Reproduction: `tools/equity_schedule_sweep.sh` prints all three tables from the two files on disk, and the
+attribution is `tools/calibrate_queue_model.py` on the same window -- the tool the perpetuals' queue model was
+calibrated with, which is what makes the two venues' numbers comparable at all.
+
+
+
 ## The non-market-making signal: what 27 parameter sets say
 
 `trend_l2` is not a market maker, so the questions are different: not where to quote but how much to hold, and

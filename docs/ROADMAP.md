@@ -864,14 +864,26 @@ tick.
 
 **Those captures are the conservative queue model, and on SPY that is a floor rather than the window's answer.**
 The same window under the other three models fills 2,281 to 2,716 times instead of 799 and captures 0.4189 to
-0.4364 ticks instead of 0.267855 — so the model decides the fill count by 3.4x, and it decides the sign as well: a
-fill pays one side's commission of 0.35 ticks, so the floor's capture covers 77% of it while the other three cover
-120 to 125%. SPY is therefore the first window measured whose **quoting edge sits on the fee rather than under
-it**, which is what its positive breakeven rate says from the other side, and it changes what the search has to
-find: not a market whose fee is small, but one whose spread is wide enough that a fill's capture clears the fee
-even at the model's lower bound. The measurement behind that, the equity book's churn against its traded volume,
-and why the effect is larger here than the perpetuals' small fill counts could show are in
+0.4364 ticks instead of 0.267855 — so the model decides the fill count by 3.4x, and against the commission
+alone it decides the sign as well: a fill pays 0.35 ticks of commission, so the floor's capture covers 77% of
+it while the other three cover 120 to 125%. SPY is therefore the first window measured whose **quoting edge
+sits on the fee rather than under it**, which is what its positive breakeven rate says from the other side, and
+it changes what the search has to find: not a market whose fee is small, but one whose spread is wide enough
+that a fill's capture clears the fee even at the model's lower bound. The measurement behind that, the equity
+book's churn against its traded volume, and why the effect is larger here than the perpetuals' small fill
+counts could show are in
 [Performance History](PERFORMANCE_HISTORY.md#the-same-measurement-on-an-equity-book).
+
+**Two things have since been measured about that sentence, and the second narrows it.** The tape says which
+model is the right one: on AAPL and on AMD, **5.0 and 4.0 percent of the units that leave a price level leave
+because they traded, and the other 95 or 96 percent are cancelled**, so a model that moves a queue only on
+trades is a floor by a factor and not by a shade. And the sign: under the **account's whole schedule** — 0.94
+to 1.00 ticks a fill rather than 0.35 — the four models fill 2,294 to 4,775 times, capture 0.655 to 1.073
+ticks a unit, and **lose money in all four**, 2,026 to 2,207 USD on the same two hours. So the model decides
+the fill count and the capture, and against what a fill actually pays it does not decide the sign. The tables,
+the clip sweep that shows the per order floor diluting from 0.418 to 0.270 ticks a unit, and the refresh sweep
+that shows the floor is bought with capture, are in
+[Performance History](PERFORMANCE_HISTORY.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
 
 The screen is therefore **the half spread at the trades, at least three times the fee per side**, measured by
 `tools/screen_spread.py` from top of book before any depth is bought; the tool prices a window before it spends
@@ -968,6 +980,41 @@ ends of that trade-off, and the direction it leaves is a candidate list this cac
 spread is wide in ticks *and* whose flow clears the floor, which on this evidence is a mid-cap single name rather
 than an exchange traded fund or a mega cap. That list is the next purchase, it is a few dollars of top of book, and
 the rule it is judged against is the one above, written down before any of it was screened.
+
+### Line nine, pre-registered: the mid-cap single names
+
+**The list, and the three properties it is built from rather than picked by.** Thirty single names, none of them in
+the cache the two screens above were run on: **U, DKNG, CHWY, RUN, IONQ, ACHR, JOBY, HIMS, AFRM, UPST, TOST, SMCI,
+HL, CDE, AG, UEC, UUUU, RIG, VAL, NE, TDW, RXRX, CRSP, OKLO, LUNR, RGTI, QBTS, SOUN, EXK, SOFI**. A **price between
+5 and 80 USD**, because the SEC fee is charged on the proceeds of a sale and is the largest single term in an
+equity fill: at 20 USD it is 0.021 of a tick a sale against the 0.685 the AAPL screen was failed by and the 1.58 a
+765 dollar share would pay. A **single name rather than a fund**, because a basket's spread is arbitraged down to
+the tick that buys it while a mid-cap's is not. And **no name already screened**, so the answer is new rather than
+a second look at a list that has already had one.
+
+**The rule is the one above, unchanged, and four things are written down before the window is priced.**
+
+1. **What it costs**: top of book, one two-hour window, priced by the screen's own cost mode before any download
+   and bought only under a five dollar cap. The recorded rate is 0.52 USD for thirty symbols, and the credit it
+   comes out of is 124.03 USD that becomes zero on 2027-03-30, so the alternative to spending it here is spending
+   it later on the same thing or losing it.
+2. **What passes**: a `schedule_ratio` of at least **3.0** — the median spread at the trades against three times
+   the round turn of the account's own schedule at that share's price — **and** at least **2.8 trade prints a
+   second**, which is the activity floor recorded above. Both halves, or it does not pass.
+3. **What a pass buys**: one ten-level two-hour window of the best-passing symbol through the pinned policy under
+   the account's schedule, which is the measurement every recorded equity row is and costs about 0.20 USD.
+4. **What a fail means**: **the equity quoting line is closed with its numbers**, and whatever is left of the
+   credit is recorded here as forfeited **with the amount**, rather than left unspent and unnoticed.
+
+**The stop line is the point of writing this first.** Every screen so far has produced either a symbol to buy or a
+reason the axis was wrong; this one is allowed to produce only the first, because the two axes it could fail on —
+spread and flow — have both already been measured at their ends and there is no third axis the screen can see.
+
+**It has since been priced, and it is a sixth of the recorded rate.** The screen's cost query on the thirty names
+over the same two hours comes to **0.165701 USD**, against the 0.52 the mega caps cost, and the difference is the
+point rather than a bargain: at this schema the price follows the message count, so IONQ's two hours are 0.019674
+and VAL's are **0.000263**, a seventy-five-fold spread inside one list. Nothing has been bought yet; the figure is
+what the pre-registered cap of 5 USD buys with room to run it four times over if the first pass has to be repeated.
 
 ### The seven things that must be true before any engineering
 

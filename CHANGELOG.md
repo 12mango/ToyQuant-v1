@@ -255,6 +255,18 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   short straddle that is a coin flip -- **51 of 92 positive, mean -105 USD, median +319, left tail -25,450 against a
   best of +8,367**. Implied exceeds realised in 63 % of months and the seller is still not paid on average, which is
   what a risk premium priced at fair value looks like. Two years pay, five do not.
+- **The queue model on a US equity book, and the fee term that is actually a policy choice.** `conservative` moves a
+  queue only when the level trades; the tape says that is a model of a book where nobody cancels: on AAPL and on AMD
+  **5.0 and 4.0 percent of the units leaving a price level leave by trading and 95 or 96 percent are cancelled**, so
+  `prorata` is the default this venue supports. And the F4 sentence "the model decides the sign as well" is true
+  against the commission and not against the account's schedule: at **0.94 to 1.00 ticks a fill** the four models
+  fill 2,294 to 4,775 times and capture 0.655 to 1.073 ticks a unit, and **all four lose money**, 2,026 to 2,207 USD
+  over the same two hours. What the policy owns is the **minimum per order**, 0.354 to 0.418 of the fee: a twentyfold
+  clip dilutes it to 0.270 but never to zero, because its numerator is the number of order instances rather than
+  their size, and slowing the requote from every one price move to every sixteen cuts it to 0.187 while the capture
+  falls by exactly as much -- capture plus markout stays at 0.78, 0.77, 0.75, 0.74 across four refresh settings.
+  Reproduced by `tools/equity_schedule_sweep.sh`, and recorded with the caveat that the tick fields and
+  `closed_pnl_usd` do not reconcile.
 
   and `fees_bps_of_turnover`: the fees booked to the closed round trips, their mean, and those fees over the notional
   the run traded. `expectancy_usd` is already net of them, so the comparison that decides whether a run can pay at all
