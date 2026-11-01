@@ -679,6 +679,7 @@ void Application::run_l2_session_mode() const
                " incremental_batches=", validation.incremental_batches,
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches);
     logger.log(pipeline.summary().to_log_string());
+    logger.log("[EXPOSURE] ", pipeline.exposure().to_log_string());
     if (gateway != nullptr)
     {
         // The client's own account of the order path: what it sent, what it absorbed as a retry, and

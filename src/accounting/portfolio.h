@@ -76,6 +76,48 @@ struct PortfolioMetrics
     }
 };
 
+// One symbol's contribution to the book, valued at the marks the caller passes in. Signed: a long is
+// positive and a short negative, because the whole point of the report is that the two cancel.
+struct ExposureLeg
+{
+    std::string symbol;
+    int64_t quantity{0};
+    double notional_usd{0.0};
+};
+
+// What the book is exposed to, which a single position cannot answer. One account can be long one instrument
+// and short another, and then its **net** exposure is near zero while its **gross** is not: the carry line's
+// position term is the net number and the fee bill is charged on the gross one. A one-symbol book reports the
+// same value twice, which is the identity that makes the two columns readable.
+struct PortfolioExposure
+{
+    std::vector<ExposureLeg> legs; // sorted by symbol, so two runs of the same book print the same line
+    double gross_usd{0.0};         // the sum of |notional|
+    double net_usd{0.0};           // the absolute value of the sum of signed notionals
+    double fees_usd{0.0};          // fees booked to this account, either side
+    std::size_t symbol_count{0};
+
+    // Gross carried per unit of net: 1.0 for a single leg, and unbounded for a book that holds two legs while
+    // being flat in net terms. Zero is reported as zero rather than as infinity, because a flat book has no
+    // ratio to state.
+    double gross_to_net() const { return net_usd > 0.0 ? gross_usd / net_usd : 0.0; }
+
+    std::string to_log_string() const
+    {
+        std::ostringstream stream;
+        stream << "symbols=" << symbol_count << " legs=";
+        for (size_t index = 0; index < legs.size(); ++index)
+        {
+            if (index != 0) stream << ',';
+            stream << legs[index].symbol << ':' << legs[index].quantity << ':' << legs[index].notional_usd;
+        }
+        if (legs.empty()) stream << "none";
+        stream << " gross_usd=" << gross_usd << " net_usd=" << net_usd
+               << " gross_to_net=" << gross_to_net() << " fees_usd=" << fees_usd;
+        return stream.str();
+    }
+};
+
 class Portfolio
 {
    public:
@@ -169,6 +211,12 @@ class Portfolio
     }
 
     const PortfolioPosition* find_position(const std::string& symbol) const;
+
+    // The book's exposure at a set of marks, read without moving the account, on the same contract as
+    // `equity_at`. A symbol with no mark is valued at zero: a leg the run cannot price is a fact about the
+    // data rather than something to hide, and the leg still appears with its quantity so a reader can see it.
+    // Flat positions are omitted, because a book that closed out holds nothing to be exposed to.
+    PortfolioExposure exposure(const std::unordered_map<std::string, double>& prices) const;
 
    private:
     // The one valuation loop. `mark_to_market` writes its two outputs into the account, `equity_at`

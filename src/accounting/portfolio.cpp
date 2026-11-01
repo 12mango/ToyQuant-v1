@@ -207,6 +207,37 @@ const PortfolioPosition* Portfolio::find_position(const std::string& symbol) con
     return it == positions_.end() ? nullptr : &it->second;
 }
 
+PortfolioExposure Portfolio::exposure(const std::unordered_map<std::string, double>& prices) const
+{
+    PortfolioExposure out;
+    double signed_sum = 0.0;
+    for (const auto& [symbol, position] : positions_)
+    {
+        // A flat position is not an exposure, and a book that closed out should report no legs rather than a
+        // leg of zero that a reader has to filter.
+        if (position.quantity == 0) continue;
+        const auto mark = prices.find(symbol);
+        const double price = mark == prices.end() ? 0.0 : mark->second;
+        const double units = static_cast<double>(position.quantity) / static_cast<double>(quantity_scale_);
+        out.legs.push_back(ExposureLeg{.symbol = symbol,
+                                       .quantity = position.quantity,
+                                       .notional_usd = units * unit_value(price)});
+    }
+    // Sorted by symbol: the account is a hash map, and a report whose lines move between runs is a report
+    // nobody can diff.
+    std::sort(out.legs.begin(), out.legs.end(),
+              [](const ExposureLeg& left, const ExposureLeg& right) { return left.symbol < right.symbol; });
+    for (const auto& leg : out.legs)
+    {
+        out.gross_usd += std::abs(leg.notional_usd);
+        signed_sum += leg.notional_usd;
+    }
+    out.net_usd = std::abs(signed_sum);
+    out.fees_usd = fees_paid_;
+    out.symbol_count = out.legs.size();
+    return out;
+}
+
 double Portfolio::accrue_interval_flow(const std::string& symbol, double interval_rate,
                                        double mark_price)
 {

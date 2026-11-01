@@ -35,6 +35,12 @@ class Pipeline
     void process_l2_market_trade(const MarketTrade& trade);
     RunSummary summary() const;
 
+    // The book's exposure at the latest quotes this pipeline has seen. The pipeline is where the two halves
+    // meet -- one mid per symbol, and an account that already keys positions by symbol -- so this is the read
+    // that turns them into the gross and net numbers a multi-instrument book is judged by, without a second
+    // copy of the valuation arithmetic.
+    PortfolioExposure exposure() const;
+
     uint64_t filtered_market_trades() const
     {
         return filtered_market_trades_;

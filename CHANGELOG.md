@@ -294,6 +294,17 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   in basis points at 20 names and the widest book that stays under a stated ceiling, using the capacity arithmetic
   rather than a copy of it: AAPL at 50,000 USD and a three-tick trade spread is 3.79 bps at 20 names and 50 names
   wide under 10 bps.
+- **The book reports what it is exposed to, gross against net.** `[EXPOSURE]` prints one
+  `SYMBOL:quantity:notional` per leg, sorted by symbol, then the sum of the sizes, the size of the sum, their ratio
+  and the fees paid, valued at the last quote each symbol showed and read without moving the account. The tag is not
+  `[PORTFOLIO]` because the account's own line already carries that one, and two different lines behind one tag is
+  a grep that lies. It is the
+  first half of roadmap item 9 (multi-instrument, portfolio and netting): the account has keyed positions by symbol
+  since the carry line needed it, so what was missing was the read that a single position cannot answer — **gross is
+  what the fees are charged on and net is what the position risk is** — and a two-leg book that nearly cancels now
+  states a gross of twenty-one times its net in the unit test rather than in a paragraph. A closed leg is not an
+  exposure and an unpriceable one is still reported with its quantity. The pipeline half, a run that trades more
+  than one book at once, is still one engine and one strategy per run and remains the next slice.
 - **A capacity table, so breadth is priced before it is chosen.** `tools/capacity_table.py` turns capital,
   name count, share price, spread and tier into round-trip basis points and a year of drag, and prints the clip
   at which the floor stops binding -- `0.35` divided by the rate, which is 100 shares at tier 1, 175 at tier 2 and

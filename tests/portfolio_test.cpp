@@ -461,4 +461,59 @@ int main()
         plain.mark_to_market({{"SPY", 6101.0}});
         assert(std::abs(plain.metrics().unrealized_pnl - 1.0) < 1e-6);
     }
+
+    // The book's exposure, which one position cannot answer: gross is what fees are charged on and net is what
+    // the position risk is. A single-leg book reports the same number twice, and that identity is what makes the
+    // pair readable.
+    {
+        Portfolio two_legs(1, 1000.0);
+        two_legs.apply(ExecutionReport{.side = exchange::Side::Buy,
+                                       .exec_type = ExecType::Trade,
+                                       .symbol = "LONG",
+                                       .price = 100.0,
+                                       .quantity = 10,
+                                       .owner = "test",
+                                       .liquidity_role = LiquidityRole::Maker,
+                                       .fee = 0.10});
+        two_legs.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                       .exec_type = ExecType::Trade,
+                                       .symbol = "SHORT",
+                                       .price = 50.0,
+                                       .quantity = 20,
+                                       .owner = "test",
+                                       .liquidity_role = LiquidityRole::Maker,
+                                       .fee = 0.20});
+        const auto exposure = two_legs.exposure({{"LONG", 110.0}, {"SHORT", 50.0}});
+        assert(exposure.symbol_count == 2);
+        // Sorted by symbol, so the leg order is a property of the report rather than of the hash map.
+        assert(exposure.legs[0].symbol == "LONG");
+        assert(std::abs(exposure.legs[0].notional_usd - 1100.0) < 1e-9);
+        assert(exposure.legs[1].symbol == "SHORT");
+        assert(std::abs(exposure.legs[1].notional_usd + 1000.0) < 1e-9);
+        // Gross is the sum of the sizes, net is the size of the sum: two legs that nearly cancel report a gross
+        // of 2100 against a net of 100, which is the number a hedged book is judged by.
+        assert(std::abs(exposure.gross_usd - 2100.0) < 1e-9);
+        assert(std::abs(exposure.net_usd - 100.0) < 1e-9);
+        assert(std::abs(exposure.gross_to_net() - 21.0) < 1e-9);
+        assert(std::abs(exposure.fees_usd - 0.30) < 1e-12);
+
+        // A closed leg is not an exposure, and a leg the run cannot price is still reported with its quantity
+        // rather than dropped: an unpriceable position is a fact about the run, not something to hide.
+        two_legs.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                       .exec_type = ExecType::Trade,
+                                       .symbol = "LONG",
+                                       .price = 120.0,
+                                       .quantity = 10,
+                                       .owner = "test",
+                                       .liquidity_role = LiquidityRole::Taker,
+                                       .fee = 0.0});
+        const auto after_close = two_legs.exposure({{"LONG", 120.0}, {"SHORT", 50.0}});
+        assert(after_close.symbol_count == 1);
+        assert(after_close.legs[0].symbol == "SHORT");
+        const auto unmarked = two_legs.exposure({});
+        assert(unmarked.symbol_count == 1);
+        assert(unmarked.legs[0].notional_usd == 0.0);
+        assert(unmarked.gross_usd == 0.0);
+        assert(unmarked.gross_to_net() == 0.0);
+    }
 }

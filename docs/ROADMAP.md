@@ -76,7 +76,15 @@ existing design, architecture and user documents are the whole plan.
 
 **P2 — only after P1, or when the owner asks.**
 
-9. Multi-instrument, portfolio and netting.
+9. Multi-instrument, portfolio and netting. **First slice landed:** the account already keyed positions by
+   symbol, so what was missing was the read that answers the question a single position cannot — gross exposure
+   against net exposure — and the line that prints it. `[EXPOSURE]` now reports one leg per symbol with its
+   signed notional, the sum of the sizes, the size of the sum and their ratio, valued at the last quote each
+   symbol showed and without moving the account. A two-leg book that nearly cancels reports a gross of twice its
+   net, which is the number a hedged book is judged by and the one the carry line's fee bill was charged on.
+   **Still missing:** a run that trades more than one book at once. The pipeline is still one engine and one
+   strategy per run, so the report is exercised by the account and the unit test rather than by a multi-leg
+   replay, and that half is the next slice.
 10. Persistence and restart recovery.
 11. Full venue semantics (cancel/replace and the other modes not chosen in P1), live venue/TLS, price impact,
     out-of-sample studies, and performance experiments (block parsing, shared memory, binary telemetry,
