@@ -996,8 +996,7 @@ a second look at a list that has already had one.
 
 1. **What it costs**: top of book, one two-hour window, priced by the screen's own cost mode before any download
    and bought only under a five dollar cap. The recorded rate is 0.52 USD for thirty symbols, and the credit it
-   comes out of is 124.03 USD that becomes zero on 2027-03-30, so the alternative to spending it here is spending
-   it later on the same thing or losing it.
+   comes out of is 124.03 USD that becomes zero on 2027-03-30.
 2. **What passes**: a `schedule_ratio` of at least **3.0** — the median spread at the trades against three times
    the round turn of the account's own schedule at that share's price — **and** at least **2.8 trade prints a
    second**, which is the activity floor recorded above. Both halves, or it does not pass.
@@ -1010,11 +1009,21 @@ a second look at a list that has already had one.
 reason the axis was wrong; this one is allowed to produce only the first, because the two axes it could fail on —
 spread and flow — have both already been measured at their ends and there is no third axis the screen can see.
 
-**It has since been priced, and it is a sixth of the recorded rate.** The screen's cost query on the thirty names
-over the same two hours comes to **0.165701 USD**, against the 0.52 the mega caps cost, and the difference is the
-point rather than a bargain: at this schema the price follows the message count, so IONQ's two hours are 0.019674
-and VAL's are **0.000263**, a seventy-five-fold spread inside one list. Nothing has been bought yet; the figure is
-what the pre-registered cap of 5 USD buys with room to run it four times over if the first pass has to be repeated.
+**It has not been bought, and the reason is not the price.** The decision on 2026-11-01 was to forfeit the 0.165701
+USD — the thirty names priced at 0.000263 on VAL and 0.019674 on IONQ, a seventy-five-fold spread that follows the
+message count — keep the credit, and close the equity quoting line; the record has to carry the reason that actually
+decides it rather than the tidier one. The tidier one would be "a pass line was registered against this screen, so
+nothing was run"; that is a category error, because the line is what a *run* is judged against and the 0.17 USD is
+the price of the measurement the line would judge. What closes the line is measured, twice: **the same window's
+quoting is negative before any fee at all** — a gross closed P&L of -1,119.04 USD, or -1.03 ticks a unit, on the
+model the tape supports — so a symbol that clears this screen at three times its round turn would still owe a
+measurement of whether its gross clears zero, and **the sixth gate already took the one positive window to nothing
+at one millisecond each way**. A screen answers neither question, and a screen that cannot change a decision is not
+worth its 17 cents.
+
+**The forfeit is therefore recorded as a judgement about what the answer would have been worth, not as a test of
+resolve.** A rule kept for its own sake is the same error as a rule bent for seventeen cents, and writing the
+tidier reason into this document would have been the third error of the three.
 
 ### The seven things that must be true before any engineering
 

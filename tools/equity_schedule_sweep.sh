@@ -73,6 +73,30 @@ row() {
       }'
 }
 
+# One run under a named schedule, for the table that says what the fee arrangements are worth. The column that
+# matters is gross_closed_pnl_usd, which the engine reports with the fees added back: it is the same number under
+# every schedule here, because the fills are the same, and it is the number no fee tier can move.
+schedule_row() {
+  local name=$1 schedule=$2 output units fees floor capture markout gross net
+  # shellcheck disable=SC2086
+  output=$("$BIN" l2_replay "$TRADES" "$DEPTH" "$SYMBOL" 0 active_l2 1 prorata --order-size=100 \
+    --inventory-limit=300 --base-spread-ticks=1 $schedule 2>&1)
+  units=$(field_of "$output" trade_report_quantity)
+  fees=$(field_of "$output" fees_paid)
+  floor=$(field_of "$output" min_commission_paid)
+  capture=$(field_of "$output" captured_edge_per_unit_ticks)
+  markout=$(field_of "$output" markout_per_unit_ticks)
+  gross=$(field_of "$output" gross_closed_pnl_usd)
+  net=$(field_of "$output" net_pnl_usd)
+  awk -v m="$name" -v u="$units" -v f="$fees" -v fl="$floor" -v c="$capture" -v k="$markout" \
+      -v g="$gross" -v n="$net" -v t="$TICK" -v o="$(field_of "$output" submitted_orders)" \
+      -v fills="$(field_of "$output" trade_reports)" 'BEGIN {
+        if (u + 0 == 0) { printf "| %s | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |\n", m; exit }
+        printf "| %s | %s | %s | %s | %.3f | %.3f | %.3f | %.3f | %.2f | %.2f |\n",
+          m, o, fills, u, c, k, f / u / t, fl / u / t, g, n
+      }'
+}
+
 echo "## Queue-model attribution, $SYMBOL $DAY"
 echo
 python3 tools/calibrate_queue_model.py "$DEPTH" "$TRADES" --max-rows=400000 | head -12
@@ -109,3 +133,12 @@ row prorata 1000 1
 row prorata 1000 4
 row prorata 1000 16
 row prorata 1000 64
+echo
+echo "## What the account's schedule can change: four arrangements, same fills"
+echo
+echo "| schedule | order instances | fills | units | capture ticks/unit | markout ticks/unit | fee ticks/unit | of which the floor | gross closed USD | net USD |"
+echo "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+schedule_row "commission only" ""
+schedule_row "tiered, no rebate" "--fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0"
+schedule_row "tiered, rebate" "$SCHEDULE"
+schedule_row "tiered, rebate, no floor" "--fee-schedule=min=0,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013"

@@ -2707,14 +2707,30 @@ third time this document has found the same shape, and the first time on a venue
 of a tick rather than a multiple of one: **capture and markout are one number in two halves, and a policy that
 changes one changes the other by the same amount.**
 
-**What this does not show is that the fields add up to the money, and they do not.** At the default clip the
-decomposition leaves a few tenths of a tick of gap while `closed_pnl_usd` is -2.03 ticks a unit, and at a clip
-of 2,000 the money is -6.81 ticks a unit against a decomposition that is still within a fraction of one. The
-difference lives inside the account rather than inside the measurement -- a window's closed P&L includes fills
-that the capture and the five-cycle markout do not describe -- and it is **recorded rather than reconciled**,
-because a decomposition presented as if it added up to the money would be the more expensive error of the two.
-What the fields are exact for is the comparison they make in one unit under one policy: the fee against the
-capture, which is the question this section was asked.
+**What this does not show is that the tick fields add up to the money -- but the money does add up, and where it
+comes from is the finding.** Four schedules on the same window and policy, with the capture and the markout identical
+in all four because the fills are identical:
+
+| schedule | fee USD | fee ticks/unit | of which the floor | gross closed USD | net USD |
+|---|---:|---:|---:|---:|---:|
+| the commission alone | 380.33 | 0.350 | 0 | -1119.04 | -1494.42 |
+| the account's terms without the maker credit | 1228.80 | 1.131 | 454.77 | -1119.04 | -2342.89 |
+| the account's terms with it | 1087.53 | 1.001 | 454.77 | -1119.04 | -2201.62 |
+| the same, with no minimum per order | 632.77 | 0.582 | 0 | -1119.04 | -1746.86 |
+
+**The maker credit is worth 141.27 USD a window and the minimum per order 454.77, and the column that decides the
+line is the one that does not move.** The gross closed P&L is **-1,119.04 USD, or -1.03 ticks a unit, before any fee
+at all**, in every row -- so at the best terms any broker in that table offers, the credit passed through and no
+floor, the window still loses 1,746.86 USD, and at a fee of zero it would still lose 1,119.04. That is the same
+sentence the OKX maker line produced at -0.64 and -0.99 basis points gross, in a fourth market: **the quoting is
+negative before the fee, so the fee is not the term to bargain over.** It also settles a question that had been left
+as an argument: no rebate arrangement, however favourable, can close a line whose fills lose money before they pay
+anything.
+
+**And the reconciliation that the paragraph above recorded as missing is this**: `net_pnl_usd` is the gross closed
+P&L less `fees_paid`, to the cent (-1119.04 - 380.33 = -1499.37, and so on down the column), and the tick
+decomposition does not add up to the gross because a window's closes include what a five-cycle markout cannot see.
+The money column is the gross, and the tick fields are what explain it rather than a substitute for it.
 
 Reproduction: `tools/equity_schedule_sweep.sh` prints all three tables from the two files on disk, and the
 attribution is `tools/calibrate_queue_model.py` on the same window -- the tool the perpetuals' queue model was

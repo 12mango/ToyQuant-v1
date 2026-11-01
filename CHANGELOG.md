@@ -267,6 +267,20 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   falls by exactly as much -- capture plus markout stays at 0.78, 0.77, 0.75, 0.74 across four refresh settings.
   Reproduced by `tools/equity_schedule_sweep.sh`, and recorded with the caveat that the tick fields and
   `closed_pnl_usd` do not reconcile.
+- **The maker credit is worth 141 USD a window, and the column that decides the line does not move.** Four schedules on
+  the same fills: the commission alone charges 380.33 USD, the account's tiered terms without the maker credit 1,228.80,
+  with it 1,087.53, and the same with no minimum per order 632.77 -- while the **gross closed P&L is -1,119.04 USD, or
+  -1.03 ticks a unit, in all four rows**. So the best terms any of those arrangements offers (0.582 ticks a unit) still
+  loses 1,746.86 USD on the window, and a fee of zero would still lose 1,119.04. **The quoting is negative before the
+  fee**, which is the sentence the OKX maker line produced at -0.64 and -0.99 bps and the reason no rebate arrangement
+  can close this line. It also reconciles what the previous bullet left open: `net_pnl_usd` is the gross closed P&L
+  less `fees_paid` to the cent, and the tick decomposition does not add to the gross because a window's closes include
+  what a five-cycle markout cannot see.
+- **Line nine is forfeited, and the reason recorded is the measured one.** The thirty mid-cap names were priced at
+  0.165701 USD and not bought, and the equity quoting line is closed on two measurements rather than on resolve: the
+  gross is negative before any fee, and the sixth gate takes the one positive window to nothing at one millisecond each
+  way. Writing "a pass line was registered, so nothing was run" would have been a category error -- the line is what a
+  run is judged against, and the 17 cents was the price of the run.
 
   and `fees_bps_of_turnover`: the fees booked to the closed round trips, their mean, and those fees over the notional
   the run traded. `expectancy_usd` is already net of them, so the comparison that decides whether a run can pay at all
